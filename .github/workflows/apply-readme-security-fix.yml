@@ -1,0 +1,41 @@
+name: Apply credential documentation fix
+
+on:
+  push:
+    branches: [agent/security-env-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/security-env-hardening
+
+      - name: Update README credential instructions
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("README.md")
+          content = path.read_text(encoding="utf-8")
+          old = '''Edit `.env`:\n\n```env\n# Your Polygon private key (hex, without 0x prefix)\nPK=your_polygon_private_key_here\n\n# Your Polygon wallet address\nWALLET=0xYourWalletAddressHere\n\n# Signature type (0 = EOA)\nSIG_TYPE=0\n```\n\nEdit `config.json` to set your trading parameters:\n\n```json\n{\n  "max_bet": 2.0,\n  "min_ev": 0.10,\n  "min_volume": 500,\n  "scan_interval": 3600,\n  "telegram_bot_token": "your_token",\n  "telegram_chat_id": "your_chat_id"\n}\n```\n'''
+          new = '''Edit `.env` and never commit it:\n\n```env\n# Your Polygon private key (hex, without 0x prefix)\nPK=your_polygon_private_key_here\n\n# Your Polygon wallet address\nWALLET=0xYourWalletAddressHere\n\n# Signature type (0 = EOA)\nSIG_TYPE=0\n\n# Optional Visual Crossing key for the legacy resolution fallback\nVC_KEY=your_visual_crossing_key\n\n# Optional Telegram notifications\nTELEGRAM_BOT_TOKEN=your_telegram_bot_token\nTELEGRAM_CHAT_ID=your_telegram_chat_id\n```\n\n`config.json` is committed public configuration. Put trading parameters there, never credentials:\n\n```json\n{\n  "mode": "disabled",\n  "max_bet": 2.0,\n  "min_ev": 0.10,\n  "min_volume": 500,\n  "scan_interval": 3600\n}\n```\n'''
+          count = content.count(old)
+          if count != 1:
+              raise SystemExit(f"expected one README credential block, found {count}")
+          path.write_text(content.replace(old, new), encoding="utf-8")
+          PY
+
+      - name: Commit documentation fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs: keep credentials out of config.json"
+          git push origin HEAD:agent/security-env-hardening
