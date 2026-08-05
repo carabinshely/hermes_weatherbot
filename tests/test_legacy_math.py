@@ -12,7 +12,7 @@ LEGACY = load_legacy_math(Path("bot_v3.py"))
 def test_bounded_bucket_probability_is_valid() -> None:
     probability = LEGACY.bucket_prob(72.0, 70.0, 75.0, sigma=2.0)
     assert 0.0 < probability < 1.0
-    assert probability == pytest.approx(0.7734, abs=1e-4)
+    assert probability == pytest.approx(0.7745375, abs=1e-7)
 
 
 def test_expected_value_matches_binary_contract_return() -> None:
