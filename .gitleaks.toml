@@ -1,0 +1,12 @@
+title = "WeatherBot Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Public Polygon contract addresses declared in the legacy bot"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "line"
+paths = ['''(^|/)bot_v3\.py$''']
+regexes = ['''^\s*(USDC_ADDRESS|CTF_EXCHANGE|NEG_RISK_EXCHANGE|ROUTER|CONDITIONAL_TOKENS)\s*=\s*"0x[0-9A-Fa-f]{40}"\s*$''']

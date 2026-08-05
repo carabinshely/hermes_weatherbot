@@ -1,7 +1,7 @@
 {
   "balance": 0.0,
   "max_bet": 2.0,
-  "min_ev": 0.10,
+  "min_ev": 0.1,
   "max_price": 0.45,
   "min_volume": 500,
   "min_hours": 2.0,
@@ -9,9 +9,9 @@
   "kelly_fraction": 0.25,
   "scan_interval": 3600,
   "calibration_min": 30,
-  "vc_key": "DFPWW2VD4LTZSM32ZS2R6XTSA",
-  "mode": "live",
+  "vc_key": "",
+  "mode": "disabled",
   "max_slippage": 0.03,
-  "telegram_bot_token": "8448304532:AAEdg-gSneZW_WPliKq_0QLmi7NIEh1Z5Tc",
-  "telegram_chat_id": "-5106762842"
+  "telegram_bot_token": "",
+  "telegram_chat_id": ""
 }
