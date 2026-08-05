@@ -43,7 +43,7 @@ ignore = ["E501"]
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["runtime_security.py", "tests"]
+include = ["execution_modes.py", "runtime_security.py", "tests"]
 exclude = ["data", "pip_tmp"]
 reportMissingTypeStubs = false
 
@@ -58,7 +58,7 @@ xfail_strict = false
 
 [tool.coverage.run]
 branch = true
-source = ["runtime_security", "tests"]
+source = ["execution_modes", "runtime_security", "tests"]
 
 [tool.coverage.report]
 show_missing = true

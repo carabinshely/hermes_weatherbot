@@ -1,0 +1,139 @@
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from execution_modes import (
+    ExecutionContext,
+    ExecutionMode,
+    LiveExecutionBlocked,
+    ModeConfigurationError,
+    parse_mode,
+    require_live,
+    resolve_execution_context,
+    run_live_operation,
+)
+
+
+@pytest.mark.parametrize("value", [None, "", "disabled", "automatic", 1])
+def test_invalid_modes_fail_closed(value: object) -> None:
+    with pytest.raises(ModeConfigurationError):
+        parse_mode(value, source="test mode")
+
+
+def test_research_is_safe_default_from_config() -> None:
+    context = resolve_execution_context(
+        configured_mode="research", cli_mode=None, confirm_live=False
+    )
+    assert context.mode is ExecutionMode.RESEARCH
+    assert not context.requires_wallet
+    assert context.label == "RESEARCH"
+
+
+def test_cli_can_safely_downgrade_live_configuration() -> None:
+    context = resolve_execution_context(
+        configured_mode="live", cli_mode="research", confirm_live=False
+    )
+    assert context.mode is ExecutionMode.RESEARCH
+
+
+@pytest.mark.parametrize(
+    ("configured_mode", "cli_mode", "confirm_live"),
+    [
+        ("research", "live", True),
+        ("live", None, True),
+        ("live", "live", False),
+        ("paper", "paper", True),
+    ],
+)
+def test_live_mode_requires_all_independent_gates(
+    configured_mode: str, cli_mode: str | None, confirm_live: bool
+) -> None:
+    with pytest.raises(ModeConfigurationError):
+        resolve_execution_context(
+            configured_mode=configured_mode,
+            cli_mode=cli_mode,
+            confirm_live=confirm_live,
+        )
+
+
+def test_live_mode_requires_config_cli_and_confirmation() -> None:
+    context = resolve_execution_context(configured_mode="live", cli_mode="live", confirm_live=True)
+    assert context.mode is ExecutionMode.LIVE
+    assert context.live_confirmed
+    assert context.requires_wallet
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.RESEARCH, ExecutionMode.PAPER])
+def test_non_live_gate_never_calls_live_callback(mode: ExecutionMode) -> None:
+    context = ExecutionContext(mode=mode, configured_mode=mode)
+    calls: list[str] = []
+
+    with pytest.raises(LiveExecutionBlocked):
+        run_live_operation(
+            context,
+            operation="test live call",
+            callback=lambda: calls.append("live"),
+        )
+
+    assert calls == []
+    with pytest.raises(LiveExecutionBlocked):
+        require_live(context, operation="test live call")
+
+
+@pytest.mark.parametrize("mode", ["research", "paper"])
+def test_non_live_status_runs_without_wallet_credentials(mode: str) -> None:
+    environment = os.environ.copy()
+    environment.pop("PK", None)
+    environment.pop("WALLET", None)
+    completed = subprocess.run(
+        [sys.executable, "bot_v3.py", "status", "--mode", mode],
+        cwd=Path.cwd(),
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert f"Execution mode: {mode.upper()}" in completed.stdout
+    assert "Wallet access: disabled" in completed.stdout
+
+
+def test_default_status_is_research_and_wallet_free() -> None:
+    environment = os.environ.copy()
+    environment.pop("PK", None)
+    environment.pop("WALLET", None)
+    completed = subprocess.run(
+        [sys.executable, "bot_v3.py", "status"],
+        cwd=Path.cwd(),
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "Execution mode: RESEARCH" in completed.stdout
+    assert "Wallet access: disabled" in completed.stdout
+
+
+def test_non_live_cancel_is_blocked_before_live_client_access() -> None:
+    environment = os.environ.copy()
+    environment.pop("PK", None)
+    environment.pop("WALLET", None)
+    completed = subprocess.run(
+        [sys.executable, "bot_v3.py", "cancel", "--mode", "research"],
+        cwd=Path.cwd(),
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 2
+    assert "order cancellation is blocked in research mode" in completed.stderr

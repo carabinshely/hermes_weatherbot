@@ -83,7 +83,27 @@ TELEGRAM_CHAT_ID=your_telegram_chat_id
 }
 ```
 
-### 3. Start Trading
+### 3. Choose an execution mode
+
+`config.json` defaults to `"mode": "research"`.
+
+```bash
+# Read-only market research; no wallet access or orders
+python bot_v3.py scan --mode research
+
+# Paper-mode candidate generation; simulated fills arrive in #27
+python bot_v3.py scan --mode paper
+
+# Live mode is fail-closed and requires all three gates:
+# 1. config.json mode=live
+# 2. --mode live
+# 3. --confirm-live
+python bot_v3.py scan --mode live --confirm-live
+```
+
+Research and paper modes do not require `PK` or `WALLET`.
+
+### 4. Start the configured mode
 
 ```bash
 # Start the bot (runs in background)
