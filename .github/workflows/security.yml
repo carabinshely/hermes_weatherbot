@@ -28,7 +28,7 @@ jobs:
       - name: Verify scanner detects a generated canary
         run: |
           mkdir -p /tmp/gitleaks-canary
-          printf 'AWS_ACCESS_KEY_ID=AKIA0123456789ABCDEF\n' > /tmp/gitleaks-canary/canary.env
+          printf 'GITHUB_TOKEN=ghp_0123456789abcdefghijklmnopqrstuvwxyz\n' > /tmp/gitleaks-canary/canary.env
           if "$(go env GOPATH)/bin/gitleaks" dir /tmp/gitleaks-canary --redact --no-banner; then
             echo "Gitleaks failed to detect the generated canary" >&2
             exit 1
