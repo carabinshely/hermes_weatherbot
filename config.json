@@ -9,9 +9,6 @@
   "kelly_fraction": 0.25,
   "scan_interval": 3600,
   "calibration_min": 30,
-  "vc_key": "",
   "mode": "disabled",
-  "max_slippage": 0.03,
-  "telegram_bot_token": "",
-  "telegram_chat_id": ""
+  "max_slippage": 0.03
 }
