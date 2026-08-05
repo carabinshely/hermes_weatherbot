@@ -27,7 +27,21 @@ jobs:
 
       - name: Scan current tree
         run: |
-          "$(go env GOPATH)/bin/gitleaks" dir . --redact --no-banner
+          set +e
+          "$(go env GOPATH)/bin/gitleaks" dir . \
+            --redact \
+            --no-banner \
+            --report-format json \
+            --report-path /tmp/gitleaks.json
+          status=$?
+          set -e
+
+          if [[ -s /tmp/gitleaks.json ]]; then
+            jq -r '.[] | "::error file=\(.File),line=\(.StartLine)::Gitleaks rule \(.RuleID)"' \
+              /tmp/gitleaks.json
+          fi
+
+          exit "$status"
 
   dependency-audit:
     name: Runtime dependency audit
