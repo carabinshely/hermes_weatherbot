@@ -51,7 +51,7 @@ Copy the example env file and fill in your wallet credentials:
 cp .env.example .env
 ```
 
-Edit `.env`:
+Edit `.env` and never commit it:
 
 ```env
 # Your Polygon private key (hex, without 0x prefix)
@@ -62,18 +62,24 @@ WALLET=0xYourWalletAddressHere
 
 # Signature type (0 = EOA)
 SIG_TYPE=0
+
+# Optional Visual Crossing key for the legacy resolution fallback
+VC_KEY=your_visual_crossing_key
+
+# Optional Telegram notifications
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+TELEGRAM_CHAT_ID=your_telegram_chat_id
 ```
 
-Edit `config.json` to set your trading parameters:
+`config.json` is committed public configuration. Put trading parameters there, never credentials:
 
 ```json
 {
+  "mode": "disabled",
   "max_bet": 2.0,
   "min_ev": 0.10,
   "min_volume": 500,
-  "scan_interval": 3600,
-  "telegram_bot_token": "your_token",
-  "telegram_chat_id": "your_chat_id"
+  "scan_interval": 3600
 }
 ```
 
