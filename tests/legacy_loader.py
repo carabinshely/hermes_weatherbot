@@ -38,13 +38,17 @@ _REQUIRED_FUNCTIONS = {
 def load_legacy_math(path: Path) -> LegacyMath:
     """Load selected pure functions without importing the side-effectful legacy module."""
     module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    functions = [
-        node
-        for node in module.body
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
-        and node.name in _REQUIRED_FUNCTIONS
-    ]
-    found = {node.name for node in functions}
+    functions: list[ast.stmt] = []
+    found: set[str] = set()
+
+    for node in module.body:
+        if (
+            isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+            and node.name in _REQUIRED_FUNCTIONS
+        ):
+            functions.append(node)
+            found.add(node.name)
+
     missing = _REQUIRED_FUNCTIONS - found
     if missing:
         raise AssertionError(f"Missing expected legacy functions: {sorted(missing)}")
