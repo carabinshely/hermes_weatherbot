@@ -35,15 +35,17 @@ def test_workflows_do_not_use_pull_request_target() -> None:
         assert "pull_request_target:" not in content
 
 
-def test_legacy_bot_loads_notifications_from_environment_only() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
-    assert '_cfg.get("telegram_bot_token"' not in source
-    assert '_cfg.get("telegram_chat_id"' not in source
-    assert '_cfg.get("vc_key"' not in source
-    assert 'os.getenv("TELEGRAM_BOT_TOKEN"' in source
-    assert 'os.getenv("TELEGRAM_CHAT_ID"' in source
+def test_legacy_bots_load_credentials_from_environment_only() -> None:
+    v2_source = Path("bot_v2.py").read_text(encoding="utf-8")
+    v3_source = Path("bot_v3.py").read_text(encoding="utf-8")
 
+    assert '_cfg.get("vc_key"' not in v2_source
+    assert 'os.getenv("VC_KEY"' in v2_source
+    assert "if not VC_KEY:" in v2_source
 
-def test_unused_vc_key_is_removed_from_legacy_bots() -> None:
-    for path in (Path("bot_v2.py"), Path("bot_v3.py")):
-        assert "VC_KEY" not in path.read_text(encoding="utf-8")
+    assert '_cfg.get("telegram_bot_token"' not in v3_source
+    assert '_cfg.get("telegram_chat_id"' not in v3_source
+    assert '_cfg.get("vc_key"' not in v3_source
+    assert 'os.getenv("TELEGRAM_BOT_TOKEN"' in v3_source
+    assert 'os.getenv("TELEGRAM_CHAT_ID"' in v3_source
+    assert "VC_KEY" not in v3_source

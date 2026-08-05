@@ -13,6 +13,7 @@ Supported legacy environment variables are:
 - `SIG_TYPE`
 - `TELEGRAM_BOT_TOKEN`
 - `TELEGRAM_CHAT_ID`
+- `VC_KEY`
 
 Runtime diagnostics may report only whether a value is configured. They must never print,
 log, serialize, or include the credential value in an exception message.
@@ -27,8 +28,8 @@ log, serialize, or include the credential value in an exception message.
 6. Run the repository secret scans before redeployment.
 
 For Telegram bot tokens, revoke and regenerate the token through Telegram's official bot
-management interface. The historical `vc_key` is unused by the current code; its owner must
-identify the issuing provider and revoke it there.
+management interface. The historical `vc_key` belongs to the Visual Crossing integration; its owner must
+revoke it through the issuing Visual Crossing account.
 
 ## Historical exposure inherited from upstream
 

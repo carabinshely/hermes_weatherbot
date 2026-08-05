@@ -9,6 +9,7 @@ DEFAULT_CREDENTIAL_NAMES = (
     "SIG_TYPE",
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_CHAT_ID",
+    "VC_KEY",
 )
 
 
