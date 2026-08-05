@@ -14,6 +14,7 @@ Usage:
     python bot_v3.py cancel --market <market_id>  # Cancel orders for a market
 """
 
+import argparse
 import re
 import sys
 import json
@@ -25,6 +26,15 @@ import dotenv
 import requests
 import threading
 
+from execution_modes import (
+    ExecutionContext,
+    ExecutionMode,
+    LiveExecutionBlocked,
+    ModeConfigurationError,
+    require_live,
+    resolve_execution_context,
+    run_live_operation,
+)
 from runtime_security import credential_status_line
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -424,11 +434,14 @@ def send_telegram(text: str, retry=2) -> bool:
 
 def tg_signal(city: str, horizon: str, date: str, bucket_label: str,
               forecast_temp: float, entry_price: float, cost: float,
-              ev: float, kelly: float, success: bool, reason: str = ""):
+              ev: float, kelly: float, success: bool, mode: ExecutionMode,
+              reason: str = ""):
     """Send a trade signal notification to Telegram."""
+    mode_header = f"🔒 <b>{mode.value.upper()} MODE</b>\n"
     if success:
         msg = (
-            f"📍 <b>{city} {horizon}</b> — {date}\n"
+            mode_header
+            + f"📍 <b>{city} {horizon}</b> — {date}\n"
             f"🌡 Forecast: <b>{forecast_temp}°F</b>\n"
             f"🎯 Bucket: <b>{bucket_label}</b>\n"
             f"💰 Cost: <b>${cost:.2f}</b> @ <b>${entry_price:.3f}</b>\n"
@@ -437,30 +450,38 @@ def tg_signal(city: str, horizon: str, date: str, bucket_label: str,
         )
     else:
         msg = (
-            f"📍 <b>{city} {horizon}</b> — {date}\n"
+            mode_header
+            + f"📍 <b>{city} {horizon}</b> — {date}\n"
             f"🌡 Forecast: <b>{forecast_temp}°F</b>\n"
             f"🎯 Bucket: <b>{bucket_label}</b>\n"
             f"❌ <b>ORDER FAILED:</b> {reason}"
         )
     send_telegram(msg)
 
-def tg_scan_summary(new_trades: int, errors: int, balance: float, cities: int,
-                     top_signals: list = None, open_positions: list = None):
-    """Send a detailed scan summary to Telegram."""
+def tg_scan_summary(new_trades: int, errors: int, balance: float | None, cities: int,
+                     mode: ExecutionMode, observed_signals: int = 0,
+                     paper_candidates: int = 0, top_signals: list = None,
+                     open_positions: list = None):
+    """Send a mode-labelled scan summary to Telegram."""
     status_emoji = "✅" if errors == 0 else "⚠️"
-
-    # Build header
     lines = [
-        f"🔔 <b>Weather Bot — Scan Report</b>",
+        f"🔒 <b>{mode.value.upper()} MODE</b>",
+        "🔔 <b>Weather Bot — Scan Report</b>",
         f"{status_emoji} Cities: {cities} | New trades: {new_trades} | Errors: {errors}",
-        f"💰 Balance: <b>${balance:.4f}</b> USDC.e",
     ]
+    if mode is ExecutionMode.RESEARCH:
+        lines.append(f"🔎 Signals observed: {observed_signals}")
+    elif mode is ExecutionMode.PAPER:
+        lines.append(f"📝 Paper candidates: {paper_candidates}")
+    if balance is None:
+        lines.append("💰 Wallet access: <b>disabled</b>")
+    else:
+        lines.append(f"💰 Balance: <b>${balance:.4f}</b> USDC.e")
 
-    # Open positions
     if open_positions:
         lines.append("")
         lines.append(f"📊 <b>Open Positions ({len(open_positions)}):</b>")
-        for pos in open_positions[:5]:  # Max 5 shown
+        for pos in open_positions[:5]:
             label = f"{pos['bucket_low']}-{pos['bucket_high']}°F"
             pnl_str = f"${pos.get('pnl', 0):.2f}" if pos.get('pnl') else "pending"
             entry = pos.get('entry_price', 0)
@@ -472,22 +493,19 @@ def tg_scan_summary(new_trades: int, errors: int, balance: float, cities: int,
         if len(open_positions) > 5:
             lines.append(f"  ...and {len(open_positions) - 5} more")
     else:
-        lines.append("")
-        lines.append("📊 <b>Open Positions:</b> 0")
+        lines.extend(("", "📊 <b>Open Positions:</b> 0"))
 
-    # Top signals from this scan
     if top_signals:
         lines.append("")
         lines.append(f"🎯 <b>Top EV Signals ({len(top_signals)} found):</b>")
-        for sig in top_signals[:5]:  # Max 5 shown
+        for sig in top_signals[:5]:
             lines.append(
                 f"  • {sig['city']} {sig['horizon']} | "
                 f"{sig['bucket']} | EV <b>+{sig['ev']:.2f}</b> | "
                 f"${sig['price']:.3f} (market) vs ${sig['true_prob']:.3f} (model)"
             )
 
-    msg = "\n".join(lines)
-    send_telegram(msg)
+    send_telegram("\n".join(lines))
 
 # =============================================================================
 # APPROVAL CHECK
@@ -882,27 +900,35 @@ def get_clob_positions():
 # SCAN & TRADE (one shot)
 # =============================================================================
 
-def scan_and_trade():
-    """
-    One-shot scan: check all cities for trade signals and execute real orders.
-    Returns (new_trades, errors).
-    """
+def scan_and_trade(context: ExecutionContext):
+    """Scan markets under an explicit execution mode."""
     now = datetime.now(timezone.utc)
-    state = load_state()
-    balance = get_usdc_balance(WALLET)
-    if balance != state.get("balance"):
-        state["balance"] = balance
-        save_state(state)
+    is_live = context.mode is ExecutionMode.LIVE
+    state = load_state() if is_live else {"balance": 0.0, "total_trades": 0}
+    balance = None
+    if is_live:
+        balance = get_usdc_balance(WALLET)
+        if balance != state.get("balance"):
+            state["balance"] = balance
+            save_state(state)
 
-    print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — Live Mode{C.RESET}")
+    print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
     print("=" * 60)
-    print(f"  Wallet:       {WALLET[:8]}...{WALLET[-4:]}")
-    print(f"  USDC.e:       ${balance:.4f}")
-    print(f"  POL balance:  {get_pol_balance(WALLET):.4f} POL")
+    print(f"  Mode:         {context.label}")
+    if is_live:
+        print(f"  Wallet:       {WALLET[:8]}...{WALLET[-4:]}")
+        print(f"  USDC.e:       ${balance:.4f}")
+        print(f"  POL balance:  {get_pol_balance(WALLET):.4f} POL")
+    else:
+        print("  Wallet access: disabled")
+        if context.mode is ExecutionMode.PAPER:
+            print("  Paper fills:   pending implementation in #27")
     print(f"  Max bet:      ${MAX_BET} | Min EV: {MIN_EV*100:.0f}%")
     print()
 
     new_trades = 0
+    observed_signals = 0
+    paper_candidates = 0
     errors = []
 
     # Collect city market data for Telegram report (top signals)
@@ -1071,14 +1097,30 @@ def scan_and_trade():
                 print(f"  {C.GREEN}  ✅ BUY SIGNAL | ${best_signal['cost']:.2f} @ ${ask:.3f} | "
                       f"EV {best_signal['ev']:+.2f} | Kel {best_signal['kelly']:.2f}{C.RESET}")
 
+                if context.mode is ExecutionMode.RESEARCH:
+                    observed_signals += 1
+                    info("  [RESEARCH] signal observed; no order or state mutation")
+                    continue
+                if context.mode is ExecutionMode.PAPER:
+                    paper_candidates += 1
+                    info("  [PAPER] candidate only; simulated fills are implemented in #27")
+                    continue
+
+                require_live(context, operation="place order")
+                assert balance is not None
+
                 # --- EXECUTE REAL ORDER ---
-                result = place_buy_order(
-                    market_id=best_signal["market_id"],
-                    token_id=best_signal["token_id"],
-                    price=best_signal["entry_price"],
-                    shares=best_signal["shares"],
-                    private_key=PK,
-                    wallet=WALLET,
+                result = run_live_operation(
+                    context,
+                    operation="place order",
+                    callback=lambda: place_buy_order(
+                        market_id=best_signal["market_id"],
+                        token_id=best_signal["token_id"],
+                        price=best_signal["entry_price"],
+                        shares=best_signal["shares"],
+                        private_key=PK,
+                        wallet=WALLET,
+                    ),
                 )
 
                 if result["success"]:
@@ -1129,7 +1171,7 @@ def scan_and_trade():
                         bucket_label=bucket_label, forecast_temp=best_signal["forecast_temp"],
                         entry_price=best_signal["entry_price"], cost=best_signal["cost"],
                         ev=best_signal["ev"], kelly=best_signal["kelly"],
-                        success=True,
+                        success=True, mode=context.mode,
                     )
                 else:
                     errors.append(f"{loc['name']} {horizon}: {result['reason']}")
@@ -1141,7 +1183,7 @@ def scan_and_trade():
                         bucket_label=bucket_label, forecast_temp=best_signal["forecast_temp"],
                         entry_price=best_signal["entry_price"], cost=best_signal.get("cost", 0),
                         ev=best_signal["ev"], kelly=best_signal["kelly"],
-                        success=False, reason=result.get("reason", "unknown"),
+                        success=False, mode=context.mode, reason=result.get("reason", "unknown"),
                     )
             else:
                 # No signal — show why (skip sentinel buckets to avoid confusing EV)
@@ -1194,27 +1236,35 @@ def scan_and_trade():
                 })
     top_signals.sort(key=lambda x: x["ev"], reverse=True)
 
-    # Open positions
-    markets = load_all_markets()
-    open_positions = [
-        m for m in markets
-        if m.get("position") and m["position"].get("status") == "open"
-    ]
-
-    # Save updated balance
-    state["balance"] = round(balance, 4)
-    save_state(state)
+    # Live positions and state are inaccessible to non-live modes.
+    open_positions = []
+    if is_live:
+        markets = load_all_markets()
+        open_positions = [
+            m for m in markets
+            if m.get("position") and m["position"].get("status") == "open"
+        ]
+        assert balance is not None
+        state["balance"] = round(balance, 4)
+        save_state(state)
 
     print(f"\n{'=' * 60}")
     print(f"  Scanned:    {len(LOCATIONS)} cities")
     print(f"  New trades: {C.GREEN}{new_trades}{C.RESET}")
+    print(f"  Signals:    {observed_signals}")
+    print(f"  Paper candidates: {paper_candidates}")
     print(f"  Errors:     {len(errors)}")
-    print(f"  Balance:    ${balance:.4f}")
+    if balance is None:
+        print("  Wallet:     disabled")
+    else:
+        print(f"  Balance:    ${balance:.4f}")
     print(f"{'=' * 60}\n")
 
     # Telegram scan summary
     tg_scan_summary(new_trades=new_trades, errors=len(errors),
-                    balance=balance, cities=len(LOCATIONS),
+                    balance=balance, cities=len(LOCATIONS), mode=context.mode,
+                    observed_signals=observed_signals,
+                    paper_candidates=paper_candidates,
                     top_signals=top_signals,
                     open_positions=open_positions)
 
@@ -1224,14 +1274,28 @@ def scan_and_trade():
 # STATUS
 # =============================================================================
 
-def show_status():
-    """Show current balance, positions, and open orders."""
+def show_status(context: ExecutionContext):
+    """Show status without crossing the selected mode boundary."""
+    if context.mode is not ExecutionMode.LIVE:
+        print(f"\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")
+        print("=" * 60)
+        print("  Wallet access: disabled")
+        if context.mode is ExecutionMode.PAPER:
+            print("  Paper ledger:  pending implementation in #27")
+        print(f"{'=' * 60}\n")
+        return
+
+    require_live(context, operation="live status")
     balance = get_usdc_balance(WALLET)
     pol_bal = get_pol_balance(WALLET)
 
-    print(f"\n{C.BOLD}{C.CYAN}📊 Bot v3 — Status{C.RESET}")
+    print(f"\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")
     print("=" * 60)
-    print(f"  Wallet:    {WALLET[:8]}...{WALLET[-4:]}")
+    print(f"  Mode:     {context.label}")
+    if context.mode is ExecutionMode.LIVE:
+        print(f"  Wallet:   {WALLET[:8]}...{WALLET[-4:]}")
+    else:
+        print("  Wallet:   disabled")
     print(f"  USDC.e:    ${balance:.4f}")
     print(f"  POL:       {pol_bal:.4f}")
     print()
@@ -1268,8 +1332,8 @@ def show_status():
 
 MONITOR_INTERVAL = 600   # 10 minutes between monitor cycles
 
-def run_loop():
-    print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — LIVE{C.RESET}")
+def run_loop(context: ExecutionContext):
+    print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
     print("=" * 60)
     print(f"  Wallet:    {WALLET[:8]}...{WALLET[-4:]}")
     print(f"  Cities:   {len(LOCATIONS)}")
@@ -1279,9 +1343,12 @@ def run_loop():
     print(f"  Monitor:  every {MONITOR_INTERVAL//60} min")
     print()
 
-    # Check approvals on startup
-    ok("Checking approvals...")
-    ensure_approvals()
+    if context.mode is ExecutionMode.LIVE:
+        require_live(context, operation="token approval")
+        ok("Checking approvals...")
+        ensure_approvals()
+    else:
+        skip("Live approvals disabled by execution mode")
 
     last_full_scan = 0
 
@@ -1292,7 +1359,7 @@ def run_loop():
         if now_ts - last_full_scan >= SCAN_INTERVAL:
             print(f"[{now_str}] Full scan...")
             try:
-                new_trades, errors = scan_and_trade()
+                new_trades, errors = scan_and_trade(context)
                 last_full_scan = time.time()
             except Exception as e:
                 warn(f"Scan error: {e}")
@@ -1306,26 +1373,63 @@ def run_loop():
 # CLI
 # =============================================================================
 
-if __name__ == "__main__":
-    print(credential_status_line())
-    if not PK or not WALLET:
-        print("ERROR: PK and WALLET must be set in weatherbot/.env")
-        sys.exit(1)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Weather-market bot")
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="scan",
+        choices=("scan", "run", "status", "cancel"),
+    )
+    parser.add_argument("--mode", choices=("research", "paper", "live"))
+    parser.add_argument(
+        "--confirm-live",
+        action="store_true",
+        help="required in addition to config mode=live and --mode live",
+    )
+    parser.add_argument("--market", help="market identifier for cancellation")
+    return parser
 
-    cmd = sys.argv[1] if len(sys.argv) > 1 else "scan"
 
-    if cmd == "run":
-        run_loop()
-    elif cmd == "scan":
-        scan_and_trade()
-    elif cmd == "status":
-        show_status()
-    elif cmd == "cancel":
-        market_id = sys.argv[2] if len(sys.argv) > 2 else None
-        if market_id:
-            print(f"Cancelling orders for market: {market_id}")
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        context = resolve_execution_context(
+            configured_mode=_cfg.get("mode"),
+            cli_mode=args.mode,
+            confirm_live=args.confirm_live,
+        )
+    except ModeConfigurationError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"Execution mode: {context.label}")
+    if context.mode is ExecutionMode.LIVE:
+        print(credential_status_line())
+        if not PK or not WALLET:
+            print("ERROR: live mode requires PK and WALLET in .env", file=sys.stderr)
+            return 2
+
+    if args.command == "run":
+        run_loop(context)
+    elif args.command == "scan":
+        scan_and_trade(context)
+    elif args.command == "status":
+        show_status(context)
+    elif args.command == "cancel":
+        try:
+            require_live(context, operation="order cancellation")
+        except LiveExecutionBlocked as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
+        if args.market:
+            print(f"Cancelling orders for market: {args.market}")
         else:
             count = cancel_all_orders()
             print(f"Cancelled {count} orders")
-    else:
-        print(f"Usage: python bot_v3.py [scan|run|status|cancel]")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

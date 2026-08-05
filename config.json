@@ -9,6 +9,6 @@
   "kelly_fraction": 0.25,
   "scan_interval": 3600,
   "calibration_min": 30,
-  "mode": "disabled",
+  "mode": "research",
   "max_slippage": 0.03
 }
