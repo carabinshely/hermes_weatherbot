@@ -43,10 +43,10 @@ jobs:
         run: uv sync --locked --all-groups
 
       - name: Check formatting
-        run: uv run ruff format --check tests
+        run: uv run ruff format --check execution_modes.py runtime_security.py tests
 
-      - name: Lint maintained test code
-        run: uv run ruff check tests
+      - name: Lint maintained code
+        run: uv run ruff check execution_modes.py runtime_security.py tests
 
       - name: Check critical legacy errors
         run: >
@@ -54,11 +54,14 @@ jobs:
           --select E9,F63,F7,F82
           bot_v1.py bot_v2.py bot_v3.py
 
-      - name: Type-check maintained test code
-        run: uv run pyright tests
+      - name: Type-check maintained code
+        run: uv run pyright execution_modes.py runtime_security.py tests
 
       - name: Compile Python sources
-        run: python -m compileall -q bot_v1.py bot_v2.py bot_v3.py tests
+        run: >
+          python -m compileall -q
+          execution_modes.py runtime_security.py
+          bot_v1.py bot_v2.py bot_v3.py tests
 
       - name: Run tests
         run: uv run pytest
