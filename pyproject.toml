@@ -1,0 +1,65 @@
+[project]
+name = "hermes-weatherbot"
+version = "0.1.0"
+description = "Weather-market research and trading bot"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "eth-account==0.13.7",
+    "py-clob-client==0.34.6",
+    "python-dotenv==1.2.2",
+    "requests==2.34.2",
+    "web3==7.16.0",
+]
+
+[dependency-groups]
+dev = [
+    "detect-secrets==1.5.0",
+    "pip-audit==2.10.1",
+    "pyright==1.1.411",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "ruff==0.15.22",
+]
+
+[tool.uv]
+package = false
+required-version = ">=0.11.14,<0.12"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [
+    "data",
+    "pip_tmp",
+]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B", "SIM", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+include = ["tests"]
+exclude = ["data", "pip_tmp"]
+reportMissingTypeStubs = false
+
+[tool.pytest.ini_options]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "-ra",
+]
+testpaths = ["tests"]
+xfail_strict = false
+
+[tool.coverage.run]
+branch = true
+source = ["tests"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
