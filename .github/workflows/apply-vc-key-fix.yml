@@ -1,0 +1,96 @@
+name: Apply Visual Crossing credential fix
+
+on:
+  push:
+    branches: [agent/security-env-hardening]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/security-env-hardening
+
+      - name: Apply fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              content = file.read_text(encoding="utf-8")
+              count = content.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one occurrence, found {count}: {old!r}")
+              file.write_text(content.replace(old, new), encoding="utf-8")
+
+          replace_once("bot_v2.py", "import math\n", "import math\nimport os\n")
+          replace_once(
+              "bot_v2.py",
+              "CALIBRATION_MIN  = _cfg.get(\"calibration_min\", 30)\n",
+              "CALIBRATION_MIN  = _cfg.get(\"calibration_min\", 30)\nVC_KEY          = os.getenv(\"VC_KEY\", \"\").strip()\n",
+          )
+          replace_once(
+              "bot_v2.py",
+              '''def get_actual_temp(city_slug, date_str):\n    """Actual temperature via Visual Crossing for closed markets."""\n    loc = LOCATIONS[city_slug]\n''',
+              '''def get_actual_temp(city_slug, date_str):\n    """Actual temperature via Visual Crossing for closed markets."""\n    if not VC_KEY:\n        return None\n    loc = LOCATIONS[city_slug]\n''',
+          )
+
+          replace_once(
+              "runtime_security.py",
+              '    "TELEGRAM_CHAT_ID",\n',
+              '    "TELEGRAM_CHAT_ID",\n    "VC_KEY",\n',
+          )
+          replace_once(
+              ".env.example",
+              "# Optional Telegram notifications.\n",
+              "# Optional Visual Crossing key used by the legacy resolution fallback.\nVC_KEY=\n\n# Optional Telegram notifications.\n",
+          )
+          replace_once(
+              "SECURITY.md",
+              "- `TELEGRAM_CHAT_ID`\n",
+              "- `TELEGRAM_CHAT_ID`\n- `VC_KEY`\n",
+          )
+          replace_once(
+              "SECURITY.md",
+              "The historical `vc_key` is unused by the current code; its owner must\nidentify the issuing provider and revoke it there.\n",
+              "The historical `vc_key` belongs to the Visual Crossing integration; its owner must\nrevoke it through the issuing Visual Crossing account.\n",
+          )
+
+          tests = Path("tests/test_repository_safety.py")
+          content = tests.read_text(encoding="utf-8")
+          old = '''def test_legacy_bot_loads_notifications_from_environment_only() -> None:\n    source = Path("bot_v3.py").read_text(encoding="utf-8")\n    assert '_cfg.get("telegram_bot_token"' not in source\n    assert '_cfg.get("telegram_chat_id"' not in source\n    assert '_cfg.get("vc_key"' not in source\n    assert 'os.getenv("TELEGRAM_BOT_TOKEN"' in source\n    assert 'os.getenv("TELEGRAM_CHAT_ID"' in source\n\n\ndef test_unused_vc_key_is_removed_from_legacy_bots() -> None:\n    for path in (Path("bot_v2.py"), Path("bot_v3.py")):\n        assert "VC_KEY" not in path.read_text(encoding="utf-8")\n'''
+          new = '''def test_legacy_bots_load_credentials_from_environment_only() -> None:\n    v2_source = Path("bot_v2.py").read_text(encoding="utf-8")\n    v3_source = Path("bot_v3.py").read_text(encoding="utf-8")\n\n    assert '_cfg.get("vc_key"' not in v2_source\n    assert 'os.getenv("VC_KEY"' in v2_source\n    assert "if not VC_KEY:" in v2_source\n\n    assert '_cfg.get("telegram_bot_token"' not in v3_source\n    assert '_cfg.get("telegram_chat_id"' not in v3_source\n    assert '_cfg.get("vc_key"' not in v3_source\n    assert 'os.getenv("TELEGRAM_BOT_TOKEN"' in v3_source\n    assert 'os.getenv("TELEGRAM_CHAT_ID"' in v3_source\n    assert "VC_KEY" not in v3_source\n'''
+          if old not in content:
+              raise SystemExit("legacy credential test marker not found")
+          tests.write_text(content.replace(old, new, 1), encoding="utf-8")
+
+          tests = Path("tests/test_runtime_security.py")
+          content = tests.read_text(encoding="utf-8")
+          content = content.replace(
+              '        "TELEGRAM_BOT_TOKEN": "123456:secret-token",\n',
+              '        "TELEGRAM_BOT_TOKEN": "123456:secret-token",\n        "VC_KEY": "visual-crossing-secret",\n',
+          )
+          content = content.replace(
+              '    assert states["TELEGRAM_CHAT_ID"] == "unset"\n',
+              '    assert states["TELEGRAM_CHAT_ID"] == "unset"\n    assert states["VC_KEY"] == "configured"\n',
+          )
+          tests.write_text(content, encoding="utf-8")
+          PY
+
+      - name: Format and commit
+        run: |
+          python -m pip install --quiet ruff==0.15.22
+          ruff format runtime_security.py tests
+          ruff check --fix runtime_security.py tests
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- ':!.github/workflows/apply-vc-key-fix.yml'
+          git commit -m "security: load Visual Crossing key from environment"
+          git push origin HEAD:agent/security-env-hardening
