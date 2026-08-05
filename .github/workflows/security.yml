@@ -23,10 +23,10 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install Gitleaks
-        run: go install github.com/gitleaks/gitleaks/v8@v8.30.1
+        run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
 
       - name: Scan current tree
-        run: gitleaks dir . --redact --no-banner
+        run: "$(go env GOPATH)/bin/gitleaks" dir . --redact --no-banner
 
   dependency-audit:
     name: Runtime dependency audit
@@ -66,4 +66,4 @@ jobs:
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 
       - name: Validate workflows
-        run: actionlint
+        run: "$(go env GOPATH)/bin/actionlint"
