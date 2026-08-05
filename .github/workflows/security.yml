@@ -26,7 +26,8 @@ jobs:
         run: go install github.com/zricethezav/gitleaks/v8@v8.30.1
 
       - name: Scan current tree
-        run: "$(go env GOPATH)/bin/gitleaks" dir . --redact --no-banner
+        run: |
+          "$(go env GOPATH)/bin/gitleaks" dir . --redact --no-banner
 
   dependency-audit:
     name: Runtime dependency audit
@@ -66,4 +67,5 @@ jobs:
         run: go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
 
       - name: Validate workflows
-        run: "$(go env GOPATH)/bin/actionlint"
+        run: |
+          "$(go env GOPATH)/bin/actionlint"
