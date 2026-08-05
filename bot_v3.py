@@ -24,6 +24,8 @@ import logging
 import dotenv
 import requests
 import threading
+
+from runtime_security import credential_status_line
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Callable, Any
@@ -53,15 +55,14 @@ MAX_HOURS     = _cfg.get("max_hours", 72.0)
 KELLY_FRAC    = _cfg.get("kelly_fraction", 0.25)
 MAX_SLIPPAGE  = _cfg.get("max_slippage", 0.03)
 SCAN_INTERVAL = _cfg.get("scan_interval", 3600)
-VC_KEY        = _cfg.get("vc_key", "")
 
 # --- CLOB ---
 CLOB_HOST = "https://clob.polymarket.com"
 CHAIN_ID  = 137   # Polygon
 
 # --- Telegram ---
-TELEGRAM_BOT_TOKEN = _cfg.get("telegram_bot_token", "")
-TELEGRAM_CHAT_ID   = _cfg.get("telegram_chat_id", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+TELEGRAM_CHAT_ID   = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
 # --- Contract addresses (Polygon) ---
 USDC_ADDRESS            = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
@@ -1306,6 +1307,7 @@ def run_loop():
 # =============================================================================
 
 if __name__ == "__main__":
+    print(credential_status_line())
     if not PK or not WALLET:
         print("ERROR: PK and WALLET must be set in weatherbot/.env")
         sys.exit(1)

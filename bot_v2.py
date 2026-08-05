@@ -16,6 +16,7 @@ import re
 import sys
 import json
 import math
+import os
 import time
 import requests
 from datetime import datetime, timezone, timedelta
@@ -39,7 +40,7 @@ KELLY_FRACTION   = _cfg.get("kelly_fraction", 0.25)
 MAX_SLIPPAGE     = _cfg.get("max_slippage", 0.03)  # max allowed ask-bid spread
 SCAN_INTERVAL    = _cfg.get("scan_interval", 3600)   # every hour
 CALIBRATION_MIN  = _cfg.get("calibration_min", 30)
-VC_KEY           = _cfg.get("vc_key", "")
+VC_KEY          = os.getenv("VC_KEY", "").strip()
 
 SIGMA_F = 2.0
 SIGMA_C = 1.2
@@ -247,6 +248,8 @@ def get_metar(city_slug):
 
 def get_actual_temp(city_slug, date_str):
     """Actual temperature via Visual Crossing for closed markets."""
+    if not VC_KEY:
+        return None
     loc = LOCATIONS[city_slug]
     station = loc["station"]
     unit = loc["unit"]

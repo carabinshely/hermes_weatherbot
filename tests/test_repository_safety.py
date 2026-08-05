@@ -13,8 +13,9 @@ SENSITIVE_CONFIG_KEYS = {
 
 def test_committed_config_contains_no_secret_values() -> None:
     config = json.loads(Path("config.json").read_text(encoding="utf-8"))
-    for key in SENSITIVE_CONFIG_KEYS:
-        assert not config.get(key), f"{key} must not contain a committed value"
+    assert SENSITIVE_CONFIG_KEYS.isdisjoint(config), (
+        "secret-shaped keys must not exist in committed configuration"
+    )
 
 
 def test_local_environment_file_is_not_tracked() -> None:
@@ -32,3 +33,19 @@ def test_workflows_do_not_use_pull_request_target() -> None:
     for workflow in Path(".github/workflows").glob("*.yml"):
         content = workflow.read_text(encoding="utf-8")
         assert "pull_request_target:" not in content
+
+
+def test_legacy_bots_load_credentials_from_environment_only() -> None:
+    v2_source = Path("bot_v2.py").read_text(encoding="utf-8")
+    v3_source = Path("bot_v3.py").read_text(encoding="utf-8")
+
+    assert '_cfg.get("vc_key"' not in v2_source
+    assert 'os.getenv("VC_KEY"' in v2_source
+    assert "if not VC_KEY:" in v2_source
+
+    assert '_cfg.get("telegram_bot_token"' not in v3_source
+    assert '_cfg.get("telegram_chat_id"' not in v3_source
+    assert '_cfg.get("vc_key"' not in v3_source
+    assert 'os.getenv("TELEGRAM_BOT_TOKEN"' in v3_source
+    assert 'os.getenv("TELEGRAM_CHAT_ID"' in v3_source
+    assert "VC_KEY" not in v3_source
