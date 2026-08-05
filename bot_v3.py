@@ -1291,11 +1291,8 @@ def show_status(context: ExecutionContext):
 
     print(f"\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")
     print("=" * 60)
-    print(f"  Mode:     {context.label}")
-    if context.mode is ExecutionMode.LIVE:
-        print(f"  Wallet:   {WALLET[:8]}...{WALLET[-4:]}")
-    else:
-        print("  Wallet:   disabled")
+    print(f"  Mode:      {context.label}")
+    print(f"  Wallet:    {WALLET[:8]}...{WALLET[-4:]}")
     print(f"  USDC.e:    ${balance:.4f}")
     print(f"  POL:       {pol_bal:.4f}")
     print()
@@ -1335,7 +1332,11 @@ MONITOR_INTERVAL = 600   # 10 minutes between monitor cycles
 def run_loop(context: ExecutionContext):
     print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
     print("=" * 60)
-    print(f"  Wallet:    {WALLET[:8]}...{WALLET[-4:]}")
+    print(f"  Mode:     {context.label}")
+    if context.mode is ExecutionMode.LIVE:
+        print(f"  Wallet:   {WALLET[:8]}...{WALLET[-4:]}")
+    else:
+        print("  Wallet:   disabled")
     print(f"  Cities:   {len(LOCATIONS)}")
     print(f"  Max bet:  ${MAX_BET} | Kelly fraction: {KELLY_FRAC}")
     print(f"  Min EV:   {MIN_EV*100:.0f}%")
