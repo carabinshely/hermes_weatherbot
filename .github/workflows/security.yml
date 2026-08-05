@@ -28,8 +28,21 @@ jobs:
       - name: Verify scanner detects a generated canary
         run: |
           mkdir -p /tmp/gitleaks-canary
-          printf 'GITHUB_TOKEN=ghp_0123456789abcdefghijklmnopqrstuvwxyz\n' > /tmp/gitleaks-canary/canary.env
-          if "$(go env GOPATH)/bin/gitleaks" dir /tmp/gitleaks-canary --redact --no-banner; then
+          cat > /tmp/gitleaks-canary.toml <<'EOF'
+          title = "CI canary"
+
+          [extend]
+          useDefault = true
+
+          [[rules]]
+          id = "ci-secret-canary"
+          description = "Generated CI scanner canary"
+          regex = '''GITLEAKS_CANARY_[A-Za-z0-9]{32}'''
+          EOF
+          printf 'TOKEN=%s%s\n' 'GITLEAKS_CANARY_' '0123456789abcdefghijklmnopqrstuv' \
+            > /tmp/gitleaks-canary/canary.env
+          if "$(go env GOPATH)/bin/gitleaks" dir /tmp/gitleaks-canary \
+            --config /tmp/gitleaks-canary.toml --redact --no-banner; then
             echo "Gitleaks failed to detect the generated canary" >&2
             exit 1
           fi
