@@ -1,0 +1,168 @@
+name: Configure issue relationships
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/configure-issue-relationships.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: configure-issue-relationships
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add parent and blocked-by relationships
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          API_URL: ${{ github.api_url }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import time
+          import urllib.error
+          import urllib.request
+          from collections import defaultdict
+
+          api = os.environ["API_URL"].rstrip("/")
+          repo = os.environ["REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          api_version = "2026-03-10"
+
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": f"Bearer {token}",
+              "X-GitHub-Api-Version": api_version,
+              "User-Agent": "weatherbot-issue-relationship-configurator",
+          }
+
+          def request(method: str, path: str, payload=None):
+              body = None if payload is None else json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(
+                  f"{api}/repos/{repo}{path}",
+                  data=body,
+                  headers=headers,
+                  method=method,
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      raw = response.read()
+                      return response.status, json.loads(raw) if raw else None
+              except urllib.error.HTTPError as exc:
+                  raw = exc.read().decode("utf-8", errors="replace")
+                  raise RuntimeError(
+                      f"{method} {path} failed with HTTP {exc.code}: {raw}"
+                  ) from exc
+
+          issue_ids = {}
+          for number in range(1, 29):
+              _, issue = request("GET", f"/issues/{number}")
+              issue_ids[number] = issue["id"]
+
+          # Formal parent/sub-issue metadata: #1 is the remediation epic.
+          _, existing_subissues = request("GET", "/issues/1/sub_issues?per_page=100")
+          existing_subissue_ids = {item["id"] for item in existing_subissues}
+          added_subissues = 0
+          for number in range(2, 29):
+              sub_issue_id = issue_ids[number]
+              if sub_issue_id in existing_subissue_ids:
+                  continue
+              request(
+                  "POST",
+                  "/issues/1/sub_issues",
+                  {"sub_issue_id": sub_issue_id, "replace_parent": True},
+              )
+              existing_subissue_ids.add(sub_issue_id)
+              added_subissues += 1
+              time.sleep(1)
+
+          # Each pair is (blocked issue, blocking issue). These are only hard
+          # implementation dependencies from the authoritative graph in #1.
+          dependency_pairs = [
+              (23, 21), (4, 21),
+              (28, 3), (19, 28),
+              (5, 4), (6, 5), (17, 4), (17, 6),
+              (10, 5), (11, 5),
+              (12, 8), (12, 9), (12, 10), (12, 11),
+              (13, 5), (13, 9), (13, 10), (13, 11), (13, 19), (13, 28),
+              (15, 6), (15, 19), (15, 28),
+              (16, 15), (16, 19), (16, 28),
+              (27, 3), (27, 4), (27, 5), (27, 6),
+              (27, 8), (27, 9), (27, 10), (27, 11),
+              (27, 13), (27, 15), (27, 16), (27, 17),
+              (27, 19), (27, 21), (27, 23), (27, 28),
+              (26, 12), (26, 13), (26, 27),
+              (7, 18), (7, 4), (7, 5), (7, 6),
+              (7, 17), (7, 19), (7, 28), (7, 16),
+              (20, 7),
+              (14, 7), (14, 13), (14, 19),
+              (22, 3), (22, 21),
+          ]
+
+          expected_by_issue = defaultdict(set)
+          for blocked_number, blocking_number in dependency_pairs:
+              expected_by_issue[blocked_number].add(issue_ids[blocking_number])
+
+          added_dependencies = 0
+          for blocked_number, expected_ids in sorted(expected_by_issue.items()):
+              _, existing = request(
+                  "GET",
+                  f"/issues/{blocked_number}/dependencies/blocked_by?per_page=100",
+              )
+              existing_ids = {item["id"] for item in existing}
+              for blocking_id in sorted(expected_ids - existing_ids):
+                  request(
+                      "POST",
+                      f"/issues/{blocked_number}/dependencies/blocked_by",
+                      {"issue_id": blocking_id},
+                  )
+                  added_dependencies += 1
+                  time.sleep(1)
+
+          # Verify that every expected relationship is visible through the API.
+          _, verified_subissues = request("GET", "/issues/1/sub_issues?per_page=100")
+          verified_subissue_ids = {item["id"] for item in verified_subissues}
+          missing_children = [
+              number for number in range(2, 29)
+              if issue_ids[number] not in verified_subissue_ids
+          ]
+          if missing_children:
+              raise RuntimeError(f"Missing formal sub-issues: {missing_children}")
+
+          missing_dependencies = []
+          for blocked_number, expected_ids in sorted(expected_by_issue.items()):
+              _, verified = request(
+                  "GET",
+                  f"/issues/{blocked_number}/dependencies/blocked_by?per_page=100",
+              )
+              verified_ids = {item["id"] for item in verified}
+              missing = expected_ids - verified_ids
+              if missing:
+                  missing_dependencies.append((blocked_number, sorted(missing)))
+          if missing_dependencies:
+              raise RuntimeError(
+                  f"Missing formal blocked-by relationships: {missing_dependencies}"
+              )
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          summary = (
+              "## Issue relationships configured\n\n"
+              f"- Added sub-issue relationships: {added_subissues}\n"
+              f"- Added blocked-by relationships: {added_dependencies}\n"
+              f"- Verified children under #1: 27\n"
+              f"- Verified hard dependency edges: {len(dependency_pairs)}\n"
+          )
+          if summary_path:
+              with open(summary_path, "a", encoding="utf-8") as handle:
+                  handle.write(summary)
+          print(summary)
+          PY
