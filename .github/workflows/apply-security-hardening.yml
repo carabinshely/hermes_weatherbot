@@ -18,7 +18,7 @@ jobs:
           ref: agent/security-env-hardening
           fetch-depth: 0
 
-      - name: Apply repository security hardening
+      - name: Apply non-workflow security hardening
         shell: bash
         run: |
           python - <<'PY'
@@ -50,11 +50,8 @@ jobs:
           )
           replace_once(
               "bot_v3.py",
-              'if __name__ == "__main__":\n'
-              '    if not PK or not WALLET:\n',
-              'if __name__ == "__main__":\n'
-              '    print(credential_status_line())\n'
-              '    if not PK or not WALLET:\n',
+              'if __name__ == "__main__":\n    if not PK or not WALLET:\n',
+              'if __name__ == "__main__":\n    print(credential_status_line())\n    if not PK or not WALLET:\n',
           )
           replace_once(
               "bot_v3.py",
@@ -77,20 +74,13 @@ jobs:
               encoding="utf-8",
           )
 
-          security = Path(".github/workflows/security.yml")
-          content = security.read_text(encoding="utf-8")
-          marker = '''      - name: Scan current tree\n        run: |\n'''
-          canary = '''      - name: Verify scanner detects a generated canary\n        run: |\n          mkdir -p /tmp/gitleaks-canary\n          printf 'AWS_ACCESS_KEY_ID=AKIA0123456789ABCDEF\\n' > /tmp/gitleaks-canary/canary.env\n          if "$(go env GOPATH)/bin/gitleaks" dir /tmp/gitleaks-canary --redact --no-banner; then\n            echo "Gitleaks failed to detect the generated canary" >&2\n            exit 1\n          fi\n\n'''
-          if marker not in content:
-              raise SystemExit("security workflow scan marker not found")
-          security.write_text(content.replace(marker, canary + marker, 1), encoding="utf-8")
-
           tests = Path("tests/test_repository_safety.py")
           content = tests.read_text(encoding="utf-8")
-          content = content.replace(
-              '''    for key in SENSITIVE_CONFIG_KEYS:\n        assert not config.get(key), f"{key} must not contain a committed value"\n''',
-              '''    assert SENSITIVE_CONFIG_KEYS.isdisjoint(config), (\n        "secret-shaped keys must not exist in committed configuration"\n    )\n''',
-          )
+          old = '''    for key in SENSITIVE_CONFIG_KEYS:\n        assert not config.get(key), f"{key} must not contain a committed value"\n'''
+          new = '''    assert SENSITIVE_CONFIG_KEYS.isdisjoint(config), (\n        "secret-shaped keys must not exist in committed configuration"\n    )\n'''
+          if old not in content:
+              raise SystemExit("repository-safety assertion marker not found")
+          content = content.replace(old, new, 1)
           content += '''\n\ndef test_legacy_bot_loads_notifications_from_environment_only() -> None:\n    source = Path("bot_v3.py").read_text(encoding="utf-8")\n    assert '_cfg.get("telegram_bot_token"' not in source\n    assert '_cfg.get("telegram_chat_id"' not in source\n    assert '_cfg.get("vc_key"' not in source\n    assert 'os.getenv("TELEGRAM_BOT_TOKEN"' in source\n    assert 'os.getenv("TELEGRAM_CHAT_ID"' in source\n\n\ndef test_unused_vc_key_is_removed_from_legacy_bots() -> None:\n    for path in (Path("bot_v2.py"), Path("bot_v3.py")):\n        assert "VC_KEY" not in path.read_text(encoding="utf-8")\n'''
           tests.write_text(content, encoding="utf-8")
 
@@ -104,8 +94,6 @@ jobs:
           content = content.replace('include = ["tests"]', 'include = ["runtime_security.py", "tests"]')
           content = content.replace('source = ["tests"]', 'source = ["runtime_security", "tests"]')
           pyproject.write_text(content, encoding="utf-8")
-
-          Path(".github/workflows/apply-security-hardening.yml").unlink()
           PY
 
       - name: Format maintained Python code
@@ -118,6 +106,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add -A -- ':!.github/workflows/apply-security-hardening.yml'
           git commit -m "security: require environment-only credentials"
           git push origin HEAD:agent/security-env-hardening
