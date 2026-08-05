@@ -4,9 +4,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
-        files: ^tests/
+        files: ^(execution_modes\.py|runtime_security\.py|tests/)
       - id: ruff-format
-        files: ^tests/
+        files: ^(execution_modes\.py|runtime_security\.py|tests/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
