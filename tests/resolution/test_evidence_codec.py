@@ -15,10 +15,12 @@ from tests.resolution.helpers import (
     gamma_payload,
 )
 from weatherbot.domain import (
+    AccountOpened,
     DuplicateEventConflict,
     EventId,
     LedgerState,
     MarketResolutionEvidenceRecorded,
+    Money,
     apply_event,
 )
 from weatherbot.markets import ConditionId
@@ -53,6 +55,17 @@ def evidence_event(*, yes: str = "1", no: str = "0") -> MarketResolutionEvidence
     )
 
 
+def opened_state() -> LedgerState:
+    return apply_event(
+        LedgerState.empty(),
+        AccountOpened(
+            event_id=EventId("account-opened-for-evidence"),
+            occurred_at=NOW,
+            initial_cash=Money.zero(),
+        ),
+    )
+
+
 def test_resolution_evidence_codec_round_trip_is_canonical() -> None:
     event = evidence_event()
     encoded = encode_event(event)
@@ -65,7 +78,7 @@ def test_resolution_evidence_codec_round_trip_is_canonical() -> None:
 def test_conflicting_evidence_for_one_market_fails_closed() -> None:
     first = evidence_event(yes="1", no="0")
     conflicting = evidence_event(yes="0", no="1")
-    state = apply_event(LedgerState.empty(), first)
+    state = apply_event(opened_state(), first)
     with pytest.raises(DuplicateEventConflict, match="evidence changed"):
         apply_event(state, conflicting)
 
@@ -73,7 +86,7 @@ def test_conflicting_evidence_for_one_market_fails_closed() -> None:
 def test_same_evidence_with_new_event_id_is_idempotent_at_market_level() -> None:
     first = evidence_event()
     duplicate = replace(first, event_id=EventId("same-evidence-new-delivery"))
-    state = apply_event(LedgerState.empty(), first)
+    state = apply_event(opened_state(), first)
     next_state = apply_event(state, duplicate)
     assert next_state.resolution_evidence[MARKET_ID] == first.evidence
-    assert len(next_state.event_fingerprints) == 2
+    assert len(next_state.event_fingerprints) == 3
