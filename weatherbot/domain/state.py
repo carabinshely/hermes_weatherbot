@@ -18,6 +18,7 @@ from weatherbot.domain.model import (
     OrderIntentId,
     OutcomeId,
     Position,
+    PositionStatus,
     Side,
 )
 from weatherbot.domain.money import Money, as_decimal, require_nonnegative
@@ -33,6 +34,22 @@ def _freeze_mapping[K, V](value: Mapping[K, V]) -> Mapping[K, V]:
     return MappingProxyType(dict(value))
 
 
+def _empty_orders() -> Mapping[OrderIntentId, OrderAggregate]:
+    return {}
+
+
+def _empty_positions() -> Mapping[PositionKey, Position]:
+    return {}
+
+
+def _empty_resolutions() -> Mapping[MarketId, MarketResolution]:
+    return {}
+
+
+def _empty_event_fingerprints() -> Mapping[EventId, str]:
+    return {}
+
+
 @dataclass(frozen=True, slots=True)
 class LedgerState:
     """State derived exclusively by replaying immutable ledger events."""
@@ -41,10 +58,14 @@ class LedgerState:
     opened: bool
     cash: Money
     reserved_cash: Money
-    orders: Mapping[OrderIntentId, OrderAggregate] = field(default_factory=dict)
-    positions: Mapping[PositionKey, Position] = field(default_factory=dict)
-    resolutions: Mapping[MarketId, MarketResolution] = field(default_factory=dict)
-    event_fingerprints: Mapping[EventId, str] = field(default_factory=dict)
+    orders: Mapping[OrderIntentId, OrderAggregate] = field(default_factory=_empty_orders)
+    positions: Mapping[PositionKey, Position] = field(default_factory=_empty_positions)
+    resolutions: Mapping[MarketId, MarketResolution] = field(
+        default_factory=_empty_resolutions
+    )
+    event_fingerprints: Mapping[EventId, str] = field(
+        default_factory=_empty_event_fingerprints
+    )
 
     def __post_init__(self) -> None:
         currency = self.currency.strip().upper()
@@ -123,7 +144,7 @@ class LedgerState:
                 raise InvariantViolation(
                     "position reservation does not equal active sell-order reservations"
                 )
-            if position.status.value == "settled" and (
+            if position.status is PositionStatus.SETTLED and (
                 position.quantity != 0
                 or position.reserved_quantity != 0
                 or not position.cost_basis.is_zero
