@@ -51,6 +51,17 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Runtime financial state and SQLite sidecars
+state/
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite3-journal
+*.sqlite-wal
+*.sqlite3-wal
+*.sqlite-shm
+*.sqlite3-shm
+
 # Translations
 *.mo
 *.pot
