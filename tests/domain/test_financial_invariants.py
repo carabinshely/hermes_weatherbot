@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import cast
 
 import pytest
 
@@ -13,16 +12,18 @@ from weatherbot.domain import (
     InvariantViolation,
     LedgerState,
     Money,
+    OrderIntent,
     OrderIntentCreated,
     OrderSubmitted,
     apply_event,
     as_decimal,
     replay,
 )
-from weatherbot.domain.money import DecimalInput
 
 
-def submitted_buy_state(*, cash: str = "100", fee_reserve: str = "0.10"):
+def submitted_buy_state(
+    *, cash: str = "100", fee_reserve: str = "0.10"
+) -> tuple[LedgerState, OrderIntent]:
     intent = buy_intent(fee_reserve=fee_reserve)
     state = replay(
         (
@@ -45,7 +46,7 @@ def submitted_buy_state(*, cash: str = "100", fee_reserve: str = "0.10"):
 
 def test_binary_float_inputs_are_rejected_at_runtime() -> None:
     with pytest.raises(TypeError, match="floating-point"):
-        as_decimal(cast(DecimalInput, 0.1))
+        as_decimal(0.1)
 
 
 def test_buy_intent_cannot_reserve_more_than_available_cash() -> None:
@@ -102,6 +103,23 @@ def test_buy_fill_above_limit_price_is_rejected() -> None:
                 price=Decimal("0.51"),
                 fee=Money.zero(),
             ),
+        )
+
+
+def test_sell_intent_cannot_reserve_cash_fees() -> None:
+    sell = sell_intent()
+
+    with pytest.raises(InvariantViolation, match="sell orders"):
+        OrderIntent.create(
+            strategy_id=sell.strategy_id,
+            decision_id=sell.decision_id,
+            market_id=sell.market_id,
+            outcome_id=sell.outcome_id,
+            side=sell.side,
+            quantity=sell.quantity,
+            limit_price=sell.limit_price,
+            fee_reserve=Money.of("0.10"),
+            created_at=sell.created_at,
         )
 
 
