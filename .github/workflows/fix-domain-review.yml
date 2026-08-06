@@ -1,0 +1,35 @@
+name: Fix domain review findings
+
+on:
+  push:
+    branches: [agent/domain-state-machines]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/domain-state-machines
+
+      - name: Apply review fixes
+        run: python tools/fix_domain_review.py
+
+      - name: Format changed code and tests
+        run: |
+          python -m pip install --quiet ruff==0.15.22
+          ruff check --fix weatherbot/domain tests/domain
+          ruff format weatherbot/domain tests/domain
+
+      - name: Commit review fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A -- ':!tools/fix_domain_review.py' ':!.github/workflows/fix-domain-review.yml'
+          git commit -m "fix: address domain review findings"
+          git push origin HEAD:agent/domain-state-machines
