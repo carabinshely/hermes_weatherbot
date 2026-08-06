@@ -1,0 +1,1 @@
+"""Hermes WeatherBot application package."""
