@@ -43,14 +43,10 @@ class ObservationRecorder:
             raise ValueError("observation timezone differs from the signal-time timezone")
         if evidence.unit != context.bucket.unit.value:
             raise ValueError("observation unit differs from the market bucket unit")
-        if (
-            context.declared_resolution_source is not None
-            and evidence.source_url.rstrip("/")
-            != context.declared_resolution_source.rstrip("/")
-        ):
-            raise ValueError(
-                "observation source differs from the declared resolution source"
-            )
+        if context.declared_resolution_source is not None and evidence.source_url.rstrip(
+            "/"
+        ) != context.declared_resolution_source.rstrip("/"):
+            raise ValueError("observation source differs from the declared resolution source")
 
     def record(self, evidence: WeatherObservationEvidence) -> bool:
         self._validate_market_context(evidence)
@@ -90,10 +86,9 @@ class VerifiedLearningOutcome:
             raise ValueError("settlement and observation use different market dates")
         if self.settlement.market_timezone != self.observation.market_timezone:
             raise ValueError("settlement and observation use different market timezones")
-        if (
-            self.settlement.declared_resolution_source.rstrip("/")
-            != self.observation.source_url.rstrip("/")
-        ):
+        if self.settlement.declared_resolution_source.rstrip(
+            "/"
+        ) != self.observation.source_url.rstrip("/"):
             raise ValueError("observation source differs from the market resolution source")
 
     @property
