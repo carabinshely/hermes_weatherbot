@@ -40,7 +40,19 @@ def test_live_path_revalidates_before_order_callback() -> None:
     live_gate = source.index('require_live(context, operation="place order")')
     callback = source.index("callback=lambda: place_buy_order(")
     assert revalidation < live_gate < callback
-    assert 'price=best_signal["worst_price"]' in source
+    assert "validated_quote=validated_quote" in source
+
+
+def test_live_order_boundary_does_not_reconstruct_notional_from_price() -> None:
+    source = (ROOT / "bot_v3.py").read_text(encoding="utf-8")
+    start = source.index("def place_buy_order")
+    end = source.index("\n\ndef cancel_order", start)
+    block = source[start:end]
+    assert "validated_quote: ValidatedExecutableQuote" in block
+    assert "amount = float(quote.total_cost)" in block
+    assert "price_limit = float(quote.worst_price)" in block
+    assert "shares * price" not in block
+    assert "amount=amount" in block
 
 
 def test_quote_configuration_declares_every_freshness_and_cost_limit() -> None:

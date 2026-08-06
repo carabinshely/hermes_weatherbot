@@ -55,6 +55,7 @@ from weatherbot.quoting import (
     DepthPolicy,
     FreshnessPolicy,
     MarketEventSnapshot,
+    ValidatedExecutableQuote,
     evaluate_executable_buy,
     revalidate_executable_buy,
 )
@@ -741,26 +742,28 @@ def ensure_approvals():
 
 
 def place_buy_order(
-    market_id: str, token_id: str, price: float, shares: float, private_key: str, wallet: str
+    market_id: str,
+    validated_quote: ValidatedExecutableQuote,
+    private_key: str,
+    wallet: str,
 ) -> dict:
-    """
-    Place a BUY order on Polymarket CLOB.
-    Uses FOK (Fill-Or-Kill) market order to guarantee execution.
-    Returns dict with success status and details.
-    Uses _timeout_call to prevent indefinite hangs.
-    Balance check is done on-chain — we always attempt the order for consistency.
-    """
-    cost = round(shares * price, 4)
+    """Submit exactly the already-validated token, notional, shares, and price limit."""
+    quote = validated_quote.quote
+    token_id = str(quote.token_id)
+    amount = float(quote.total_cost)
+    price_limit = float(quote.worst_price)
+    shares = float(quote.shares)
 
     if not is_approved(USDC_ADDRESS, ROUTER, wallet):
         return {"success": False, "reason": "Router approval missing"}
 
-    # --- Market order via CLOB (with 10s timeout) ---
+    # For BUY, amount is the validated displayed-book notional. The worst executable
+    # price is a limit, not a multiplier used to reconstruct or enlarge that amount.
     order_args = MarketOrderArgs(
         token_id=token_id,
-        amount=cost,  # For BUY: amount is in dollars (USDC)
+        amount=amount,
         side="BUY",
-        price=price,
+        price=price_limit,
     )
 
     try:
@@ -784,9 +787,11 @@ def place_buy_order(
         "success": True,
         "market_id": market_id,
         "token_id": token_id,
-        "price": price,
+        "price": price_limit,
         "shares": shares,
-        "cost": cost,
+        "cost": amount,
+        "all_in_cost": float(validated_quote.total_all_in_cost),
+        "quote_fingerprint": validated_quote.fingerprint,
         "order_id": order_result.get("orderID")
         if isinstance(order_result, dict)
         else str(order_result),
@@ -1528,9 +1533,7 @@ def scan_and_trade(context: ExecutionContext):
                 operation="place order",
                 callback=lambda: place_buy_order(
                     market_id=best_signal["market_id"],
-                    token_id=best_signal["token_id"],
-                    price=best_signal["worst_price"],
-                    shares=best_signal["shares"],
+                    validated_quote=validated_quote,
                     private_key=PK,
                     wallet=WALLET,
                 ),
