@@ -11,7 +11,7 @@ LIVE_IMPORTS: tuple[tuple[str, str], ...] = (
     ("polymarket", "polymarket-client"),
     ("web3", "web3"),
 )
-LIVE_INSTALL_COMMAND = "uv sync --locked --extra live"
+LIVE_INSTALL_COMMAND = "uv sync --locked --no-dev --extra live"
 
 
 class LiveDependenciesUnavailable(RuntimeError):
