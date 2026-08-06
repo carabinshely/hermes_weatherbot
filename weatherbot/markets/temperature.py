@@ -5,8 +5,9 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from enum import StrEnum
+from itertools import pairwise
 
 _NUMBER = r"(-?\d+(?:\.\d+)?)"
 _LOWER_TAIL = re.compile(
@@ -18,7 +19,7 @@ _UPPER_TAIL = re.compile(
     re.IGNORECASE,
 )
 _BOUNDED = re.compile(
-    rf"between\s+{_NUMBER}\s*(?:-|–|—|to)\s*{_NUMBER}\s*°?\s*([FC])",
+    rf"between\s+{_NUMBER}\s*(?:-|\u2013|\u2014|to)\s*{_NUMBER}\s*°?\s*([FC])",
     re.IGNORECASE,
 )
 _EXACT = re.compile(
@@ -154,10 +155,7 @@ class TemperatureBucket:
 
     @property
     def is_exact(self) -> bool:
-        return (
-            self.lower_inclusive is not None
-            and self.lower_inclusive == self.upper_inclusive
-        )
+        return self.lower_inclusive is not None and self.lower_inclusive == self.upper_inclusive
 
     @property
     def continuous_lower(self) -> Decimal | None:
@@ -199,9 +197,7 @@ class TemperatureBucket:
         )
         if self.lower_inclusive is not None and reported < self.lower_inclusive:
             return False
-        if self.upper_inclusive is not None and reported > self.upper_inclusive:
-            return False
-        return True
+        return self.upper_inclusive is None or reported <= self.upper_inclusive
 
     def contains_forecast(self, value: Decimal | int | str | float) -> bool:
         """Classify a point forecast using half-up rounding to source precision."""
@@ -233,7 +229,7 @@ class TemperatureBucket:
 
 
 def parse_temperature_bucket(question: str) -> TemperatureBucket:
-    if not isinstance(question, str) or not question.strip():
+    if not question.strip():
         raise TemperatureMarketError("market question must not be blank")
 
     lower_tail = _LOWER_TAIL.search(question)
@@ -298,7 +294,7 @@ class TemperatureMarketPartition:
         if not ordered[0].is_lower_tail or not ordered[-1].is_upper_tail:
             raise TemperatureMarketError("temperature tails do not bound the full outcome set")
 
-        for previous, current in zip(ordered, ordered[1:], strict=False):
+        for previous, current in pairwise(ordered):
             previous_upper = previous.upper_inclusive
             current_lower = current.lower_inclusive
             if previous_upper is None or current_lower is None:
@@ -343,12 +339,8 @@ class TemperatureMarketPartition:
         mean: Decimal | int | str | float,
         sigma: Decimal | int | str | float,
     ) -> tuple[tuple[TemperatureBucket, float], ...]:
-        probabilities = tuple(
-            (bucket, bucket.probability(mean, sigma)) for bucket in self.buckets
-        )
+        probabilities = tuple((bucket, bucket.probability(mean, sigma)) for bucket in self.buckets)
         total = sum(probability for _, probability in probabilities)
         if not math.isclose(total, 1.0, rel_tol=0.0, abs_tol=1e-12):
-            raise TemperatureMarketError(
-                f"bucket probabilities sum to {total:.15f}, expected one"
-            )
+            raise TemperatureMarketError(f"bucket probabilities sum to {total:.15f}, expected one")
         return probabilities

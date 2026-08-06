@@ -76,35 +76,43 @@ def test_size_aware_average_fill_uses_available_ask_depth() -> None:
     assert quote.best_ask == Decimal("0.40")
 
 
-@pytest.mark.parametrize(
-    "mutation",
-    [
-        lambda data: data.update({"bids": []}),
-        lambda data: data.update({"asks": []}),
-        lambda data: data.update(
-            {
-                "bids": [{"price": "0.41", "size": "1"}],
-                "asks": [{"price": "0.40", "size": "1"}],
-            }
-        ),
-        lambda data: data.update(
-            {
-                "bids": [
-                    {"price": "0.33", "size": "1"},
-                    {"price": "0.34", "size": "1"},
-                ]
-            }
-        ),
-        lambda data: data.update(
-            {
-                "asks": [
-                    {"price": "0.42", "size": "1"},
-                    {"price": "0.40", "size": "1"},
-                ]
-            }
-        ),
-    ],
+def _empty_bids(data: dict[str, object]) -> None:
+    data["bids"] = []
+
+
+def _empty_asks(data: dict[str, object]) -> None:
+    data["asks"] = []
+
+
+def _cross_book(data: dict[str, object]) -> None:
+    data["bids"] = [{"price": "0.41", "size": "1"}]
+    data["asks"] = [{"price": "0.40", "size": "1"}]
+
+
+def _unsorted_bids(data: dict[str, object]) -> None:
+    data["bids"] = [
+        {"price": "0.33", "size": "1"},
+        {"price": "0.34", "size": "1"},
+    ]
+
+
+def _unsorted_asks(data: dict[str, object]) -> None:
+    data["asks"] = [
+        {"price": "0.42", "size": "1"},
+        {"price": "0.40", "size": "1"},
+    ]
+
+
+_BOOK_MUTATIONS: tuple[Callable[[dict[str, object]], None], ...] = (
+    _empty_bids,
+    _empty_asks,
+    _cross_book,
+    _unsorted_bids,
+    _unsorted_asks,
 )
+
+
+@pytest.mark.parametrize("mutation", _BOOK_MUTATIONS)
 def test_empty_crossed_or_unsorted_books_fail_closed(
     mutation: Callable[[dict[str, object]], None],
 ) -> None:

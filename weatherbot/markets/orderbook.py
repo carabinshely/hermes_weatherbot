@@ -49,7 +49,7 @@ def _timestamp(value: object, *, label: str) -> datetime:
         except ValueError as exc:
             raise OrderBookError(f"{label} is not a timestamp") from exc
         if parsed.tzinfo is None or parsed.utcoffset() is None:
-            raise OrderBookError(f"{label} must include a timezone")
+            raise OrderBookError(f"{label} must include a timezone") from None
         return parsed.astimezone(UTC)
 
     if not numeric.is_finite() or numeric < 0:
@@ -159,9 +159,7 @@ class OrderBookSnapshot:
         if age < -timedelta(seconds=5):
             raise OrderBookError("order-book timestamp is unexpectedly in the future")
         if age > maximum_age:
-            raise OrderBookError(
-                f"order book is stale by {age.total_seconds():.3f} seconds"
-            )
+            raise OrderBookError(f"order book is stale by {age.total_seconds():.3f} seconds")
 
     def quote_buy(self, shares: Decimal | int | str | float) -> ExecutableQuote:
         requested = _decimal(shares, label="requested shares")
@@ -202,7 +200,7 @@ class OrderBookSnapshot:
 def _levels(value: object, *, side: str) -> tuple[OrderLevel, ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         raise OrderBookError(f"{side} must be an array")
-    levels = []
+    levels: list[OrderLevel] = []
     for index, raw in enumerate(cast(Sequence[object], value)):
         data = _mapping(raw, label=f"{side}[{index}]")
         extra = set(data) - {"price", "size"}
