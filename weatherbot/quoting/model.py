@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from types import MappingProxyType
-from typing import TypeAlias
 
 from weatherbot.markets import ExecutableQuote, OutcomeTokenId
 
@@ -152,9 +151,7 @@ class MarketEventSnapshot:
         if source_updated is not None:
             source_updated = as_utc(source_updated, label="event source update time")
             if source_updated > retrieved + timedelta(seconds=5):
-                raise QuoteValidationError(
-                    "event source update time is later than retrieval time"
-                )
+                raise QuoteValidationError("event source update time is later than retrieval time")
         object.__setattr__(self, "event_id", event_id)
         object.__setattr__(self, "retrieved_at_utc", retrieved)
         object.__setattr__(self, "source_updated_at_utc", source_updated)
@@ -207,7 +204,7 @@ class FreshnessCheck:
         return self.age_seconds <= self.maximum_age_seconds
 
 
-QuoteMetadataValue: TypeAlias = str | float | bool | None
+type QuoteMetadataValue = str | float | bool | None
 
 
 def _empty_freshness() -> MappingProxyType[str, FreshnessCheck]:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from types import MappingProxyType
 
@@ -196,10 +196,7 @@ def evaluate_executable_buy(
         return _reject(
             evaluated,
             QuoteRejectionReason.INSUFFICIENT_BALANCE,
-            (
-                f"requested budget {budget} exceeds available cash "
-                f"{balance.available_cash}"
-            ),
+            (f"requested budget {budget} exceeds available cash {balance.available_cash}"),
             checks,
         )
 
@@ -213,10 +210,7 @@ def evaluate_executable_buy(
             return _reject(
                 evaluated,
                 QuoteRejectionReason.INSUFFICIENT_DEPTH,
-                (
-                    f"requested budget {budget} exceeds displayed ask notional "
-                    f"{available_notional}"
-                ),
+                (f"requested budget {budget} exceeds displayed ask notional {available_notional}"),
                 checks,
             )
         executable_budget = available_notional
@@ -238,30 +232,21 @@ def evaluate_executable_buy(
         return _reject(
             evaluated,
             QuoteRejectionReason.SLIPPAGE_EXCEEDED,
-            (
-                f"average slippage {average_slippage} exceeds "
-                f"{cost_policy.maximum_average_slippage}"
-            ),
+            (f"average slippage {average_slippage} exceeds {cost_policy.maximum_average_slippage}"),
             checks,
         )
     if worst_slippage > cost_policy.maximum_worst_slippage:
         return _reject(
             evaluated,
             QuoteRejectionReason.SLIPPAGE_EXCEEDED,
-            (
-                f"worst slippage {worst_slippage} exceeds "
-                f"{cost_policy.maximum_worst_slippage}"
-            ),
+            (f"worst slippage {worst_slippage} exceeds {cost_policy.maximum_worst_slippage}"),
             checks,
         )
 
     platform_fee = quote.total_cost * cost_policy.platform_fee_rate
     safety_margin = quote.total_cost * cost_policy.safety_margin_rate
     total_all_in_cost = (
-        quote.total_cost
-        + platform_fee
-        + cost_policy.transaction_cost
-        + safety_margin
+        quote.total_cost + platform_fee + cost_policy.transaction_cost + safety_margin
     )
     all_in_average_price = total_all_in_cost / quote.shares
     if all_in_average_price >= cost_policy.maximum_all_in_price:

@@ -50,7 +50,7 @@ def test_accepted_quote_reconciles_depth_costs_edge_and_metadata() -> None:
     assert quote.freshness["balance"].age_seconds == 2
 
     metadata = quote.metadata()
-    assert metadata["quote_total_all_in_cost"] == "2.07"
+    assert metadata["quote_total_all_in_cost"] == "2.0700"
     assert metadata["quote_depth_reduced"] is False
     assert metadata["forecast_freshness_passed"] is True
     assert metadata["event_freshness_passed"] is True
