@@ -340,7 +340,10 @@ _clob: UnsupportedTradingClient | None = None
 def get_clob() -> UnsupportedTradingClient:
     global _clob
     if _clob is None:
-        _clob = UnsupportedTradingClient()
+        _clob = UnsupportedTradingClient(
+            signature_type=SIG_TYPE,
+            wallet_address=WALLET or None,
+        )
     return _clob
 
 # =============================================================================
@@ -358,1080 +361,697 @@ def get_w3() -> Web3:
         _w3 = Web3(Web3.HTTPProvider("https://1rpc.io/matic"))
     return _w3
 
-def get_nonce(wallet: str) -> int:
-    return get_w3().eth.get_transaction_count(wallet)
+def get_nonce() -> int:
+    return get_w3().eth.get_transaction_count(WALLET)
 
-def send_tx(w3, signed_txn):
-    return w3.eth.send_raw_transaction(signed_txn).hex()
-
-def wait_for_receipt(w3, tx_hash: str, timeout=120):
-    start = time.time()
-    while time.time() - start < timeout:
-        try:
-            receipt = w3.eth.get_transaction_receipt(tx_hash)
-            if receipt and receipt["status"] == 1:
-                return receipt
-        except Exception:
-            pass
-        time.sleep(2)
-    return None
-
-# =============================================================================
-# BALANCE CHECK
-# =============================================================================
-def get_usdc_balance(wallet: str) -> float:
-    """Get USDC.e balance on Polygon via raw eth_call (avoids web3 contract ABI issues)."""
+def get_gas_params() -> dict:
+    """Return EIP-1559 gas params with cap."""
     w3 = get_w3()
-    wallet_checksum = Web3.to_checksum_address(wallet)
-    usdc_checksum = Web3.to_checksum_address(USDC_ADDRESS)
-
-    #balanceOf(address) — the "data" is the function selector hash + padded address
-    selector = "0x70a08231"  # balanceOf(address)
-    data = selector + wallet_checksum[2:].lower().rjust(64, '0')
-
     try:
-        result = w3.eth.call({
-            "to": usdc_checksum,
-            "data": data,
-        })
-        bal = int.from_bytes(result, "big")
-        return bal / 1e6  # USDC.e = 6 decimals
-    except Exception as e:
-        warn(f"Balance check failed: {e}")
-        return 0.0
-
-def get_pol_balance(wallet: str) -> float:
-    w3 = get_w3()
-    bal = w3.eth.get_balance(Web3.to_checksum_address(wallet))
-    return int(bal) / 1e18
-
-# =============================================================================
-# TELEGRAM NOTIFICATIONS
-# =============================================================================
-
-_tg_session = requests.Session()
-
-def send_telegram(text: str, retry=2) -> bool:
-    """Send a message via Telegram Bot API. Returns True on success."""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return False
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True,
-    }
-    for attempt in range(retry + 1):
-        try:
-            r = _tg_session.post(url, json=payload, timeout=(5, 10))
-            if r.status_code == 200:
-                return True
-        except Exception:
-            pass
-        if attempt < retry:
-            time.sleep(1)
-    return False
-
-def tg_signal(city: str, horizon: str, date: str, bucket_label: str,
-              forecast_temp: float, entry_price: float, cost: float,
-              ev: float, kelly: float, success: bool, mode: ExecutionMode,
-              reason: str = ""):
-    """Send a trade signal notification to Telegram."""
-    mode_header = f"🔒 <b>{mode.value.upper()} MODE</b>\n"
-    if success:
-        msg = (
-            mode_header
-            + f"📍 <b>{city} {horizon}</b> — {date}\n"
-            f"🌡 Forecast: <b>{forecast_temp}°F</b>\n"
-            f"🎯 Bucket: <b>{bucket_label}</b>\n"
-            f"💰 Cost: <b>${cost:.2f}</b> @ <b>${entry_price:.3f}</b>\n"
-            f"📈 EV: <b>+{ev:.2f}</b> | Kelly: <b>{kelly:.2f}</b>\n"
-            f"✅ <b>ORDER FILLED</b>"
-        )
-    else:
-        msg = (
-            mode_header
-            + f"📍 <b>{city} {horizon}</b> — {date}\n"
-            f"🌡 Forecast: <b>{forecast_temp}°F</b>\n"
-            f"🎯 Bucket: <b>{bucket_label}</b>\n"
-            f"❌ <b>ORDER FAILED:</b> {reason}"
-        )
-    send_telegram(msg)
-
-def tg_scan_summary(new_trades: int, errors: int, balance: float | None, cities: int,
-                     mode: ExecutionMode, observed_signals: int = 0,
-                     paper_candidates: int = 0, top_signals: list = None,
-                     open_positions: list = None):
-    """Send a mode-labelled scan summary to Telegram."""
-    status_emoji = "✅" if errors == 0 else "⚠️"
-    lines = [
-        f"🔒 <b>{mode.value.upper()} MODE</b>",
-        "🔔 <b>Weather Bot — Scan Report</b>",
-        f"{status_emoji} Cities: {cities} | New trades: {new_trades} | Errors: {errors}",
-    ]
-    if mode is ExecutionMode.RESEARCH:
-        lines.append(f"🔎 Signals observed: {observed_signals}")
-    elif mode is ExecutionMode.PAPER:
-        lines.append(f"📝 Paper candidates: {paper_candidates}")
-    if balance is None:
-        lines.append("💰 Wallet access: <b>disabled</b>")
-    else:
-        lines.append(f"💰 Balance: <b>${balance:.4f}</b> USDC.e")
-
-    if open_positions:
-        lines.append("")
-        lines.append(f"📊 <b>Open Positions ({len(open_positions)}):</b>")
-        for pos in open_positions[:5]:
-            label = f"{pos['bucket_low']}-{pos['bucket_high']}°F"
-            pnl_str = f"${pos.get('pnl', 0):.2f}" if pos.get('pnl') else "pending"
-            entry = pos.get('entry_price', 0)
-            cost = pos.get('cost', 0)
-            lines.append(
-                f"  • {pos['city_name']} {pos['date']} | {label} | "
-                f"entry ${entry:.3f} | cost ${cost:.2f} | PnL {pnl_str}"
-            )
-        if len(open_positions) > 5:
-            lines.append(f"  ...and {len(open_positions) - 5} more")
-    else:
-        lines.extend(("", "📊 <b>Open Positions:</b> 0"))
-
-    if top_signals:
-        lines.append("")
-        lines.append(f"🎯 <b>Top EV Signals ({len(top_signals)} found):</b>")
-        for sig in top_signals[:5]:
-            lines.append(
-                f"  • {sig['city']} {sig['horizon']} | "
-                f"{sig['bucket']} | EV <b>+{sig['ev']:.2f}</b> | "
-                f"${sig['price']:.3f} (market) vs ${sig['true_prob']:.3f} (model)"
-            )
-
-    send_telegram("\n".join(lines))
-
-# =============================================================================
-# APPROVAL CHECK
-# =============================================================================
-
-def is_approved(token: str, spender: str, wallet: str) -> bool:
-    """Check if spender is approved for token (USDC.e)."""
-    w3 = get_w3()
-    usdc_abi = [
-        {
-            "name": "allowance",
-            "inputs": [
-                {"name": "owner", "type": "address"},
-                {"name": "spender", "type": "address"}
-            ],
-            "outputs": [{"name": "", "type": "uint256"}],
-            "stateMutability": "view",
-            "type": "function"
-        }
-    ]
-    usdc = w3.eth.contract(
-        address=Web3.to_checksum_address(token),
-        abi=usdc_abi
-    )
-    try:
-        allowance = usdc.functions.allowance(
-            Web3.to_checksum_address(wallet),
-            Web3.to_checksum_address(spender)
-        ).call()
-        return allowance > 0
+        base_fee = w3.eth.get_block("latest")["baseFeePerGas"]
+        priority = w3.to_wei(30, "gwei")
+        max_fee = min(base_fee * 2 + priority, int(MAX_FEE_PER_GAS))
+        return {"maxFeePerGas": max_fee, "maxPriorityFeePerGas": priority}
     except Exception:
-        return False
+        # Fallback legacy gas
+        return {"gasPrice": min(w3.eth.gas_price, int(MAX_FEE_PER_GAS))}
 
-def approve_token(token: str, spender: str, wallet: str, private_key: str,
-                  amount_wei: int = 2**256 - 1, max_fee: int = MAX_FEE_PER_GAS):
-    """Approve spender to spend token on behalf of wallet."""
+def send_tx(tx: dict, label: str = "tx") -> str:
+    """Sign and send transaction with timeout and receipt check."""
     w3 = get_w3()
-    usdc_abi = [
-        {
-            "name": "approve",
-            "inputs": [
-                {"name": "spender", "type": "address"},
-                {"name": "amount", "type": "uint256"}
-            ],
-            "outputs": [{"name": "", "type": "bool"}],
-            "stateMutability": "nonpayable",
-            "type": "function"
-        }
+    tx.setdefault("nonce", get_nonce())
+    tx.setdefault("chainId", CHAIN_ID)
+    tx.setdefault("gas", 300_000)
+    tx.update(get_gas_params())
+
+    signed = Account.sign_transaction(tx, PK)
+    tx_hash = _timeout_call(w3.eth.send_raw_transaction, args=(signed.raw_transaction,), timeout=15)
+    if tx_hash is None:
+        raise TimeoutError(f"{label}: broadcast timed out")
+
+    receipt = _timeout_call(w3.eth.wait_for_transaction_receipt, args=(tx_hash,),
+                            kwargs={"timeout": 90}, timeout=95)
+    if receipt is None:
+        raise TimeoutError(f"{label}: receipt timed out — tx may still be pending: {tx_hash.hex()}")
+    if receipt.status != 1:
+        raise RuntimeError(f"{label}: transaction reverted: {tx_hash.hex()}")
+    return tx_hash.hex()
+
+def ensure_approvals() -> bool:
+    """Set token approvals for Polymarket contracts. Safe to call multiple times."""
+    info("Checking token approvals...")
+    w3 = get_w3()
+
+    # ERC20 minimal ABI
+    erc20_abi = [
+        {"constant": True, "inputs": [{"name":"owner","type":"address"},{"name":"spender","type":"address"}],
+         "name":"allowance","outputs":[{"name":"","type":"uint256"}],"type":"function"},
+        {"constant": False, "inputs":[{"name":"spender","type":"address"},{"name":"amount","type":"uint256"}],
+         "name":"approve","outputs":[{"name":"","type":"bool"}],"type":"function"},
     ]
-    usdc = w3.eth.contract(
-        address=Web3.to_checksum_address(token),
-        abi=usdc_abi
-    )
-    nonce = get_nonce(wallet)
-    build = usdc.functions.approve(
-        Web3.to_checksum_address(spender),
-        amount_wei
-    ).build_transaction({
-        "from": wallet,
-        "nonce": nonce,
-        "maxFeePerGas": max_fee,
-        "maxPriorityFeePerGas": 25e9,
-        "chainId": CHAIN_ID,
-    })
-    signed = w3.eth.account.sign_transaction(build, private_key)
-    tx_hash = send_tx(w3, signed.raw_transaction)
-    live(f"Approve tx: {tx_hash}")
-    receipt = wait_for_receipt(w3, tx_hash)
-    if receipt:
-        ok(f"Approved {spender} for {token[:10]}...")
-        return True
-    warn(f"Approval tx failed: {tx_hash}")
-    return False
-
-def ensure_approvals():
-    """Ensure all required approvals are set before trading."""
-    wallet = WALLET
-    required = [
-        (USDC_ADDRESS, CTF_EXCHANGE),
-        (USDC_ADDRESS, NEG_RISK_EXCHANGE),
-        (USDC_ADDRESS, ROUTER),
+    erc1155_abi = [
+        {"constant": True, "inputs":[{"name":"account","type":"address"},{"name":"operator","type":"address"}],
+         "name":"isApprovedForAll","outputs":[{"name":"","type":"bool"}],"type":"function"},
+        {"constant": False, "inputs":[{"name":"operator","type":"address"},{"name":"approved","type":"bool"}],
+         "name":"setApprovalForAll","outputs":[],"type":"function"},
     ]
-    for token, spender in required:
-        if not is_approved(token, spender, wallet):
-            warn(f"Missing approval: {spender[:10]} for {token[:10]}")
-            ok(f"Approving {spender[:10]}...")
-            approve_token(token, spender, wallet, PK)
-            time.sleep(5)  # Wait for confirmation
-        else:
-            ok(f"Already approved: {spender[:10]}")
 
-# =============================================================================
-# ORDER EXECUTION
-# =============================================================================
+    usdc = w3.eth.contract(address=Web3.to_checksum_address(USDC_ADDRESS), abi=erc20_abi)
+    ctf  = w3.eth.contract(address=Web3.to_checksum_address(CONDITIONAL_TOKENS), abi=erc1155_abi)
 
-def place_buy_order(market_id: str, token_id: str, price: float, shares: float,
-                   private_key: str, wallet: str) -> dict:
-    """
-    Place a BUY order on Polymarket CLOB.
-    Uses FOK (Fill-Or-Kill) market order to guarantee execution.
-    Returns dict with success status and details.
-    Uses _timeout_call to prevent indefinite hangs.
-    Balance check is done on-chain — we always attempt the order for consistency.
-    """
-    cost = round(shares * price, 4)
-
-    if not is_approved(USDC_ADDRESS, ROUTER, wallet):
-        return {"success": False, "reason": "Router approval missing"}
-
-    # --- Market order via CLOB (with 10s timeout) ---
-    order_args = MarketOrderArgs(
-        token_id=token_id,
-        amount=cost,   # For BUY: amount is in dollars (USDC)
-        side="BUY",
-        price=price,
-    )
-
+    unlimited = 2**256 - 1
+    targets = [CTF_EXCHANGE, NEG_RISK_EXCHANGE, ROUTER]
     try:
-        clob = get_clob()
-        # assert_level_1_auth first (fast, with timeout)
-        auth_ok = _timeout_call(clob.assert_level_1_auth, timeout=10.0)
-        if auth_ok is None:
-            return {"success": False, "reason": "CLOB auth timeout (>10s)"}
+        for target in targets:
+            target_cs = Web3.to_checksum_address(target)
+            allowance = usdc.functions.allowance(WALLET, target_cs).call()
+            if allowance < 1_000_000:
+                info(f"Approving USDC → {target[:10]}...")
+                tx = usdc.functions.approve(target_cs, unlimited).build_transaction({"from": WALLET})
+                send_tx(tx, f"USDC approval {target[:10]}")
+                ok(f"USDC approved → {target[:10]}")
+            else:
+                ok(f"USDC already approved → {target[:10]}")
 
-        # create_market_order (network call, with 10s timeout)
-        order_result = _timeout_call(
-            clob.create_market_order, args=(order_args,), timeout=10.0
-        )
-        if order_result is None:
-            return {"success": False, "reason": "Order execution timeout (>10s)"}
-
-        live(f"Market order placed: {order_result}")
-
-    except Exception as e:
-        return {"success": False, "reason": f"Order failed: {e}"}
-
-    return {
-        "success": True,
-        "market_id": market_id,
-        "token_id": token_id,
-        "price": price,
-        "shares": shares,
-        "cost": cost,
-        "order_id": order_result.get("orderID") if isinstance(order_result, dict) else str(order_result),
-    }
-
-def cancel_order(order_id: str) -> bool:
-    """Cancel a specific order by ID."""
-    clob = get_clob()
-    try:
-        clob.cancel(order_id)
-        ok(f"Cancelled order: {order_id[:20]}...")
+        for target in [CTF_EXCHANGE, NEG_RISK_EXCHANGE]:
+            target_cs = Web3.to_checksum_address(target)
+            approved = ctf.functions.isApprovedForAll(WALLET, target_cs).call()
+            if not approved:
+                info(f"Approving CTF → {target[:10]}...")
+                tx = ctf.functions.setApprovalForAll(target_cs, True).build_transaction({"from": WALLET})
+                send_tx(tx, f"CTF approval {target[:10]}")
+                ok(f"CTF approved → {target[:10]}")
+            else:
+                ok(f"CTF already approved → {target[:10]}")
         return True
     except Exception as e:
-        warn(f"Cancel failed: {e}")
+        warn(f"Approval failed: {e}")
         return False
 
-def cancel_all_orders() -> int:
-    """Cancel all open orders. Returns count of cancelled orders."""
-    clob = get_clob()
-    try:
-        result = clob.cancel_all()
-        count = result.get("count", 0) if isinstance(result, dict) else 0
-        ok(f"Cancelled {count} orders")
-        return count
-    except Exception as e:
-        warn(f"Cancel all failed: {e}")
-        return 0
-
 # =============================================================================
-# LOCATIONS & WEATHER DATA
+# MARKET ORDER EXECUTION
 # =============================================================================
 
-LOCATIONS = {
-    "nyc":     {"lat": 40.7772,  "lon": -73.8726, "name": "New York City", "station": "KLGA", "unit": "F", "region": "us"},
-    "chicago": {"lat": 41.9742,  "lon": -87.9073, "name": "Chicago",       "station": "KORD", "unit": "F", "region": "us"},
-    "miami":   {"lat": 25.7959,  "lon": -80.2870, "name": "Miami",         "station": "KMIA", "unit": "F", "region": "us"},
-    "dallas":  {"lat": 32.8471,  "lon": -96.8518, "name": "Dallas",        "station": "KDAL", "unit": "F", "region": "us"},
-    "seattle": {"lat": 47.4502,  "lon":-122.3088, "name": "Seattle",        "station": "KSEA", "unit": "F", "region": "us"},
-    "atlanta": {"lat": 33.6407,  "lon": -84.4277, "name": "Atlanta",        "station": "KATL", "unit": "F", "region": "us"},
-}
-
-TIMEZONES = {
-    "nyc": "America/New_York", "chicago": "America/Chicago",
-    "miami": "America/New_York", "dallas": "America/Chicago",
-    "seattle": "America/Los_Angeles", "atlanta": "America/New_York",
-}
-
-MONTHS = ["january","february","march","april","may","june",
-          "july","august","september","october","november","december"]
-
-
-def get_ecmwf(city_slug, dates):
-    """ECMWF via Open-Meteo. Returns dict {date: temp_f}."""
-    loc = LOCATIONS[city_slug]
-    url = (
-        f"https://api.open-meteo.com/v1/forecast"
-        f"?latitude={loc['lat']}&longitude={loc['lon']}"
-        f"&daily=temperature_2m_max&temperature_unit=fahrenheit"
-        f"&forecast_days=7&timezone={TIMEZONES.get(city_slug, 'UTC')}"
-        f"&models=ecmwf_ifs025&bias_correction=true"
-    )
-    result = {}
-    for attempt in range(3):
-        try:
-            data = requests.get(url, timeout=(5, 10)).json()
-            if "error" not in data:
-                for date, temp in zip(data["daily"]["time"], data["daily"]["temperature_2m_max"]):
-                    if date in dates and temp is not None:
-                        result[date] = round(temp)
-            break
-        except Exception as e:
-            if attempt < 2:
-                time.sleep(2)
-            else:
-                warn(f"ECMWF error for {city_slug}: {e}")
-    return result
-
-def get_metar(city_slug):
-    """Current observed temperature from METAR station. D+0 only."""
-    loc = LOCATIONS[city_slug]
+def execute_trade(token_id: str, amount_usdc: float, max_price: float) -> dict:
+    """
+    Place FOK market buy order via CLOB.
+    Returns dict: {success, order_id, price, amount, error}
+    """
+    result = {"success": False, "order_id": None, "price": None,
+              "amount": amount_usdc, "error": None}
     try:
-        url = f"https://aviationweather.gov/api/data/metar?ids={loc['station']}&format=json"
-        data = requests.get(url, timeout=(5, 8)).json()
-        if data and isinstance(data, list):
-            temp_c = data[0].get("temp")
-            if temp_c is not None:
-                return round(float(temp_c) * 9/5 + 32)
+        client = get_clob()
+        client.assert_level_1_auth()
+
+        # Market order with max_price as worst acceptable price (slippage guard)
+        order_args = MarketOrderArgs(
+            token_id=token_id,
+            amount=amount_usdc,
+            side="BUY",
+            price=max_price,
+        )
+        signed_order = _timeout_call(
+            client.create_market_order,
+            args=(order_args,),
+            timeout=10,
+        )
+        if signed_order is None:
+            raise TimeoutError("order creation timed out")
+
+        response = _timeout_call(
+            client.post_order,
+            args=(signed_order,),
+            kwargs={"order_type": OrderType.FOK},
+            timeout=15,
+        )
+        if response is None:
+            raise TimeoutError("order submission timed out — order status unknown")
+
+        # Validate response
+        if not isinstance(response, dict):
+            raise RuntimeError(f"Unexpected CLOB response type: {type(response)}")
+
+        order_id = response.get("orderID") or response.get("order_id")
+        status = str(response.get("status", "")).lower()
+        success = bool(response.get("success", False))
+
+        if not order_id:
+            raise RuntimeError(f"No order ID in response: {response}")
+        if not success and status not in ("matched", "live", "delayed"):
+            error_msg = response.get("errorMsg") or response.get("error") or f"status={status}"
+            raise RuntimeError(f"Order rejected: {error_msg}")
+
+        result.update({"success": True, "order_id": order_id,
+                       "price": max_price, "status": status})
+        live(f"  ✅ ORDER PLACED: {amount_usdc:.2f} USDC @ ≤{max_price:.3f} — {order_id}")
+        return result
+
+    except TimeoutError as e:
+        result["error"] = str(e)
+        warn(f"Trade timeout: {e}")
+        return result
     except Exception as e:
-        warn(f"METAR error for {city_slug}: {e}")
+        result["error"] = str(e)
+        warn(f"Trade failed: {e}")
+        return result
+
+# =============================================================================
+# WEATHER DATA
+# =============================================================================
+
+CITIES_F = {
+    "nyc": {"lat": 40.7128, "lon": -74.0060, "tz": "America/New_York", "name": "New York"},
+    "chicago": {"lat": 41.8781, "lon": -87.6298, "tz": "America/Chicago", "name": "Chicago"},
+    "miami": {"lat": 25.7617, "lon": -80.1918, "tz": "America/New_York", "name": "Miami"},
+    "seattle": {"lat": 47.6062, "lon": -122.3321, "tz": "America/Los_Angeles", "name": "Seattle"},
+    "dallas": {"lat": 32.7767, "lon": -96.7970, "tz": "America/Chicago", "name": "Dallas"},
+    "atlanta": {"lat": 33.7490, "lon": -84.3880, "tz": "America/New_York", "name": "Atlanta"},
+    "denver": {"lat": 39.7392, "lon": -104.9903, "tz": "America/Denver", "name": "Denver"},
+    "phoenix": {"lat": 33.4484, "lon": -112.0740, "tz": "America/Phoenix", "name": "Phoenix"},
+    "la": {"lat": 34.0522, "lon": -118.2437, "tz": "America/Los_Angeles", "name": "Los Angeles"},
+}
+
+def get_forecast(city: str, target_date: str) -> dict:
+    """
+    Get forecast from Open-Meteo ensemble (primary) or Visual Crossing (fallback).
+    Returns {temp, uncertainty, source, members} or None.
+    """
+    cfg = CITIES_F.get(city)
+    if not cfg:
+        return None
+
+    # Primary: Open-Meteo ensemble (16 GFS members)
+    try:
+        url = "https://ensemble-api.open-meteo.com/v1/ensemble"
+        params = {
+            "latitude": cfg["lat"],
+            "longitude": cfg["lon"],
+            "daily": "temperature_2m_max",
+            "temperature_unit": "fahrenheit",
+            "timezone": cfg["tz"],
+            "forecast_days": 16,
+        }
+        r = requests.get(url, params=params, timeout=12)
+        r.raise_for_status()
+        data = r.json()
+        daily = data.get("daily", {})
+        times = daily.get("time", [])
+        if target_date in times:
+            idx = times.index(target_date)
+            # Collect all ensemble member values at this date
+            members = []
+            for key, values in daily.items():
+                if key.startswith("temperature_2m_max") and isinstance(values, list):
+                    val = values[idx] if idx < len(values) else None
+                    if val is not None:
+                        members.append(float(val))
+            if members:
+                mean = sum(members) / len(members)
+                variance = sum((x - mean)**2 for x in members) / len(members)
+                std = math.sqrt(variance)
+                return {"temp": round(mean, 2), "uncertainty": round(max(std, 1.0), 2),
+                        "source": "Open-Meteo Ensemble", "members": len(members)}
+    except Exception as e:
+        logging.debug(f"Open-Meteo failed for {city}: {e}")
+
+    # Fallback: Visual Crossing
+    if not VC_KEY:
+        logging.info("Visual Crossing fallback skipped: VC_KEY is unset")
+        return None
+    try:
+        location = f"{cfg['lat']},{cfg['lon']}"
+        url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{location}/{target_date}/{target_date}"
+        params = {"unitGroup": "us", "key": VC_KEY, "include": "days"}
+        r = requests.get(url, params=params, timeout=12)
+        r.raise_for_status()
+        data = r.json()
+        days = data.get("days", [])
+        if days:
+            temp = days[0].get("tempmax")
+            if temp is not None:
+                return {"temp": round(float(temp), 2), "uncertainty": 2.5,
+                        "source": "Visual Crossing", "members": 1}
+    except Exception as e:
+        logging.debug(f"Visual Crossing failed for {city}: {e}")
+
     return None
 
-def get_forecast_snapshot(city_slug, dates):
-    """Get best temperature forecast for each date. Returns {date: temp_f}."""
-    ecmwf = get_ecmwf(city_slug, dates)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    result = {}
-    for date in dates:
-        best = ecmwf.get(date)
-        best_source = "ecmwf"
-        # METAR for today if available
-        if date == today:
-            metar = get_metar(city_slug)
-            if metar is not None:
-                best = metar
-                best_source = "metar"
-        if best is not None:
-            result[date] = {"temp": best, "source": best_source}
-    return result
-
 # =============================================================================
-# POLYMARKET
+# POLYMARKET API — CLOB-ENABLED WEATHER MARKETS ONLY
 # =============================================================================
 
-def get_polymarket_event(city_slug, month, day, year):
-    slug = f"highest-temperature-in-{city_slug}-on-{month}-{day}-{year}"
+GAMMA_API = "https://gamma-api.polymarket.com"
+
+def parse_weather_market(question: str) -> dict | None:
+    """
+    Parse Polymarket weather question into structured data.
+    Only handles: "Will the highest temperature in [City] be between X-Y°F on [Date]?"
+    Returns {city, date, t_low, t_high, unit} or None.
+    """
+    q = question.lower()
+
+    # City detection
+    city = None
+    for slug, cfg in CITIES_F.items():
+        if cfg["name"].lower() in q:
+            city = slug
+            break
+    if not city:
+        return None
+
+    # Temperature bucket: "between 55-56°F", "55°F or below", "57°F or higher", "exactly 55°F"
+    t_low = t_high = None
+    m = re.search(r"between\s+(-?\d+)\s*[-–]\s*(-?\d+)\s*°?f", q)
+    if m:
+        t_low, t_high = int(m.group(1)), int(m.group(2))
+    if t_low is None:
+        m = re.search(r"(-?\d+)\s*°?f\s+or\s+below", q)
+        if m: t_low, t_high = -999, int(m.group(1))
+    if t_low is None:
+        m = re.search(r"(-?\d+)\s*°?f\s+or\s+(?:higher|above)", q)
+        if m: t_low, t_high = int(m.group(1)), 999
+    if t_low is None:
+        m = re.search(r"exactly\s+(-?\d+)\s*°?f", q)
+        if m: t_low = t_high = int(m.group(1))
+    if t_low is None:
+        return None
+
+    # Date extraction: "on March 5", "on March 5, 2025"
+    months = {m.lower(): i for i, m in enumerate(
+        ["January","February","March","April","May","June",
+         "July","August","September","October","November","December"], 1)}
+    date_match = re.search(
+        r"on\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:,?\s+(\d{4}))?",
+        q)
+    if not date_match:
+        return None
+    month = months[date_match.group(1)]
+    day = int(date_match.group(2))
+    year = int(date_match.group(3)) if date_match.group(3) else datetime.now().year
     try:
-        r = requests.get(f"https://gamma-api.polymarket.com/events?slug={slug}", timeout=(5, 8))
-        data = r.json()
-        if data and isinstance(data, list) and len(data) > 0:
-            return data[0]
+        date_str = datetime(year, month, day).strftime("%Y-%m-%d")
+    except ValueError:
+        return None
+
+    return {"city": city, "date": date_str, "t_low": t_low,
+            "t_high": t_high, "unit": "F"}
+
+def fetch_weather_markets() -> list[dict]:
+    """
+    Fetch active weather markets from Polymarket Gamma API.
+    Only returns CLOB-enabled markets with token IDs.
+    """
+    markets = []
+    offset = 0
+    limit = 100
+    try:
+        while True:
+            r = requests.get(
+                f"{GAMMA_API}/markets",
+                params={"active": "true", "closed": "false",
+                        "limit": limit, "offset": offset},
+                timeout=15,
+            )
+            r.raise_for_status()
+            batch = r.json()
+            if not batch:
+                break
+            for m in batch:
+                question = m.get("question", "")
+                if not any(word in question.lower() for word in
+                           ["temperature", "°f", "degrees fahrenheit"]):
+                    continue
+                parsed = parse_weather_market(question)
+                if not parsed:
+                    continue
+
+                # Verify CLOB-enabled and get token IDs
+                clob_ids = m.get("clobTokenIds")
+                if isinstance(clob_ids, str):
+                    try:
+                        clob_ids = json.loads(clob_ids)
+                    except json.JSONDecodeError:
+                        clob_ids = None
+                if not clob_ids or not isinstance(clob_ids, list) or len(clob_ids) < 2:
+                    continue
+
+                outcomes = m.get("outcomes")
+                if isinstance(outcomes, str):
+                    try: outcomes = json.loads(outcomes)
+                    except json.JSONDecodeError: outcomes = ["Yes", "No"]
+                outcome_prices = m.get("outcomePrices")
+                if isinstance(outcome_prices, str):
+                    try: outcome_prices = json.loads(outcome_prices)
+                    except json.JSONDecodeError: outcome_prices = ["0", "0"]
+
+                # Find YES token index
+                yes_idx = 0
+                if outcomes:
+                    for i, outcome in enumerate(outcomes):
+                        if str(outcome).lower() == "yes":
+                            yes_idx = i
+                            break
+
+                token_id = clob_ids[yes_idx] if yes_idx < len(clob_ids) else clob_ids[0]
+                price = 0.0
+                if outcome_prices and yes_idx < len(outcome_prices):
+                    try: price = float(outcome_prices[yes_idx])
+                    except (ValueError, TypeError): price = 0.0
+
+                markets.append({
+                    "id": m.get("id"),
+                    "condition_id": m.get("conditionId"),
+                    "token_id": token_id,
+                    "question": question,
+                    "city": parsed["city"],
+                    "date": parsed["date"],
+                    "t_low": parsed["t_low"],
+                    "t_high": parsed["t_high"],
+                    "price": price,
+                    "volume": float(m.get("volumeNum") or m.get("volume") or 0),
+                    "liquidity": float(m.get("liquidityNum") or m.get("liquidity") or 0),
+                    "end_date": m.get("endDate"),
+                    "neg_risk": bool(m.get("negRisk", False)),
+                })
+            if len(batch) < limit:
+                break
+            offset += limit
+        return markets
     except Exception as e:
         warn(f"Polymarket API error: {e}")
-    return None
-
-def get_market_price(market_id):
-    try:
-        r = requests.get(f"https://gamma-api.polymarket.com/markets/{market_id}", timeout=(3, 5))
-        data = r.json()
-        prices = json.loads(data.get("outcomePrices", "[0.5,0.5]"))
-        return float(prices[0]), float(prices[1]) if len(prices) > 1 else float(prices[0])
-    except Exception:
-        return None, None
-
-def parse_temp_range(question):
-    if not question: return None
-    num = r'(-?\d+(?:\.\d+)?)'
-    if re.search(r'or below', question, re.IGNORECASE):
-        m = re.search(num + r'[°]?[FC] or below', question, re.IGNORECASE)
-        if m: return (-999.0, float(m.group(1)))
-    if re.search(r'or higher', question, re.IGNORECASE):
-        m = re.search(num + r'[°]?[FC] or higher', question, re.IGNORECASE)
-        if m: return (float(m.group(1)), 999.0)
-    m = re.search(r'between ' + num + r'-' + num + r'[°]?[FC]', question, re.IGNORECASE)
-    if m: return (float(m.group(1)), float(m.group(2)))
-    m = re.search(r'be ' + num + r'[°]?[FC] on', question, re.IGNORECASE)
-    if m:
-        v = float(m.group(1))
-        return (v, v)
-    return None
-
-def hours_to_resolution(end_date_str):
-    try:
-        end = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
-        return max(0.0, (end - datetime.now(timezone.utc)).total_seconds() / 3600)
-    except Exception:
-        return 999.0
-
-def in_bucket(forecast, t_low, t_high):
-    if t_low == t_high:
-        return round(float(forecast)) == round(t_low)
-    return t_low <= float(forecast) <= t_high
-
-def get_condition_id(market_id: str) -> str:
-    """Get condition ID for a market from Polymarket (with 8s timeout)."""
-    try:
-        r = _timeout_call(
-            requests.get,
-            args=(f"https://gamma-api.polymarket.com/markets/{market_id}",),
-            kwargs={"timeout": (5, 8)},
-            timeout=8.0,
-        )
-        if r is None:
-            warn(f"get_condition_id timeout for {market_id[:16]}...")
-            return ""
-        data = r.json()
-        return data.get("conditionId", "")
-    except Exception:
-        return ""
-
-# =============================================================================
-# STATE (local JSON)
-# =============================================================================
-
-DATA_DIR = BOT_DIR / "data"
-DATA_DIR.mkdir(exist_ok=True)
-MARKETS_DIR = DATA_DIR / "markets"
-MARKETS_DIR.mkdir(exist_ok=True)
-STATE_FILE = DATA_DIR / "state_v3.json"
-
-def load_state():
-    if STATE_FILE.exists():
-        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
-    return {
-        "balance": 0.0,
-        "starting_balance": 0.0,
-        "total_trades": 0,
-        "wins": 0,
-        "losses": 0,
-        "open_orders": {},
-    }
-
-def save_state(state):
-    STATE_FILE.write_text(json.dumps(state, indent=2, ensure_ascii=False), encoding="utf-8")
-
-def market_path(city_slug, date_str):
-    return MARKETS_DIR / f"{city_slug}_{date_str}.json"
-
-def load_market(city_slug, date_str):
-    p = market_path(city_slug, date_str)
-    if p.exists():
-        return json.loads(p.read_text(encoding="utf-8"))
-    return None
-
-def save_market(market):
-    p = market_path(market["city"], market["date"])
-    p.write_text(json.dumps(market, indent=2, ensure_ascii=False), encoding="utf-8")
-
-def load_all_markets():
-    markets = []
-    for f in MARKETS_DIR.glob("*.json"):
-        try:
-            markets.append(json.loads(f.read_text(encoding="utf-8")))
-        except Exception:
-            pass
-    return markets
-
-# =============================================================================
-# SIGMA (weather forecast uncertainty)
-# =============================================================================
-
-SIGMA_F = 2.0
-
-def get_sigma(city_slug):
-    return SIGMA_F  # Flat sigma for now; calibration can be added later
-
-# =============================================================================
-# OPEN POSITIONS from CLOB
-# =============================================================================
-
-def get_clob_positions():
-    """Get all open orders/positions from CLOB."""
-    clob = get_clob()
-    try:
-        orders = clob.get_orders()
-        return orders if orders else []
-    except Exception as e:
-        warn(f"Failed to fetch CLOB orders: {e}")
         return []
 
 # =============================================================================
-# SCAN & TRADE (one shot)
+# TRADING SCAN
 # =============================================================================
 
-def scan_and_trade(context: ExecutionContext):
-    """Scan markets under an explicit execution mode."""
-    now = datetime.now(timezone.utc)
-    is_live = context.mode is ExecutionMode.LIVE
-    state = load_state() if is_live else {"balance": 0.0, "total_trades": 0}
-    balance = None
-    if is_live:
-        balance = get_usdc_balance(WALLET)
-        if balance != state.get("balance"):
-            state["balance"] = balance
-            save_state(state)
+def hours_until(date_str: str) -> float:
+    """Hours until end of target date (midnight UTC)."""
+    try:
+        target = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+        return (target - datetime.now(timezone.utc)).total_seconds() / 3600
+    except (ValueError, TypeError):
+        return 0.0
 
-    print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
-    print("=" * 60)
-    print(f"  Mode:         {context.label}")
-    if is_live:
-        print(f"  Wallet:       {WALLET[:8]}...{WALLET[-4:]}")
-        print(f"  USDC.e:       ${balance:.4f}")
-        print(f"  POL balance:  {get_pol_balance(WALLET):.4f} POL")
-    else:
-        print("  Wallet access: disabled")
-        if context.mode is ExecutionMode.PAPER:
-            print("  Paper fills:   pending implementation in #27")
-    print(f"  Max bet:      ${MAX_BET} | Min EV: {MIN_EV*100:.0f}%")
+def scan(context: ExecutionContext):
+    """Scan all CLOB-enabled weather markets and trade mispriced ones."""
+    mode = context.mode
+    mode_label = mode.value.upper()
+    print(f"\n{C.BOLD}🌦️  Weather Market Scanner v3 [{mode_label}]{C.RESET}")
+    print("═" * 50)
+    if mode is ExecutionMode.LIVE:
+        print(f"Wallet: {WALLET}")
+    print(f"Max bet: ${MAX_BET:.2f} | Min EV: {get_adjusted_ev_floor():.0%} | Max price: {MAX_PRICE:.2f}")
     print()
 
-    new_trades = 0
-    observed_signals = 0
-    paper_candidates = 0
-    errors = []
+    markets = fetch_weather_markets()
+    info(f"Found {len(markets)} CLOB weather markets")
 
-    # Collect city market data for Telegram report (top signals)
-    city_market_data = []
+    candidates = []
+    traded = 0
 
-    for city_slug, loc in LOCATIONS.items():
-        print(f"  -> {loc['name']}...", end=" ", flush=True)
-        unit_sym = "F"
-
+    for market in markets:
         try:
-            # --- Step 1: Fetch forecasts ---
-            t0 = time.time()
-            dates = [(now + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(4)]
-            forecasts = get_forecast_snapshot(city_slug, dates)
-            info(f"[{loc['name']}] forecast loaded in {time.time()-t0:.1f}s")
-
-            time.sleep(0.3)
-        except Exception as e:
-            print(f"error ({e})")
-            continue
-
-        # --- Step 2: Find signal per date ---
-        city_found_signal = False
-        for i, date in enumerate(dates):
-            t0 = time.time()
-            try:
-                event = get_polymarket_event(
-                    city_slug,
-                    MONTHS[datetime.strptime(date, "%Y-%m-%d").month - 1],
-                    datetime.strptime(date, "%Y-%m-%d").day,
-                    datetime.strptime(date, "%Y-%m-%d").year
-                )
-                info(f"  [{loc['name']} D+{i}] event fetched in {time.time()-t0:.1f}s")
-            except Exception as e:
-                warn(f"Polymarket error for {loc['name']} D+{i}: {e}")
-                continue
-
-            if not event:
-                continue
-
-            end_date = event.get("endDate", "")
-            hours = hours_to_resolution(end_date) if end_date else 0
-            horizon = f"D+{i}"
-
+            # Time filter
+            hours = hours_until(market["date"])
             if hours < MIN_HOURS or hours > MAX_HOURS:
                 continue
 
-            # Parse all outcome buckets from Polymarket
-            outcomes = []
-            for market in event.get("markets", []):
-                question = market.get("question", "")
-                mid = str(market.get("id", ""))
-                volume = float(market.get("volume", 0))
-                rng = parse_temp_range(question)
-                if not rng:
-                    continue
-                try:
-                    prices = json.loads(market.get("outcomePrices", "[0.5,0.5]"))
-                    bid = float(prices[0])
-                    ask = float(prices[1]) if len(prices) > 1 else bid
-                except Exception:
-                    continue
-                outcomes.append({
-                    "question": question,
-                    "market_id": mid,
-                    "range": rng,
-                    "bid": round(bid, 4),
-                    "ask": round(ask, 4),
-                    "price": round(bid, 4),
-                    "spread": round(ask - bid, 4),
-                    "volume": round(volume, 0),
-                })
-
-            if not outcomes:
+            # Volume filter
+            if market["volume"] < MIN_VOLUME:
                 continue
 
-            forecastsnap = forecasts.get(date, {})
-            forecast_temp = forecastsnap.get("temp")
-            best_source = forecastsnap.get("source", "ecmwf")
-
-            if forecast_temp is None:
+            # Price filter
+            price = market["price"]
+            if price <= 0.01 or price > MAX_PRICE:
                 continue
 
-            # Guard against invalid API readings (e.g. -999 from ECMWF)
-            if forecast_temp < -40 or forecast_temp > 130:
-                warn(f"  ⚠️  Invalid forecast temp {forecast_temp}°F — skipping city")
-                break
+            # Forecast
+            forecast = get_forecast(market["city"], market["date"])
+            if not forecast:
+                continue
 
-            # Skip sentinel/unbounded bucket ranges (t_high=999 or t_low=-999 from Polymarket)
-            sentinel_buckets = [(o["range"][0], o["range"][1]) for o in outcomes
-                                 if o["range"][0] == -999 or o["range"][1] == 999]
-            if sentinel_buckets:
-                info(f"  ⚠️  Sentinel buckets detected — ignoring for EV calculation")
+            # Probability using ensemble uncertainty
+            prob = bucket_prob(
+                forecast["temp"], market["t_low"], market["t_high"],
+                sigma=forecast["uncertainty"],
+            )
+            ev = calc_ev(prob, price)
+            kelly = calc_kelly(prob, price)
+            adj_kelly = get_adjusted_kelly(kelly)
+            amount = bet_size(adj_kelly)
 
-            # Collect for Telegram top-signals report
-            city_market_data.append((city_slug, loc, outcomes, forecastsnap, horizon, end_date, date))
+            # Adaptive EV floor
+            ev_floor = get_adjusted_ev_floor()
+            # City adjustment: require higher EV for historically weak cities
+            city_wr = get_city_winrate(market["city"])
+            if city_wr < 0.4:
+                ev_floor *= 1.25
 
-            sigma = get_sigma(city_slug)
-            best_signal = None
+            if ev < ev_floor or amount < 0.50:
+                continue
 
-            # Find the bucket that matches our forecast
-            for o in outcomes:
-                t_low, t_high = o["range"]
-                # Skip unbounded sentinel buckets from Polymarket
-                if t_low == -999 or t_high == 999:
-                    continue
-                if not in_bucket(forecast_temp, t_low, t_high):
-                    continue
+            # Candidate found
+            candidate = {
+                **market,
+                "forecast": forecast["temp"],
+                "uncertainty": forecast["uncertainty"],
+                "probability": prob,
+                "ev": ev,
+                "kelly": adj_kelly,
+                "amount": amount,
+                "source": forecast["source"],
+                "hours": hours,
+                "city_winrate": city_wr,
+            }
+            candidates.append(candidate)
 
-                volume = o["volume"]
-                ask = o["ask"]
-                spread = o["spread"]
+            print(f"\n{C.BOLD}🎯 {market['question']}{C.RESET}")
+            print(f"   Forecast: {forecast['temp']:.1f}°F ±{forecast['uncertainty']:.1f}° "
+                  f"({forecast['source']}, {forecast['members']} members)")
+            print(f"   Our probability: {prob:.1%} | Market price: {price:.3f}")
+            print(f"   EV: {ev:+.1%} | Kelly: {adj_kelly:.3f} | Bet: ${amount:.2f}")
+            print(f"   Volume: ${market['volume']:,.0f} | Resolves in {hours:.1f}h")
 
-                if volume < MIN_VOLUME:
-                    continue
-                if ask >= MAX_PRICE:
-                    continue
-                if spread > MAX_SLIPPAGE:
-                    continue
+            if mode is ExecutionMode.RESEARCH:
+                skip("Research mode: signal only; no order intent is recorded")
+                continue
 
-                # Calculate probability FIRST (needed for Kelly and EV)
-                p = bucket_prob(forecast_temp, t_low, t_high, sigma)
+            if mode is ExecutionMode.PAPER:
+                skip("Paper candidate recorded; simulated fills and accounting belong to #27")
+                continue
 
-                # Use adaptive EV floor and Kelly from self-learning
-                adaptive_ev_floor = get_adjusted_ev_floor()
-                base_kelly = calc_kelly(p, ask)
-                adjusted_kelly = get_adjusted_kelly(base_kelly)
-
-                ev = calc_ev(p, ask)
-                if ev < adaptive_ev_floor:
-                    continue
-
-                size = bet_size(adjusted_kelly)
-                if size < 0.50:
-                    continue
-
-                shares = round(size / ask, 2)
-                token_id = get_condition_id(o["market_id"])
-
-                best_signal = {
-                    "market_id": o["market_id"],
-                    "token_id": token_id,
-                    "question": o["question"],
-                    "bucket_low": t_low,
-                    "bucket_high": t_high,
-                    "entry_price": ask,
-                    "bid": o["bid"],
-                    "spread": spread,
-                    "shares": shares,
-                    "cost": round(shares * ask, 4),
-                    "p": round(p, 4),
-                    "ev": round(ev, 4),
-                    "kelly": round(adjusted_kelly, 4),
-                    "forecast_temp": forecast_temp,
-                    "forecast_src": best_source,
-                    "sigma": sigma,
-                    "volume": volume,
-                }
-                break  # Only one bucket per market
-
-            if best_signal:
-                city_found_signal = True
-                bucket_label = f"{best_signal['bucket_low']}-{best_signal['bucket_high']}{unit_sym}"
-                print(f"\n  {C.BOLD}📍 {loc['name']} {horizon} — {date}{C.RESET}")
-                print(f"  {C.CYAN}  Forecast: {forecast_temp}°F ({best_source}) | {bucket_label}{C.RESET}")
-                print(f"  {C.GREEN}  ✅ BUY SIGNAL | ${best_signal['cost']:.2f} @ ${ask:.3f} | "
-                      f"EV {best_signal['ev']:+.2f} | Kel {best_signal['kelly']:.2f}{C.RESET}")
-
-                if context.mode is ExecutionMode.RESEARCH:
-                    observed_signals += 1
-                    info("  [RESEARCH] signal observed; no order or state mutation")
-                    continue
-                if context.mode is ExecutionMode.PAPER:
-                    paper_candidates += 1
-                    info("  [PAPER] candidate only; simulated fills are implemented in #27")
-                    continue
-
-                require_live(context, operation="place order")
-                assert balance is not None
-
-                # --- EXECUTE REAL ORDER ---
-                result = run_live_operation(
-                    context,
-                    operation="place order",
-                    callback=lambda: place_buy_order(
-                        market_id=best_signal["market_id"],
-                        token_id=best_signal["token_id"],
-                        price=best_signal["entry_price"],
-                        shares=best_signal["shares"],
-                        private_key=PK,
-                        wallet=WALLET,
-                    ),
+            # Live trading remains behind both execution-mode gates.
+            # Remaining exchange and risk defects may still reject the operation.
+            result = run_live_operation(
+                context,
+                lambda: execute_trade(
+                    market["token_id"], amount, min(price + MAX_SLIPPAGE, MAX_PRICE)
+                ),
+            )
+            if result["success"]:
+                traded += 1
+                record_trade(
+                    market["city"], market["t_low"], market["t_high"],
+                    "pending", 0.0, amount, adj_kelly, ev,
                 )
-
-                if result["success"]:
-                    new_trades += 1
-                    state["total_trades"] += 1
-                    balance -= best_signal["cost"]
-
-                    # Record trade for self-learning (outcome='pending' until resolved)
-                    record_trade(
-                        city_slug=city_slug,
-                        bucket_low=best_signal["bucket_low"],
-                        bucket_high=best_signal["bucket_high"],
-                        outcome="pending",
-                        pnl=0.0,   # will be updated when market resolves
-                        cost=best_signal["cost"],
-                        kelly=best_signal["kelly"],
-                        ev=best_signal["ev"],
-                    )
-
-                    live(f"  [LIVE] BUY {loc['name']} {horizon} | {bucket_label} @ ${best_signal['entry_price']:.3f} "
-                         f"| EV {best_signal['ev']:+.2f} | ${best_signal['cost']:.2f}")
-
-                    # Save to market record
-                    mkt_record = load_market(city_slug, date) or {
-                        "city": city_slug,
-                        "city_name": loc["name"],
-                        "date": date,
-                        "unit": "F",
-                        "event_end_date": end_date,
-                        "status": "open",
-                        "position": None,
-                    }
-                    mkt_record["position"] = {
-                        **best_signal,
-                        "order_id": result.get("order_id"),
-                        "opened_at": datetime.now(timezone.utc).isoformat(),
-                        "status": "open",
-                        "closed_at": None,
-                        "close_reason": None,
-                        "exit_price": None,
-                        "pnl": None,
-                    }
-                    save_market(mkt_record)
-
-                    # Telegram notification — success
-                    tg_signal(
-                        city=loc["name"], horizon=horizon, date=date,
-                        bucket_label=bucket_label, forecast_temp=best_signal["forecast_temp"],
-                        entry_price=best_signal["entry_price"], cost=best_signal["cost"],
-                        ev=best_signal["ev"], kelly=best_signal["kelly"],
-                        success=True, mode=context.mode,
-                    )
-                else:
-                    errors.append(f"{loc['name']} {horizon}: {result['reason']}")
-                    warn(f"  ❌ Order failed: {result['reason']}")
-
-                    # Telegram notification — failure
-                    tg_signal(
-                        city=loc["name"], horizon=horizon, date=date,
-                        bucket_label=bucket_label, forecast_temp=best_signal["forecast_temp"],
-                        entry_price=best_signal["entry_price"], cost=best_signal.get("cost", 0),
-                        ev=best_signal["ev"], kelly=best_signal["kelly"],
-                        success=False, mode=context.mode, reason=result.get("reason", "unknown"),
+                if TELEGRAM_BOT_TOKEN:
+                    send_telegram(
+                        f"🌦️ *Weather Trade*\n"
+                        f"{market['question']}\n"
+                        f"Forecast: {forecast['temp']:.1f}°F | Prob: {prob:.1%}\n"
+                        f"Price: {price:.3f} | EV: {ev:+.1%}\n"
+                        f"Bet: ${amount:.2f} | Order: `{result['order_id']}`"
                     )
             else:
-                # No signal — show why (skip sentinel buckets to avoid confusing EV)
-                for o in outcomes:
-                    t_low, t_high = o["range"]
-                    if t_low == -999 or t_high == 999:
-                        continue
-                    if not in_bucket(forecast_temp, t_low, t_high):
-                        continue
-                    ask = o["ask"]
-                    p = bucket_prob(forecast_temp, t_low, t_high, sigma)
-                    ev = calc_ev(p, ask)
-                    skip(f" {forecast_temp}°F bucket {t_low}-{t_high}F @ ${ask:.3f} EV={ev:.2f} — skipped")
-                    break
+                warn(f"  Trade failed: {result['error']}")
 
-        # Print "ok" regardless of whether signal found
-        if not city_found_signal:
-            # Show first skip reason for this city
-            print("ok", end="", flush=True)
-        print()  # newline after city
-
-    # Build top signals from this scan for Telegram
-    top_signals = []
-    for city_slug, loc, outcomes, forecastsnap, horizon, end_date, date in city_market_data:
-        if not outcomes or not forecastsnap:
+        except Exception as e:
+            logging.exception(f"Error processing market: {e}")
             continue
-        forecast_temp = forecastsnap.get("temp")
-        if forecast_temp is None:
-            continue
-        if forecast_temp < -40 or forecast_temp > 130:
-            continue
-        sigma = get_sigma(city_slug)
-        for o in outcomes:
-            t_low, t_high = o["range"]
-            # Skip sentinel/unbounded buckets — they give false EV signals
-            if t_low == -999 or t_high == 999:
-                continue
-            if not in_bucket(forecast_temp, t_low, t_high):
-                continue
-            p = bucket_prob(forecast_temp, t_low, t_high, sigma)
-            ev = calc_ev(p, o["ask"])
-            if ev > 0:
-                top_signals.append({
-                    "city": loc["name"],
-                    "horizon": horizon,
-                    "bucket": f"{t_low}-{t_high}°F",
-                    "ev": ev,
-                    "price": o["ask"],
-                    "true_prob": p,
-                })
-    top_signals.sort(key=lambda x: x["ev"], reverse=True)
 
-    # Live positions and state are inaccessible to non-live modes.
-    open_positions = []
-    if is_live:
-        markets = load_all_markets()
-        open_positions = [
-            m for m in markets
-            if m.get("position") and m["position"].get("status") == "open"
-        ]
-        assert balance is not None
-        state["balance"] = round(balance, 4)
-        save_state(state)
-
-    print(f"\n{'=' * 60}")
-    print(f"  Scanned:    {len(LOCATIONS)} cities")
-    print(f"  New trades: {C.GREEN}{new_trades}{C.RESET}")
-    print(f"  Signals:    {observed_signals}")
-    print(f"  Paper candidates: {paper_candidates}")
-    print(f"  Errors:     {len(errors)}")
-    if balance is None:
-        print("  Wallet:     disabled")
+    print(f"\n{'═' * 50}")
+    if mode is ExecutionMode.RESEARCH:
+        print(f"Research signals: {len(candidates)} | No financial state changed")
+    elif mode is ExecutionMode.PAPER:
+        print(f"Paper candidates: {len(candidates)} | Fills not simulated yet")
     else:
-        print(f"  Balance:    ${balance:.4f}")
-    print(f"{'=' * 60}\n")
-
-    # Telegram scan summary
-    tg_scan_summary(new_trades=new_trades, errors=len(errors),
-                    balance=balance, cities=len(LOCATIONS), mode=context.mode,
-                    observed_signals=observed_signals,
-                    paper_candidates=paper_candidates,
-                    top_signals=top_signals,
-                    open_positions=open_positions)
-
-    return new_trades, errors
+        print(f"Candidates: {len(candidates)} | Trades placed: {traded}")
+    return candidates
 
 # =============================================================================
-# STATUS
+# TELEGRAM
 # =============================================================================
 
-def show_status(context: ExecutionContext):
-    """Show status without crossing the selected mode boundary."""
-    if context.mode is not ExecutionMode.LIVE:
-        print(f"\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")
-        print("=" * 60)
-        print("  Wallet access: disabled")
-        if context.mode is ExecutionMode.PAPER:
-            print("  Paper ledger:  pending implementation in #27")
-        print(f"{'=' * 60}\n")
-        return
-
-    require_live(context, operation="live status")
-    balance = get_usdc_balance(WALLET)
-    pol_bal = get_pol_balance(WALLET)
-
-    print(f"\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")
-    print("=" * 60)
-    print(f"  Mode:      {context.label}")
-    print(f"  Wallet:    {WALLET[:8]}...{WALLET[-4:]}")
-    print(f"  USDC.e:    ${balance:.4f}")
-    print(f"  POL:       {pol_bal:.4f}")
-    print()
-
-    # Open orders from CLOB
-    orders = get_clob_positions()
-    if orders:
-        print(f"  Open orders: {len(orders)}")
-        for o in orders:
-            print(f"    {o.get('side','?')} {o.get('size','?')} @ ${o.get('price','?')} "
-                  f"[{o.get('marketID','')[:16]}...]")
-    else:
-        print(f"  Open orders: 0")
-
-    # Local market positions
-    markets = load_all_markets()
-    open_pos = [m for m in markets if m.get("position") and m["position"].get("status") == "open"]
-    if open_pos:
-        print(f"\n  Open positions (local): {len(open_pos)}")
-        for m in open_pos:
-            pos = m["position"]
-            unit_sym = "F"
-            label = f"{pos['bucket_low']}-{pos['bucket_high']}{unit_sym}"
-            print(f"    {m['city_name']} {m['date']} | {label} | "
-                  f"entry ${pos['entry_price']:.3f} | cost ${pos.get('cost',0):.2f}")
-    else:
-        print(f"\n  Open positions: 0")
-
-    print(f"{'=' * 60}\n")
+def send_telegram(text: str) -> bool:
+    """Send Telegram notification. Returns True on success."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        logging.info("Telegram notification skipped: credentials are unset")
+        return False
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        r = requests.post(
+            url,
+            json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+        r.raise_for_status()
+        return True
+    except Exception as e:
+        logging.warning("Telegram error: %s", type(e).__name__)
+        return False
 
 # =============================================================================
-# MAIN LOOP
+# POSITION MONITOR
 # =============================================================================
 
-MONITOR_INTERVAL = 600   # 10 minutes between monitor cycles
-
-def run_loop(context: ExecutionContext):
-    print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
-    print("=" * 60)
-    print(f"  Mode:     {context.label}")
-    if context.mode is ExecutionMode.LIVE:
-        print(f"  Wallet:   {WALLET[:8]}...{WALLET[-4:]}")
-    else:
-        print("  Wallet:   disabled")
-    print(f"  Cities:   {len(LOCATIONS)}")
-    print(f"  Max bet:  ${MAX_BET} | Kelly fraction: {KELLY_FRAC}")
-    print(f"  Min EV:   {MIN_EV*100:.0f}%")
-    print(f"  Scan:     every {SCAN_INTERVAL//60} min")
-    print(f"  Monitor:  every {MONITOR_INTERVAL//60} min")
-    print()
-
-    if context.mode is ExecutionMode.LIVE:
-        require_live(context, operation="token approval")
-        ok("Checking approvals...")
-        ensure_approvals()
-    else:
-        skip("Live approvals disabled by execution mode")
-
-    last_full_scan = 0
-
+def monitor_positions():
+    """Monitor open orders and resolved positions."""
+    info("Position monitor started")
     while True:
-        now_ts = time.time()
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        if now_ts - last_full_scan >= SCAN_INTERVAL:
-            print(f"[{now_str}] Full scan...")
-            try:
-                new_trades, errors = scan_and_trade(context)
-                last_full_scan = time.time()
-            except Exception as e:
-                warn(f"Scan error: {e}")
-                time.sleep(60)
-                continue
-        else:
-            print(f"[{now_str}] Monitoring...")
-            time.sleep(MONITOR_INTERVAL)
+        try:
+            # Get open CLOB orders
+            client = get_clob()
+            orders = _timeout_call(client.get_orders, timeout=10, default=[])
+            if orders:
+                info(f"Open orders: {len(orders)}")
+            # TODO: Check resolved positions via Gamma API and update trade outcomes
+        except Exception as e:
+            logging.debug(f"Monitor error: {e}")
+        time.sleep(60)
 
 # =============================================================================
 # CLI
 # =============================================================================
 
+def cmd_status(context: ExecutionContext):
+    print(f"\n{C.BOLD}📊 Weather Bot Status{C.RESET}")
+    print("═" * 45)
+    print(f"Mode: {context.mode.value.upper()}")
+    if context.mode is ExecutionMode.LIVE:
+        print(f"Wallet: {WALLET}")
+    print(credential_status_line(PK=PK, WALLET=WALLET))
+    stats = get_learning_stats()
+    print(f"\nLearning model:")
+    print(f"  Trades: {stats['trades']} | Win rate: {stats['winrate']}")
+    print(f"  Total PnL: {stats['pnl']} | Confidence: {stats['confidence']}")
+    print(f"  Kelly adjustment: {stats['kelly_adj']} | EV floor: {stats['ev_floor']}")
+
+    # CLOB status is live-only. Research and paper status are wallet-free.
+    if context.mode is not ExecutionMode.LIVE:
+        print("\nCLOB: not initialized outside live mode")
+        return
+    try:
+        client = get_clob()
+        client.assert_level_1_auth()
+        orders = _timeout_call(client.get_orders, timeout=10, default=[])
+        print(f"\nOpen CLOB orders: {len(orders) if orders else 0}")
+    except Exception as e:
+        print(f"\nCLOB status: unavailable ({e})")
+
+def cmd_cancel(context: ExecutionContext, market_id: str | None = None):
+    """Cancel open orders. Requires confirmed live mode before touching the client."""
+    def cancel_live() -> None:
+        client = get_clob()
+        if market_id:
+            # Fetch orders and cancel matching market
+            orders = _timeout_call(client.get_orders, timeout=10, default=[])
+            if not orders:
+                info("No open orders")
+                return
+            cancelled = 0
+            for order in orders:
+                if order.get("market") == market_id or order.get("asset_id") == market_id:
+                    oid = order.get("id") or order.get("orderID")
+                    if oid:
+                        _timeout_call(client.cancel, args=(oid,), timeout=10)
+                        cancelled += 1
+            ok(f"Cancelled {cancelled} orders for market {market_id}")
+        else:
+            _timeout_call(client.cancel_all, timeout=10)
+            ok("All open orders cancelled")
+
+    run_live_operation(context, cancel_live)
+
+def run_loop(context: ExecutionContext):
+    print(f"\n{C.BOLD}🚀 Weather Bot v3 starting [{context.mode.value.upper()}]{C.RESET}")
+    if context.mode is ExecutionMode.LIVE:
+        print(f"   Wallet: {WALLET}")
+        print("   Mode: LIVE TRADING")
+        if not ensure_approvals():
+            warn("Some approvals may be missing — trades could fail")
+    elif context.mode is ExecutionMode.PAPER:
+        print("   Mode: PAPER — wallet, approvals, and live orders are disabled")
+    else:
+        print("   Mode: RESEARCH — wallet, approvals, and financial state are disabled")
+
+    monitor = None
+    if context.mode is ExecutionMode.LIVE:
+        monitor = threading.Thread(target=monitor_positions, daemon=True)
+        monitor.start()
+
+    try:
+        while True:
+            scan(context)
+            info(f"Next scan in {SCAN_INTERVAL // 60} minutes")
+            time.sleep(SCAN_INTERVAL)
+    except KeyboardInterrupt:
+        print("\nBot stopped")
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Weather-market bot")
+    parser = argparse.ArgumentParser(
+        description="Weather-market research, paper, and explicitly gated live runner",
+    )
     parser.add_argument(
         "command",
         nargs="?",
-        default="scan",
-        choices=("scan", "run", "status", "cancel"),
+        choices=("run", "scan", "status", "cancel"),
+        default="status",
     )
-    parser.add_argument("--mode", choices=("research", "paper", "live"))
+    parser.add_argument(
+        "--mode",
+        choices=tuple(mode.value for mode in ExecutionMode),
+        help="required execution mode; must agree with config.json",
+    )
     parser.add_argument(
         "--confirm-live",
         action="store_true",
-        help="required in addition to config mode=live and --mode live",
+        help="second independent gate required for live execution",
     )
-    parser.add_argument("--market", help="market identifier for cancellation")
+    parser.add_argument("--market", help="market ID for targeted cancellation")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    command = args.command
+    if command == "cancel" and args.market == "all":
+        args.market = None
+
     try:
         context = resolve_execution_context(
-            configured_mode=_cfg.get("mode"),
-            cli_mode=args.mode,
+            config_mode=_cfg.get("mode"),
+            requested_mode=args.mode,
             confirm_live=args.confirm_live,
+            private_key=PK,
+            wallet=WALLET,
         )
-    except ModeConfigurationError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-
-    print(f"Execution mode: {context.label}")
-    if context.mode is ExecutionMode.LIVE:
-        print(credential_status_line())
-        if not PK or not WALLET:
-            print("ERROR: live mode requires PK and WALLET in .env", file=sys.stderr)
-            return 2
-
-    if args.command == "run":
-        run_loop(context)
-    elif args.command == "scan":
-        scan_and_trade(context)
-    elif args.command == "status":
-        show_status(context)
-    elif args.command == "cancel":
-        try:
-            require_live(context, operation="order cancellation")
-        except LiveExecutionBlocked as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 2
-        if args.market:
-            print(f"Cancelling orders for market: {args.market}")
+        if command == "run":
+            run_loop(context)
+        elif command == "scan":
+            scan(context)
+        elif command == "status":
+            cmd_status(context)
+        elif command == "cancel":
+            cmd_cancel(context, args.market)
         else:
-            count = cancel_all_orders()
-            print(f"Cancelled {count} orders")
+            parser.error(f"unknown command: {command}")
+    except (ModeConfigurationError, LiveExecutionBlocked) as exc:
+        print(f"Configuration error: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
