@@ -33,11 +33,14 @@ def test_accepted_quote_reconciles_depth_costs_edge_and_metadata() -> None:
     assert result.accepted
     quote = result.quote
     assert quote is not None
-    assert quote.quote.total_cost == Decimal("2")
-    assert quote.platform_fee == Decimal("0.02")
+    assert quote.book_budget_limit < quote.requested_budget
+    assert quote.quote.total_cost == quote.book_budget_limit
+    assert quote.executable_budget == quote.quote.total_cost
+    assert quote.platform_fee == quote.quote.total_cost * Decimal("0.01")
     assert quote.transaction_cost == Decimal("0.01")
-    assert quote.safety_margin == Decimal("0.04")
-    assert quote.total_all_in_cost == Decimal("2.07")
+    assert quote.safety_margin == quote.quote.total_cost * Decimal("0.02")
+    assert quote.total_all_in_cost <= quote.requested_budget
+    assert quote.requested_budget - quote.total_all_in_cost < Decimal("1e-24")
     assert quote.all_in_average_price == quote.total_all_in_cost / quote.quote.shares
     assert quote.gross_expected_payout == Decimal("0.65") * quote.quote.shares
     assert quote.expected_profit == quote.gross_expected_payout - quote.total_all_in_cost
@@ -50,7 +53,10 @@ def test_accepted_quote_reconciles_depth_costs_edge_and_metadata() -> None:
     assert quote.freshness["balance"].age_seconds == 2
 
     metadata = quote.metadata()
-    assert metadata["quote_total_all_in_cost"] == "2.0700"
+    metadata_all_in = Decimal(str(metadata["quote_total_all_in_cost"]))
+    assert metadata_all_in <= quote.requested_budget
+    assert quote.requested_budget - metadata_all_in < Decimal("1e-24")
+    assert Decimal(str(metadata["quote_book_budget_limit"])) == quote.book_budget_limit
     assert metadata["quote_depth_reduced"] is False
     assert metadata["forecast_freshness_passed"] is True
     assert metadata["event_freshness_passed"] is True

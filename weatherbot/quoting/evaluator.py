@@ -200,17 +200,32 @@ def evaluate_executable_buy(
             checks,
         )
 
+    variable_cost_multiplier = (
+        Decimal("1") + cost_policy.platform_fee_rate + cost_policy.safety_margin_rate
+    )
+    remaining_after_fixed_cost = budget - cost_policy.transaction_cost
+    if remaining_after_fixed_cost <= 0:
+        return _reject(
+            evaluated,
+            QuoteRejectionReason.BELOW_MINIMUM_ORDER,
+            "approved budget does not cover the fixed transaction-cost reserve",
+            checks,
+        )
+    book_budget_limit = remaining_after_fixed_cost / variable_cost_multiplier
     available_notional = sum(
         (level.price * level.size for level in order_book.asks),
         start=Decimal("0"),
     )
-    executable_budget = budget
-    if available_notional < budget:
+    executable_budget = book_budget_limit
+    if available_notional < book_budget_limit:
         if cost_policy.depth_policy is DepthPolicy.REJECT:
             return _reject(
                 evaluated,
                 QuoteRejectionReason.INSUFFICIENT_DEPTH,
-                (f"requested budget {budget} exceeds displayed ask notional {available_notional}"),
+                (
+                    f"book budget {book_budget_limit} exceeds displayed ask notional "
+                    f"{available_notional}"
+                ),
                 checks,
             )
         executable_budget = available_notional
@@ -248,6 +263,13 @@ def evaluate_executable_buy(
     total_all_in_cost = (
         quote.total_cost + platform_fee + cost_policy.transaction_cost + safety_margin
     )
+    if total_all_in_cost > budget:
+        return _reject(
+            evaluated,
+            QuoteRejectionReason.INVALID_INPUT,
+            "calculated all-in cost exceeds the approved budget",
+            checks,
+        )
     all_in_average_price = total_all_in_cost / quote.shares
     if all_in_average_price >= cost_policy.maximum_all_in_price:
         return _reject(
@@ -295,7 +317,8 @@ def evaluate_executable_buy(
         quote=quote,
         model_probability=model_probability,
         requested_budget=budget,
-        executable_budget=executable_budget,
+        book_budget_limit=book_budget_limit,
+        executable_budget=quote.total_cost,
         platform_fee=platform_fee,
         transaction_cost=cost_policy.transaction_cost,
         safety_margin=safety_margin,
@@ -307,7 +330,7 @@ def evaluate_executable_buy(
         probability_edge=probability_edge,
         average_slippage=average_slippage,
         worst_slippage=worst_slippage,
-        depth_reduced=executable_budget < budget,
+        depth_reduced=quote.total_cost < book_budget_limit,
         evaluated_at_utc=evaluated,
         event_id=event.event_id,
         freshness=MappingProxyType(checks),

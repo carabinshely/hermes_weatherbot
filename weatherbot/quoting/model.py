@@ -216,6 +216,7 @@ class ValidatedExecutableQuote:
     quote: ExecutableQuote
     model_probability: Decimal
     requested_budget: Decimal
+    book_budget_limit: Decimal
     executable_budget: Decimal
     platform_fee: Decimal
     transaction_cost: Decimal
@@ -238,9 +239,16 @@ class ValidatedExecutableQuote:
         if probability <= 0 or probability >= 1:
             raise QuoteValidationError("model probability must be between zero and one")
         requested = as_decimal(self.requested_budget, label="requested budget")
+        book_limit = as_decimal(self.book_budget_limit, label="book budget limit")
         executable = as_decimal(self.executable_budget, label="executable budget")
-        if requested <= 0 or executable <= 0 or executable > requested:
-            raise QuoteValidationError("executable budget must be positive and within request")
+        if requested <= 0:
+            raise QuoteValidationError("requested budget must be positive")
+        if book_limit <= 0 or book_limit > requested:
+            raise QuoteValidationError("book budget limit must be positive and within request")
+        if executable <= 0 or executable > book_limit:
+            raise QuoteValidationError(
+                "executable budget must be positive and within the book budget limit"
+            )
         values = {
             "platform_fee": self.platform_fee,
             "transaction_cost": self.transaction_cost,
@@ -264,8 +272,12 @@ class ValidatedExecutableQuote:
         event_id = self.event_id.strip()
         if not event_id:
             raise QuoteValidationError("quote event id must not be blank")
+        if executable != self.quote.total_cost:
+            raise QuoteValidationError("executable budget must equal order-book cost")
         if normalized["total_all_in_cost"] < self.quote.total_cost:
             raise QuoteValidationError("all-in cost cannot be below order-book cost")
+        if normalized["total_all_in_cost"] > requested:
+            raise QuoteValidationError("all-in cost exceeds the approved budget")
         if normalized["all_in_average_price"] != (
             normalized["total_all_in_cost"] / self.quote.shares
         ):
@@ -280,13 +292,14 @@ class ValidatedExecutableQuote:
             raise QuoteValidationError("expected return does not reconcile")
         if edge != probability - normalized["all_in_average_price"]:
             raise QuoteValidationError("probability edge does not reconcile")
-        if self.depth_reduced != (executable < requested):
-            raise QuoteValidationError("depth reduction flag does not match executable budget")
+        if self.depth_reduced != (executable < book_limit):
+            raise QuoteValidationError("depth reduction flag does not match the book budget")
         freshness = MappingProxyType(dict(self.freshness))
         if any(not check.fresh for check in freshness.values()):
             raise QuoteValidationError("validated quote contains a stale freshness check")
         object.__setattr__(self, "model_probability", probability)
         object.__setattr__(self, "requested_budget", requested)
+        object.__setattr__(self, "book_budget_limit", book_limit)
         object.__setattr__(self, "executable_budget", executable)
         for label, value in normalized.items():
             object.__setattr__(self, label, value)
@@ -323,6 +336,7 @@ class ValidatedExecutableQuote:
             "quote_token_id": str(self.token_id),
             "quote_book_hash": self.quote.book_hash,
             "quote_requested_budget": format(self.requested_budget, "f"),
+            "quote_book_budget_limit": format(self.book_budget_limit, "f"),
             "quote_executable_budget": format(self.executable_budget, "f"),
             "quote_depth_reduced": self.depth_reduced,
             "quote_shares": format(self.quote.shares, "f"),

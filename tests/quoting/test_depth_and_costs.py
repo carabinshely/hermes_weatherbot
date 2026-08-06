@@ -31,7 +31,8 @@ def test_thin_book_reject_policy_is_deterministic() -> None:
         cost_policy=cost_policy(depth_policy=DepthPolicy.REJECT),
     )
     assert result.rejection_reason is QuoteRejectionReason.INSUFFICIENT_DEPTH
-    assert result.detail == ("requested budget 6 exceeds displayed ask notional 5.40")
+    assert result.detail is not None
+    assert "displayed ask notional 5.40" in result.detail
 
 
 def test_thin_book_reduce_policy_consumes_only_displayed_depth() -> None:
@@ -52,9 +53,11 @@ def test_thin_book_reduce_policy_consumes_only_displayed_depth() -> None:
     quote = result.quote
     assert quote is not None
     assert quote.requested_budget == Decimal("6")
+    assert quote.book_budget_limit > Decimal("5.40")
     assert quote.executable_budget == Decimal("5.40")
     assert quote.quote.total_cost == Decimal("5.40")
     assert quote.quote.shares == Decimal("13")
+    assert quote.total_all_in_cost < quote.requested_budget
     assert quote.depth_reduced
 
 
