@@ -51,4 +51,29 @@ content = content.replace(
     )
 ''',
 )
+content = content.replace(
+    '''def event_snapshot(*, retrieved_at: datetime | None = None) -> MarketEventSnapshot:
+    return MarketEventSnapshot(
+        event_id="event-chicago-2026-08-06",
+        retrieved_at_utc=retrieved_at or NOW - timedelta(seconds=10),
+        source_updated_at_utc=NOW - timedelta(minutes=2),
+    )
+''',
+    '''def event_snapshot(*, retrieved_at: datetime | None = None) -> MarketEventSnapshot:
+    retrieved = retrieved_at or NOW - timedelta(seconds=10)
+    return MarketEventSnapshot(
+        event_id="event-chicago-2026-08-06",
+        retrieved_at_utc=retrieved,
+        source_updated_at_utc=retrieved - timedelta(minutes=2),
+    )
+''',
+)
 helpers.write_text(content, encoding="utf-8")
+
+test = Path("tests/quoting/test_evaluator.py")
+content = test.read_text(encoding="utf-8")
+content = content.replace(
+    'assert metadata["quote_total_all_in_cost"] == "2.07"',
+    'assert metadata["quote_total_all_in_cost"] == "2.0700"',
+)
+test.write_text(content, encoding="utf-8")
