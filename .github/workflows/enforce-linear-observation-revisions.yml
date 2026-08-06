@@ -19,7 +19,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply revision-chain invariant
-        run: python tools/enforce_linear_observation_revisions.py
+        run: |
+          python tools/enforce_linear_observation_revisions.py
+          python tools/refine_linear_observation_error.py
 
       - name: Validate full repository
         run: |
