@@ -11,6 +11,7 @@ Usage:
     python bot_v3.py run          # Full trading loop (scan + monitor)
     python bot_v3.py scan         # One-shot scan + trade signals
     python bot_v3.py status       # Show open positions + balance
+    python bot_v3.py resolve      # Resolve and settle pending ledger positions
     python bot_v3.py cancel       # Cancel all open orders
     python bot_v3.py cancel --market <market_id>  # Cancel orders for a market
 """
@@ -38,6 +39,7 @@ from execution_modes import (
     run_live_operation,
 )
 from runtime_security import credential_status_line
+from weatherbot.resolution import run_resolution_cycle as resolve_ledger_positions
 from weatherbot.markets import (
     BinaryOutcome,
     GammaMarketError,
@@ -80,6 +82,10 @@ MAX_HOURS = _cfg.get("max_hours", 72.0)
 KELLY_FRAC = _cfg.get("kelly_fraction", 0.25)
 MAX_SLIPPAGE = _cfg.get("max_slippage", 0.03)
 SCAN_INTERVAL = _cfg.get("scan_interval", 3600)
+_ledger_config_path = Path(_cfg.get("ledger_path", "state/ledger.sqlite3"))
+LEDGER_PATH = (
+    _ledger_config_path if _ledger_config_path.is_absolute() else BOT_DIR / _ledger_config_path
+)
 
 # --- CLOB ---
 CLOB_HOST = "https://clob.polymarket.com"
@@ -1528,6 +1534,21 @@ def show_status(context: ExecutionContext):
 MONITOR_INTERVAL = 600  # 10 minutes between monitor cycles
 
 
+def run_resolution_monitor_cycle():
+    """Resolve durable-ledger positions without wallet or trading-client access."""
+    report = resolve_ledger_positions(LEDGER_PATH)
+    if report.checked == 0:
+        print(f"  Resolution: no pending ledger positions ({LEDGER_PATH})")
+        return report
+    print(
+        f"  Resolution: checked={report.checked} resolved={report.resolved} "
+        f"voided={report.voided} settled={report.settled_positions}"
+    )
+    for item in report.items:
+        print(f"    {item.market_id}: {item.status.value} — {item.reason}")
+    return report
+
+
 def run_loop(context: ExecutionContext):
     print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
     print("=" * 60)
@@ -1567,6 +1588,10 @@ def run_loop(context: ExecutionContext):
                 continue
         else:
             print(f"[{now_str}] Monitoring...")
+            try:
+                run_resolution_monitor_cycle()
+            except Exception as exc:
+                warn(f"Resolution monitor error: {exc}")
             time.sleep(MONITOR_INTERVAL)
 
 
@@ -1581,7 +1606,7 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="scan",
-        choices=("scan", "run", "status", "cancel"),
+        choices=("scan", "run", "status", "resolve", "cancel"),
     )
     parser.add_argument("--mode", choices=("research", "paper", "live"))
     parser.add_argument(
@@ -1619,6 +1644,8 @@ def main(argv: list[str] | None = None) -> int:
         scan_and_trade(context)
     elif args.command == "status":
         show_status(context)
+    elif args.command == "resolve":
+        run_resolution_monitor_cycle()
     elif args.command == "cancel":
         try:
             require_live(context, operation="order cancellation")

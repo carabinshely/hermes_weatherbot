@@ -11,6 +11,7 @@ from weatherbot.domain.events import (
     AccountOpened,
     FillReceived,
     LedgerEvent,
+    MarketResolutionEvidenceRecorded,
     MarketResolved,
     OrderAcknowledged,
     OrderCancelled,
@@ -19,6 +20,8 @@ from weatherbot.domain.events import (
     OrderRejected,
     OrderSubmitted,
     PositionSettled,
+    WeatherObservationRecorded,
+    fingerprint,
 )
 from weatherbot.domain.model import (
     EventId,
@@ -41,8 +44,16 @@ from weatherbot.domain.model import (
     build_order_intent_id,
 )
 from weatherbot.domain.money import Money, as_decimal, money_from_unit_price
+from weatherbot.domain.observation import (
+    ObservationEvidenceStatus,
+    WeatherObservationEvidence,
+)
 from weatherbot.domain.ports import ExecutionAdapter
 from weatherbot.domain.reducers import apply_event, replay
+from weatherbot.domain.resolution import (
+    MarketResolutionEvidence,
+    ResolutionEvidenceStatus,
+)
 from weatherbot.domain.state import LedgerState, PositionKey, position_key
 
 __all__ = [
@@ -60,8 +71,11 @@ __all__ = [
     "LedgerState",
     "MarketId",
     "MarketResolution",
+    "MarketResolutionEvidence",
+    "MarketResolutionEvidenceRecorded",
     "MarketResolved",
     "Money",
+    "ObservationEvidenceStatus",
     "OrderAcknowledged",
     "OrderAggregate",
     "OrderCancelled",
@@ -79,13 +93,17 @@ __all__ = [
     "PositionSettled",
     "PositionStatus",
     "PreTradeDecision",
+    "ResolutionEvidenceStatus",
     "RiskDecisionStatus",
     "Side",
     "Signal",
+    "WeatherObservationEvidence",
+    "WeatherObservationRecorded",
     "allowed_transitions",
     "apply_event",
     "as_decimal",
     "build_order_intent_id",
+    "fingerprint",
     "money_from_unit_price",
     "position_key",
     "replay",

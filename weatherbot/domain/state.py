@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
+from itertools import pairwise
 from types import MappingProxyType
 from typing import Self
 
@@ -27,6 +28,11 @@ from weatherbot.domain.money import (
     money_from_unit_price,
     require_nonnegative,
 )
+from weatherbot.domain.observation import (
+    ObservationEvidenceStatus,
+    WeatherObservationEvidence,
+)
+from weatherbot.domain.resolution import MarketResolutionEvidence
 
 type PositionKey = tuple[MarketId, OutcomeId]
 
@@ -51,6 +57,14 @@ def _empty_resolutions() -> Mapping[MarketId, MarketResolution]:
     return {}
 
 
+def _empty_resolution_evidence() -> Mapping[MarketId, MarketResolutionEvidence]:
+    return {}
+
+
+def _empty_weather_observations() -> Mapping[MarketId, tuple[WeatherObservationEvidence, ...]]:
+    return {}
+
+
 def _empty_event_fingerprints() -> Mapping[EventId, str]:
     return {}
 
@@ -66,6 +80,12 @@ class LedgerState:
     orders: Mapping[OrderIntentId, OrderAggregate] = field(default_factory=_empty_orders)
     positions: Mapping[PositionKey, Position] = field(default_factory=_empty_positions)
     resolutions: Mapping[MarketId, MarketResolution] = field(default_factory=_empty_resolutions)
+    resolution_evidence: Mapping[MarketId, MarketResolutionEvidence] = field(
+        default_factory=_empty_resolution_evidence
+    )
+    weather_observations: Mapping[MarketId, tuple[WeatherObservationEvidence, ...]] = field(
+        default_factory=_empty_weather_observations
+    )
     event_fingerprints: Mapping[EventId, str] = field(default_factory=_empty_event_fingerprints)
 
     def __post_init__(self) -> None:
@@ -76,6 +96,21 @@ class LedgerState:
         object.__setattr__(self, "orders", _freeze_mapping(self.orders))
         object.__setattr__(self, "positions", _freeze_mapping(self.positions))
         object.__setattr__(self, "resolutions", _freeze_mapping(self.resolutions))
+        object.__setattr__(
+            self,
+            "resolution_evidence",
+            _freeze_mapping(self.resolution_evidence),
+        )
+        object.__setattr__(
+            self,
+            "weather_observations",
+            _freeze_mapping(
+                {
+                    market_id: tuple(observations)
+                    for market_id, observations in self.weather_observations.items()
+                }
+            ),
+        )
         object.__setattr__(
             self,
             "event_fingerprints",
@@ -191,11 +226,61 @@ class LedgerState:
             if reserved_quantity and key not in self.positions:
                 raise InvariantViolation("sell order reserves a missing position")
 
+        for market_id, evidence in self.resolution_evidence.items():
+            if market_id != evidence.market_id:
+                raise InvariantViolation("resolution evidence map key does not match market")
+            resolution = self.resolutions.get(market_id)
+            if resolution is not None and resolution.payouts != evidence.payouts:
+                raise InvariantViolation(
+                    "recorded resolution differs from its authoritative evidence"
+                )
+
+        for market_id, observations in self.weather_observations.items():
+            hashes: set[str] = set()
+            terminal_history: list[WeatherObservationEvidence] = []
+            for observation in observations:
+                if observation.market_id != market_id:
+                    raise InvariantViolation("weather observation map key does not match market")
+                if observation.payload_hash in hashes:
+                    raise InvariantViolation(
+                        "weather observation history contains a duplicate payload hash"
+                    )
+                if (
+                    observation.supersedes_payload_hash is not None
+                    and observation.supersedes_payload_hash not in hashes
+                ):
+                    raise InvariantViolation(
+                        "weather observation revision supersedes an unknown prior payload"
+                    )
+                hashes.add(observation.payload_hash)
+                if observation.learning_eligible:
+                    terminal_history.append(observation)
+
+            if terminal_history:
+                root = terminal_history[0]
+                if (
+                    root.status is not ObservationEvidenceStatus.FINAL
+                    or root.supersedes_payload_hash is not None
+                ):
+                    raise InvariantViolation(
+                        "weather observation terminal history must begin with one final root"
+                    )
+                for previous, current in pairwise(terminal_history):
+                    if (
+                        current.status is not ObservationEvidenceStatus.REVISED
+                        or current.supersedes_payload_hash != previous.payload_hash
+                    ):
+                        raise InvariantViolation(
+                            "weather observation terminal revisions must form one linear chain"
+                        )
+
         if not self.opened and (
             not self.cash.is_zero
             or not self.reserved_cash.is_zero
             or self.orders
             or self.positions
             or self.resolutions
+            or self.resolution_evidence
+            or self.weather_observations
         ):
             raise InvariantViolation("an unopened ledger must have no financial state")

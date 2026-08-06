@@ -15,6 +15,7 @@ from weatherbot.domain.events import (
     AccountOpened,
     FillReceived,
     LedgerEvent,
+    MarketResolutionEvidenceRecorded,
     MarketResolved,
     OrderAcknowledged,
     OrderCancelled,
@@ -23,6 +24,7 @@ from weatherbot.domain.events import (
     OrderRejected,
     OrderSubmitted,
     PositionSettled,
+    WeatherObservationRecorded,
     fingerprint,
 )
 from weatherbot.domain.model import (
@@ -35,6 +37,7 @@ from weatherbot.domain.model import (
     require_transition,
 )
 from weatherbot.domain.money import Money, as_decimal, money_from_unit_price
+from weatherbot.domain.observation import ObservationEvidenceStatus
 from weatherbot.domain.state import LedgerState, PositionKey, position_key
 
 
@@ -337,7 +340,89 @@ def _apply_fill(state: LedgerState, event: FillReceived) -> LedgerState:
     return _replace_order(state, order)
 
 
+def _apply_weather_observation(
+    state: LedgerState,
+    event: WeatherObservationRecorded,
+) -> LedgerState:
+    _require_opened(state)
+    evidence = event.evidence
+    existing = state.weather_observations.get(evidence.market_id, ())
+    for prior in existing:
+        if prior.payload_hash == evidence.payload_hash:
+            if prior == evidence:
+                return state
+            raise DuplicateEventConflict(
+                "weather observation payload hash was reused with different evidence"
+            )
+
+    terminal_history = tuple(prior for prior in existing if prior.learning_eligible)
+    if evidence.status is ObservationEvidenceStatus.FINAL:
+        if terminal_history:
+            raise DuplicateEventConflict("weather observation history already has a final root")
+    elif evidence.status is ObservationEvidenceStatus.REVISED:
+        superseded = next(
+            (prior for prior in existing if prior.payload_hash == evidence.supersedes_payload_hash),
+            None,
+        )
+        if superseded is None:
+            raise DuplicateEventConflict(
+                "weather observation revision supersedes an unknown payload"
+            )
+        if not terminal_history:
+            raise DuplicateEventConflict(
+                "weather observation revision requires an existing final root"
+            )
+        latest = terminal_history[-1]
+        if evidence.supersedes_payload_hash != latest.payload_hash:
+            raise DuplicateEventConflict(
+                "weather observation revision must supersede the latest terminal payload"
+            )
+        identity_fields = (
+            "source_name",
+            "source_url",
+            "station_id",
+            "measurement_basis",
+            "market_date",
+            "market_timezone",
+            "unit",
+        )
+        if any(getattr(latest, field) != getattr(evidence, field) for field in identity_fields):
+            raise DuplicateEventConflict(
+                "weather observation revision changed source or measurement identity"
+            )
+
+    observations = dict(state.weather_observations)
+    observations[evidence.market_id] = (*existing, evidence)
+    return replace(state, weather_observations=observations)
+
+
+def _apply_resolution_evidence(
+    state: LedgerState,
+    event: MarketResolutionEvidenceRecorded,
+) -> LedgerState:
+    _require_opened(state)
+    market_id = event.evidence.market_id
+    existing = state.resolution_evidence.get(market_id)
+    if existing is not None:
+        if existing == event.evidence:
+            return state
+        raise DuplicateEventConflict(
+            "authoritative market resolution evidence changed after recording"
+        )
+    resolution = state.resolutions.get(market_id)
+    if resolution is not None and resolution.payouts != event.evidence.payouts:
+        raise DuplicateEventConflict(
+            "authoritative evidence conflicts with the recorded payout vector"
+        )
+    evidence = dict(state.resolution_evidence)
+    evidence[market_id] = event.evidence
+    return replace(state, resolution_evidence=evidence)
+
+
 def _apply_resolution(state: LedgerState, event: MarketResolved) -> LedgerState:
+    evidence = state.resolution_evidence.get(event.resolution.market_id)
+    if evidence is not None and evidence.payouts != event.resolution.payouts:
+        raise DuplicateEventConflict("market resolution payout differs from authoritative evidence")
     existing = state.resolutions.get(event.resolution.market_id)
     if existing is not None:
         if existing == event.resolution:
@@ -417,6 +502,10 @@ def apply_event(state: LedgerState, event: LedgerEvent) -> LedgerState:
         )
     elif isinstance(event, OrderOutcomeUnknown):
         next_state = _apply_unknown(state, event)
+    elif isinstance(event, WeatherObservationRecorded):
+        next_state = _apply_weather_observation(state, event)
+    elif isinstance(event, MarketResolutionEvidenceRecorded):
+        next_state = _apply_resolution_evidence(state, event)
     elif isinstance(event, MarketResolved):
         next_state = _apply_resolution(state, event)
     else:
