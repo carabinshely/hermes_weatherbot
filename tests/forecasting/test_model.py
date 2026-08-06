@@ -98,9 +98,9 @@ def test_daily_valid_window_respects_dst_day_length() -> None:
     timezone = ZoneInfo("America/New_York")
     market_date = date(2026, 11, 1)
     valid_from = datetime.combine(market_date, time.min, timezone).astimezone(UTC)
-    valid_until = datetime.combine(
-        market_date + timedelta(days=1), time.min, timezone
-    ).astimezone(UTC)
+    valid_until = datetime.combine(market_date + timedelta(days=1), time.min, timezone).astimezone(
+        UTC
+    )
 
     daily = DailyHighForecast(
         temperature_f=Decimal("60"),

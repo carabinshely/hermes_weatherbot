@@ -39,6 +39,12 @@ from execution_modes import (
     run_live_operation,
 )
 from runtime_security import credential_status_line
+from weatherbot.forecasting import (
+    WeatherInputError,
+    WeatherInputSnapshot,
+    parse_aviation_weather_metar,
+    parse_open_meteo_daily_highs,
+)
 from weatherbot.resolution import run_resolution_cycle as resolve_ledger_positions
 from weatherbot.markets import (
     BinaryOutcome,
@@ -860,71 +866,84 @@ MONTHS = [
 
 
 def get_ecmwf(city_slug, dates):
-    """ECMWF via Open-Meteo. Returns dict {date: temp_f}."""
+    """ECMWF daily-high forecasts via Open-Meteo, with point-in-time provenance."""
     loc = LOCATIONS[city_slug]
+    market_timezone = TIMEZONES[city_slug]
     url = (
         f"https://api.open-meteo.com/v1/forecast"
         f"?latitude={loc['lat']}&longitude={loc['lon']}"
         f"&daily=temperature_2m_max&temperature_unit=fahrenheit"
-        f"&forecast_days=7&timezone={TIMEZONES.get(city_slug, 'UTC')}"
+        f"&forecast_days=7&timezone={market_timezone}"
         f"&models=ecmwf_ifs025&bias_correction=true"
     )
-    result = {}
+    try:
+        requested_dates = [datetime.strptime(value, "%Y-%m-%d").date() for value in dates]
+    except ValueError as exc:
+        raise WeatherInputError("forecast dates must use YYYY-MM-DD") from exc
+
     for attempt in range(3):
         try:
-            data = requests.get(url, timeout=(5, 10)).json()
-            if "error" not in data:
-                for date, temp in zip(data["daily"]["time"], data["daily"]["temperature_2m_max"]):
-                    if date in dates and temp is not None:
-                        result[date] = round(temp)
-            break
-        except Exception as e:
+            response = requests.get(url, timeout=(5, 10))
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise WeatherInputError("Open-Meteo response must be an object")
+            retrieved_at = datetime.now(timezone.utc)
+            forecasts = parse_open_meteo_daily_highs(
+                payload,
+                requested_dates=requested_dates,
+                market_timezone=market_timezone,
+                retrieved_at_utc=retrieved_at,
+            )
+            return {market_date.isoformat(): forecast for market_date, forecast in forecasts.items()}
+        except (requests.RequestException, ValueError, WeatherInputError) as exc:
             if attempt < 2:
                 time.sleep(2)
             else:
-                warn(f"ECMWF error for {city_slug}: {e}")
-    return result
+                warn(f"ECMWF error for {city_slug}: {exc}")
+    return {}
 
 
 def get_metar(city_slug):
-    """Current observed temperature from METAR station. D+0 only."""
+    """Latest instantaneous METAR observation; never a daily-high forecast."""
     loc = LOCATIONS[city_slug]
     try:
         url = f"https://aviationweather.gov/api/data/metar?ids={loc['station']}&format=json"
-        data = requests.get(url, timeout=(5, 8)).json()
-        if data and isinstance(data, list):
-            temp_c = data[0].get("temp")
-            if temp_c is not None:
-                return round(float(temp_c) * 9 / 5 + 32)
-    except Exception as e:
-        warn(f"METAR error for {city_slug}: {e}")
-    return None
+        response = requests.get(url, timeout=(5, 8))
+        response.raise_for_status()
+        payload = response.json()
+        return parse_aviation_weather_metar(
+            payload,
+            station_id=loc["station"],
+            market_timezone=TIMEZONES[city_slug],
+            retrieved_at_utc=datetime.now(timezone.utc),
+        )
+    except (requests.RequestException, ValueError, WeatherInputError) as exc:
+        warn(f"METAR error for {city_slug}: {exc}")
+        return None
 
 
 def get_forecast_snapshot(city_slug, dates):
-    """Get forecasts qualified by UTC retrieval time, IANA timezone, and local date."""
-    retrieved_at = datetime.now(timezone.utc)
+    """Keep daily-high forecasts and current observations as separate typed data."""
+    snapshot_started_at = datetime.now(timezone.utc)
     market_timezone = TIMEZONES[city_slug]
     calendar = MarketCalendar(market_timezone)
-    ecmwf = get_ecmwf(city_slug, dates)
-    today = calendar.local_date(retrieved_at).isoformat()
+    forecasts = get_ecmwf(city_slug, dates)
+    today = calendar.local_date(snapshot_started_at)
+    observation = get_metar(city_slug) if today.isoformat() in dates else None
+
     result = {}
-    for market_date in dates:
-        best = ecmwf.get(market_date)
-        best_source = "ecmwf"
-        if market_date == today:
-            metar = get_metar(city_slug)
-            if metar is not None:
-                best = metar
-                best_source = "metar"
-        if best is not None:
-            result[market_date] = {
-                "temp": best,
-                "source": best_source,
-                "market_date": market_date,
-                "market_timezone": market_timezone,
-                "retrieved_at_utc": retrieved_at.isoformat(),
-            }
+    for market_date, forecast in forecasts.items():
+        matching_observation = (
+            observation
+            if observation is not None and observation.market_date == forecast.market_date
+            else None
+        )
+        result[market_date] = WeatherInputSnapshot(
+            forecast=forecast,
+            observation=matching_observation,
+            assembled_at_utc=datetime.now(timezone.utc),
+        )
     return result
 
 
@@ -1177,19 +1196,17 @@ def scan_and_trade(context: ExecutionContext):
             if hours < MIN_HOURS or hours > MAX_HOURS:
                 continue
 
-            forecastsnap = forecasts.get(market_date)
-            if not forecastsnap:
+            weathersnap = forecasts.get(market_date)
+            if weathersnap is None:
                 continue
             if (
-                forecastsnap.get("market_date") != market_date
-                or forecastsnap.get("market_timezone") != market_timezone
+                weathersnap.forecast.market_date.isoformat() != market_date
+                or weathersnap.forecast.market_timezone != market_timezone
             ):
                 errors.append(f"{loc['name']} {horizon}: unqualified forecast date")
                 continue
-            forecast_temp = forecastsnap.get("temp")
-            best_source = forecastsnap.get("source", "ecmwf")
-            if forecast_temp is None:
-                continue
+            forecast_temp = float(weathersnap.signal_temperature_f)
+            best_source = weathersnap.forecast.source.value
             if forecast_temp < -40 or forecast_temp > 130:
                 warn(f"  ⚠️  Invalid forecast temp {forecast_temp}°F — skipping city")
                 break
@@ -1254,6 +1271,10 @@ def scan_and_trade(context: ExecutionContext):
 
             cost = float(quote.total_cost)
             shares = float(quote.shares)
+            signal_generated_at = datetime.now(timezone.utc)
+            weather_metadata = weathersnap.signal_metadata(
+                generated_at_utc=signal_generated_at,
+            )
             best_signal = {
                 "market_id": str(selection.market_id),
                 "condition_id": str(selection.condition_id),
@@ -1285,10 +1306,10 @@ def scan_and_trade(context: ExecutionContext):
                 "kelly": round(adjusted_kelly, 4),
                 "forecast_temp": forecast_temp,
                 "forecast_src": best_source,
-                "forecast_retrieved_at_utc": forecastsnap["retrieved_at_utc"],
+                **weather_metadata,
                 "market_date": market_date,
                 "market_timezone": market_timezone,
-                "signal_generated_at_utc": datetime.now(timezone.utc).isoformat(),
+                "signal_generated_at_utc": signal_generated_at.isoformat(),
                 "order_book_observed_at_utc": quote.observed_at.isoformat(),
                 "order_book_hash": quote.book_hash,
                 "market_yes_price": (
@@ -1322,9 +1343,16 @@ def scan_and_trade(context: ExecutionContext):
             )
             print(f"\n  {C.BOLD}📍 {loc['name']} {horizon} — {market_date}{C.RESET}")
             print(
-                f"  {C.CYAN}  Forecast: {forecast_temp}°F ({best_source}) | "
+                f"  {C.CYAN}  Forecast high: {forecast_temp}°F ({best_source}) | "
                 f"{target_bucket.label}{C.RESET}"
             )
+            if weathersnap.observation is not None:
+                observation = weathersnap.observation
+                print(
+                    f"  {C.GRAY}  Observation: {float(observation.temperature_f):.1f}°F "
+                    f"METAR {observation.station_id} at "
+                    f"{observation.valid_at_utc.isoformat()}{C.RESET}"
+                )
             print(
                 f"  {C.GREEN}  ✅ BUY SIGNAL | ${cost:.2f} @ ${entry_price:.3f} | "
                 f"EV {ev:+.2f} | Kel {adjusted_kelly:.2f}{C.RESET}"

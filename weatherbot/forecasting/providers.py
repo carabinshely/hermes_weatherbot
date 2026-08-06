@@ -175,10 +175,13 @@ def parse_aviation_weather_metar(
             continue
         temperature_c = _decimal(record.get("temp"), label=f"METAR[{index}].temp")
         valid = _timestamp(record.get("obsTime"), label=f"METAR[{index}].obsTime")
-        issued = _optional_timestamp(
-            record.get("reportTime"),
-            label=f"METAR[{index}].reportTime",
-        ) or valid
+        issued = (
+            _optional_timestamp(
+                record.get("reportTime"),
+                label=f"METAR[{index}].reportTime",
+            )
+            or valid
+        )
         provider_received = _optional_timestamp(
             record.get("receiptTime"),
             label=f"METAR[{index}].receiptTime",

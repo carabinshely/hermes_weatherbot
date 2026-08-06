@@ -190,7 +190,9 @@ class WeatherInputSnapshot:
             if observation.market_timezone != self.forecast.market_timezone:
                 raise WeatherInputError("forecast and observation timezones do not match")
             if observation.market_date != self.forecast.market_date:
-                raise WeatherInputError("observation local date does not match forecast market date")
+                raise WeatherInputError(
+                    "observation local date does not match forecast market date"
+                )
             if assembled + timedelta(seconds=5) < observation.retrieved_at_utc:
                 raise WeatherInputError("weather snapshot predates its observation retrieval")
         object.__setattr__(self, "assembled_at_utc", assembled)
