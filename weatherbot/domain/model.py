@@ -214,6 +214,8 @@ class OrderIntent:
         if not Decimal("0") < limit_price <= Decimal("1"):
             raise ValueError("limit_price must be greater than zero and at most one")
         require_nonnegative(self.fee_reserve, label="fee_reserve")
+        if self.side is Side.SELL and not self.fee_reserve.is_zero:
+            raise InvariantViolation("sell orders must not reserve cash fees")
         require_aware(self.created_at, label="created_at")
         object.__setattr__(self, "quantity", quantity)
         object.__setattr__(self, "limit_price", limit_price)

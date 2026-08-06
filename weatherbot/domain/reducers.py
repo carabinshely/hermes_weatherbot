@@ -206,6 +206,9 @@ def _apply_buy_fill(
 ) -> tuple[LedgerState, OrderAggregate]:
     if event.price > order.intent.limit_price:
         raise InvariantViolation("buy fill price exceeds order limit")
+    remaining_fee_reserve = order.intent.fee_reserve - order.fees
+    if event.fee.amount > remaining_fee_reserve.amount:
+        raise InvariantViolation("fill fee exceeds the remaining fee reserve")
     reservation_release = (
         money_from_unit_price(
             order.intent.limit_price,
