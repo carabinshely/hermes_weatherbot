@@ -19,6 +19,7 @@ from weatherbot.domain import (
     FillId,
     FillReceived,
     InvariantViolation,
+    LedgerEvent,
     MarketResolution,
     MarketResolved,
     Money,
@@ -37,7 +38,7 @@ from weatherbot.domain import (
 NO = OutcomeId("no-token")
 
 
-def opened_position_events() -> tuple[object, ...]:
+def opened_position_events() -> tuple[LedgerEvent, ...]:
     intent = buy_intent()
     return (
         account_opened(),
@@ -61,7 +62,7 @@ def opened_position_events() -> tuple[object, ...]:
 
 
 def test_sell_order_reserves_position_and_realizes_profit_on_fill() -> None:
-    state = replay(opened_position_events())  # type: ignore[arg-type]
+    state = replay(opened_position_events())
     sell = sell_intent()
     reserved = apply_event(
         state,
@@ -108,7 +109,7 @@ def test_sell_order_reserves_position_and_realizes_profit_on_fill() -> None:
 
 
 def test_cancelled_sell_order_releases_position_reservation() -> None:
-    state = replay(opened_position_events())  # type: ignore[arg-type]
+    state = replay(opened_position_events())
     sell = sell_intent()
     state = apply_event(
         state,
@@ -147,7 +148,7 @@ def test_winning_losing_and_voided_settlement_derive_cash_and_pnl(
     expected_cash: str,
     expected_pnl: str,
 ) -> None:
-    state = replay(opened_position_events())  # type: ignore[arg-type]
+    state = replay(opened_position_events())
     resolution = MarketResolution(
         market_id=MARKET,
         payouts=(
@@ -188,7 +189,7 @@ def test_winning_losing_and_voided_settlement_derive_cash_and_pnl(
 
 
 def test_position_cannot_settle_before_resolution() -> None:
-    state = replay(opened_position_events())  # type: ignore[arg-type]
+    state = replay(opened_position_events())
 
     with pytest.raises(AggregateNotFound, match="resolution"):
         apply_event(
@@ -204,7 +205,7 @@ def test_position_cannot_settle_before_resolution() -> None:
 
 
 def test_position_cannot_settle_while_sell_quantity_is_reserved() -> None:
-    state = replay(opened_position_events())  # type: ignore[arg-type]
+    state = replay(opened_position_events())
     sell = sell_intent()
     state = apply_event(
         state,
