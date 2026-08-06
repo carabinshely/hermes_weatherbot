@@ -7,7 +7,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import cast
 
 from weatherbot.domain import (
@@ -287,9 +287,12 @@ def _integer(value: object, *, label: str) -> int:
 def _decimal(value: object, *, label: str) -> Decimal:
     text = _text(value, label=label)
     try:
-        return Decimal(text)
-    except ValueError as exc:
+        result = Decimal(text)
+    except (InvalidOperation, ValueError) as exc:
         raise CorruptLedgerError(f"{label} is not a decimal string") from exc
+    if not result.is_finite():
+        raise CorruptLedgerError(f"{label} must be a finite decimal string")
+    return result
 
 
 def _datetime(value: object, *, label: str) -> datetime:
