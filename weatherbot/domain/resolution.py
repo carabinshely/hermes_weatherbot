@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
+from decimal import Decimal
 from enum import StrEnum
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -66,8 +67,10 @@ class MarketResolutionEvidence:
             self.declared_resolution_source,
             label="declared_resolution_source",
         )
-        retrieved_at = require_aware(self.retrieved_at, label="retrieved_at")
-        finalized_at = require_aware(self.finalized_at, label="finalized_at")
+        retrieved_at = self.retrieved_at
+        finalized_at = self.finalized_at
+        require_aware(retrieved_at, label="retrieved_at")
+        require_aware(finalized_at, label="finalized_at")
         if finalized_at > retrieved_at:
             raise InvariantViolation("resolution finalization cannot occur after retrieval")
         timezone_name = _require_text(self.market_timezone, label="market_timezone")
@@ -88,13 +91,13 @@ class MarketResolutionEvidence:
         if len(set(outcome_ids)) != 2:
             raise InvariantViolation("resolution evidence contains duplicate outcome IDs")
         payout_values = tuple(payout.payout for payout in self.payouts)
-        if sum(payout_values) != 1:
+        if sum(payout_values, Decimal("0")) != Decimal("1"):
             raise InvariantViolation("binary resolution payouts must sum exactly to one")
         is_void = payout_values == (payout_values[0], payout_values[0])
         if self.status is ResolutionEvidenceStatus.VOID:
-            if not is_void or payout_values[0] != 0.5:
+            if not is_void or payout_values[0] != Decimal("0.5"):
                 raise InvariantViolation("void evidence requires a 0.5/0.5 payout vector")
-        elif sorted(payout_values) != [0, 1]:
+        elif sorted(payout_values) != [Decimal("0"), Decimal("1")]:
             raise InvariantViolation("verified evidence requires a 1/0 payout vector")
 
         object.__setattr__(self, "condition_id", condition_id)
