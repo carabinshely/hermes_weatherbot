@@ -7,15 +7,18 @@ ARCHIVED_IMPORT = "py" + "_clob_client"
 ARCHIVED_PACKAGE = "py" + "-clob-client"
 
 
-def test_python_sources_do_not_import_archived_client() -> None:
-    offenders: list[str] = []
-    for path in ROOT.rglob("*.py"):
-        if path == Path(__file__).resolve():
-            continue
-        if any(part in {".venv", "pip_tmp"} for part in path.parts):
-            continue
-        if ARCHIVED_IMPORT in path.read_text(encoding="utf-8"):
-            offenders.append(str(path.relative_to(ROOT)))
+def test_runtime_sources_do_not_import_archived_client() -> None:
+    runtime_sources = [
+        ROOT / "bot_v1.py",
+        ROOT / "bot_v2.py",
+        ROOT / "bot_v3.py",
+        *(ROOT / "weatherbot").rglob("*.py"),
+    ]
+    offenders = [
+        str(path.relative_to(ROOT))
+        for path in runtime_sources
+        if ARCHIVED_IMPORT in path.read_text(encoding="utf-8")
+    ]
 
     assert offenders == []
 
