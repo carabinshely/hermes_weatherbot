@@ -5,7 +5,7 @@ description = "Weather-market research and trading bot"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "eth-account==0.13.7",
-    "py-clob-client==0.34.6",
+    "polymarket-client==0.1.0b21",
     "python-dotenv==1.2.2",
     "requests==2.34.2",
     "web3==7.16.0",
