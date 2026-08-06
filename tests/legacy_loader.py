@@ -9,29 +9,15 @@ from typing import Any, Protocol, cast
 
 
 class LegacyMath(Protocol):
-    def norm_cdf(self, x: float) -> float: ...
-    def bucket_prob(
-        self,
-        forecast: float,
-        t_low: float,
-        t_high: float,
-        sigma: float = 2.0,
-    ) -> float: ...
     def calc_ev(self, p: float, price: float) -> float: ...
     def calc_kelly(self, p: float, price: float) -> float: ...
     def bet_size(self, kelly: float) -> float: ...
-    def parse_temp_range(self, question: str) -> tuple[float, float] | None: ...
-    def in_bucket(self, forecast: float, t_low: float, t_high: float) -> bool: ...
 
 
 _REQUIRED_FUNCTIONS = {
     "bet_size",
-    "bucket_prob",
     "calc_ev",
     "calc_kelly",
-    "in_bucket",
-    "norm_cdf",
-    "parse_temp_range",
 }
 
 
