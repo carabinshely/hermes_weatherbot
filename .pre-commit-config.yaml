@@ -4,9 +4,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
-        files: ^(execution_modes\.py|runtime_security\.py|tests/)
+        files: ^(execution_modes\.py|runtime_security\.py|weatherbot/|tests/)
       - id: ruff-format
-        files: ^(execution_modes\.py|runtime_security\.py|tests/)
+        files: ^(execution_modes\.py|runtime_security\.py|weatherbot/|tests/)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
