@@ -24,5 +24,5 @@ def test_legacy_scanner_does_not_use_removed_market_shortcuts() -> None:
     assert ", 999)" not in source
     assert 'market["outcomePrices"][0]' not in source
     assert 'market["outcomePrices"][1]' not in source
-    assert 'datetime.now(timezone.utc).date()' not in source
-    assert 'get_book(token_id=condition_id)' not in source
+    assert "datetime.now(timezone.utc).date()" not in source
+    assert "get_book(token_id=condition_id)" not in source
