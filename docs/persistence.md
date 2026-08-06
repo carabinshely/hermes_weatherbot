@@ -39,6 +39,21 @@ with SQLiteEventStore("state/ledger.sqlite3") as store:
 
 Claimed but uncommitted scan decisions appear in `recovery.pending_decisions`.
 
+Before calling an adapter's `submit` method, durably record its backend assignment:
+
+```python
+store.set_adapter_metadata(
+    intent_id,
+    backend_name="paper",
+    payload={"submission_key": stable_submission_key},
+)
+```
+
+This write is the submission-start marker. If the process dies after the backend accepts an order
+but before `OrderSubmitted` is appended, replay still shows `created`; the marker makes startup
+reconcile the backend instead of submitting the order again. A created order without the marker is
+safe to resume because no backend side effect may have started yet.
+
 Backend reconciliation remains adapter-neutral:
 
 ```python

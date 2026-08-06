@@ -983,8 +983,14 @@ class SQLiteEventStore:
                 state.orders.values(),
                 key=lambda item: str(item.intent.intent_id),
             ):
+                adapter_row = self._adapter_row_locked(str(order.intent.intent_id))
+                adapter = self._adapter_from_row(adapter_row) if adapter_row is not None else None
                 if order.state is OrderState.CREATED:
-                    action = RecoveryAction.RESUME_SUBMISSION
+                    action = (
+                        RecoveryAction.RECONCILE_BACKEND
+                        if adapter is not None
+                        else RecoveryAction.RESUME_SUBMISSION
+                    )
                 elif order.state in {
                     OrderState.SUBMITTED,
                     OrderState.ACKNOWLEDGED,
@@ -994,8 +1000,6 @@ class SQLiteEventStore:
                     action = RecoveryAction.RECONCILE_BACKEND
                 else:
                     continue
-                adapter_row = self._adapter_row_locked(str(order.intent.intent_id))
-                adapter = self._adapter_from_row(adapter_row) if adapter_row is not None else None
                 pending_orders.append(
                     PendingOrderRecovery(
                         order=order,
