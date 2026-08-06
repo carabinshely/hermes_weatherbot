@@ -90,9 +90,7 @@ def _release_reservations(
         raise InvariantViolation("order reservation exceeds position reservation")
     position = replace(
         position,
-        reserved_quantity=as_decimal(
-            position.reserved_quantity - order.reserved_quantity
-        ),
+        reserved_quantity=as_decimal(position.reserved_quantity - order.reserved_quantity),
     )
     state = _replace_position(state, position)
     return state, replace(order, reserved_quantity=as_decimal(0))
@@ -136,9 +134,7 @@ def _apply_intent_created(
             raise InvariantViolation("insufficient available position quantity")
         position = replace(
             position,
-            reserved_quantity=as_decimal(
-                position.reserved_quantity + intent.quantity
-            ),
+            reserved_quantity=as_decimal(position.reserved_quantity + intent.quantity),
         )
         state = _replace_position(state, position)
 
@@ -279,9 +275,7 @@ def _apply_sell_fill(
     position = replace(
         position,
         quantity=remaining_quantity,
-        reserved_quantity=as_decimal(
-            position.reserved_quantity - event.quantity
-        ),
+        reserved_quantity=as_decimal(position.reserved_quantity - event.quantity),
         cost_basis=(
             Money.zero(state.currency)
             if remaining_quantity == 0

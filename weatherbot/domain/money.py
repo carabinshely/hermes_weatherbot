@@ -55,9 +55,7 @@ class Money:
 
     def _require_same_currency(self, other: Money) -> None:
         if self.currency != other.currency:
-            raise InvariantViolation(
-                f"currency mismatch: {self.currency} != {other.currency}"
-            )
+            raise InvariantViolation(f"currency mismatch: {self.currency} != {other.currency}")
 
     def __add__(self, other: Money) -> Money:
         self._require_same_currency(other)
