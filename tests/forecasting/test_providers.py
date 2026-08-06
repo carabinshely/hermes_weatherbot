@@ -37,9 +37,42 @@ def test_open_meteo_parser_rejects_non_fahrenheit_payload() -> None:
     with pytest.raises(WeatherInputError, match="Fahrenheit"):
         parse_open_meteo_daily_highs(
             {
+                "timezone": "America/New_York",
                 "daily_units": {"temperature_2m_max": "°C"},
                 "daily": {"time": ["2026-08-06"], "temperature_2m_max": [30]},
             },
+            requested_dates=[date(2026, 8, 6)],
+            market_timezone="America/New_York",
+            retrieved_at_utc=datetime(2026, 8, 6, 10, tzinfo=UTC),
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        (
+            {
+                "daily_units": {"temperature_2m_max": "°F"},
+                "daily": {"time": ["2026-08-06"], "temperature_2m_max": [86]},
+            },
+            "timezone",
+        ),
+        (
+            {
+                "timezone": "America/New_York",
+                "daily": {"time": ["2026-08-06"], "temperature_2m_max": [86]},
+            },
+            "daily_units",
+        ),
+    ],
+)
+def test_open_meteo_parser_requires_timezone_and_unit_provenance(
+    payload: dict[str, object],
+    message: str,
+) -> None:
+    with pytest.raises(WeatherInputError, match=message):
+        parse_open_meteo_daily_highs(
+            payload,
             requested_dates=[date(2026, 8, 6)],
             market_timezone="America/New_York",
             retrieved_at_utc=datetime(2026, 8, 6, 10, tzinfo=UTC),
