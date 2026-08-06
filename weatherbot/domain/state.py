@@ -22,7 +22,6 @@ from weatherbot.domain.model import (
 )
 from weatherbot.domain.money import Money, as_decimal, require_nonnegative
 
-
 type PositionKey = tuple[MarketId, OutcomeId]
 
 

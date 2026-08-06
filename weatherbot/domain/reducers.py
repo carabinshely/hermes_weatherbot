@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import replace
-from decimal import Decimal
 
 from weatherbot.domain.errors import (
     AggregateNotFound,
