@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from enum import StrEnum
+from types import MappingProxyType
 from typing import NewType, Self
 
 from weatherbot.domain.errors import InvalidTransition, InvariantViolation
@@ -23,6 +24,12 @@ FillId = NewType("FillId", str)
 
 def _empty_fill_fingerprints() -> Mapping[FillId, str]:
     return {}
+
+
+def _freeze_fill_fingerprints(
+    value: Mapping[FillId, str],
+) -> Mapping[FillId, str]:
+    return MappingProxyType(dict(value))
 
 
 def _require_text(value: str, *, label: str) -> str:
@@ -284,6 +291,13 @@ class OrderAggregate:
     terminal_reason: str | None = None
     unknown_reason: str | None = None
     fill_fingerprints: Mapping[FillId, str] = field(default_factory=_empty_fill_fingerprints)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "fill_fingerprints",
+            _freeze_fill_fingerprints(self.fill_fingerprints),
+        )
 
     @classmethod
     def new(cls, intent: OrderIntent) -> Self:

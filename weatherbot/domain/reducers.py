@@ -209,16 +209,15 @@ def _apply_buy_fill(
     remaining_fee_reserve = order.intent.fee_reserve - order.fees
     if event.fee.amount > remaining_fee_reserve.amount:
         raise InvariantViolation("fill fee exceeds the remaining fee reserve")
-    reservation_release = (
-        money_from_unit_price(
-            order.intent.limit_price,
-            event.quantity,
-            state.currency,
-        )
-        + event.fee
-    )
-    if reservation_release.amount > order.reserved_cash.amount:
-        raise InvariantViolation("fill exceeds the remaining cash reservation")
+    remaining_quantity = as_decimal(order.remaining_quantity - event.quantity)
+    remaining_reservation = money_from_unit_price(
+        order.intent.limit_price,
+        remaining_quantity,
+        state.currency,
+    ) + (remaining_fee_reserve - event.fee)
+    if remaining_reservation.amount > order.reserved_cash.amount:
+        raise InvariantViolation("remaining reservation exceeds current reservation")
+    reservation_release = order.reserved_cash - remaining_reservation
     debit = gross + event.fee
     if debit.amount > state.cash.amount:
         raise InvariantViolation("fill would make cash negative")
@@ -228,7 +227,7 @@ def _apply_buy_fill(
         cash=state.cash - debit,
         reserved_cash=state.reserved_cash - reservation_release,
     )
-    order = replace(order, reserved_cash=order.reserved_cash - reservation_release)
+    order = replace(order, reserved_cash=remaining_reservation)
 
     key = position_key(order.intent.market_id, order.intent.outcome_id)
     position = state.positions.get(key) or Position.empty(

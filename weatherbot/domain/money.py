@@ -13,8 +13,7 @@ type DecimalInput = Decimal | int | str
 _QUANTUM = Decimal("0.000001")
 
 
-def as_decimal(value: object) -> Decimal:
-    """Return a finite six-decimal value without accepting binary floats."""
+def _coerce_decimal(value: object) -> Decimal:
     if isinstance(value, bool):
         raise TypeError("boolean values are not valid decimal amounts")
     if isinstance(value, float):
@@ -25,9 +24,14 @@ def as_decimal(value: object) -> Decimal:
         result = value if isinstance(value, Decimal) else Decimal(value)
         if not result.is_finite():
             raise ValueError("decimal values must be finite")
-        return result.quantize(_QUANTUM, rounding=ROUND_HALF_EVEN)
+        return result
     except (InvalidOperation, ValueError) as exc:
         raise ValueError(f"invalid decimal value: {value!r}") from exc
+
+
+def as_decimal(value: object) -> Decimal:
+    """Return a finite six-decimal value without accepting binary floats."""
+    return _coerce_decimal(value).quantize(_QUANTUM, rounding=ROUND_HALF_EVEN)
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,7 +76,7 @@ class Money:
         return Money(-self.amount, self.currency)
 
     def scale(self, factor: DecimalInput) -> Money:
-        return Money(self.amount * as_decimal(factor), self.currency)
+        return Money(self.amount * _coerce_decimal(factor), self.currency)
 
     @property
     def is_negative(self) -> bool:

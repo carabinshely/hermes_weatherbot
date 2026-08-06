@@ -26,10 +26,17 @@ from weatherbot.domain.money import Money, as_decimal, require_nonnegative
 
 def _canonicalize(value: object) -> object:
     if is_dataclass(value) and not isinstance(value, type):
-        return {
-            field.name: _canonicalize(cast(object, getattr(value, field.name)))
-            for field in fields(value)
+        value_type = type(value)
+        canonical: dict[str, object] = {
+            "__type__": f"{value_type.__module__}.{value_type.__qualname__}"
         }
+        canonical.update(
+            {
+                field.name: _canonicalize(cast(object, getattr(value, field.name)))
+                for field in fields(value)
+            }
+        )
+        return canonical
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, datetime):
