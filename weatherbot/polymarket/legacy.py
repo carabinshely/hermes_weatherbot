@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from weatherbot.polymarket.errors import AuthenticatedTradingUnavailable
+from weatherbot.polymarket.trading import AccountConfiguration
 
 
 @dataclass(frozen=True, slots=True)
@@ -38,6 +39,17 @@ class OrderType(StrEnum):
 
 class UnsupportedTradingClient:
     """Old method shape whose operations all fail closed."""
+
+    def __init__(
+        self,
+        *,
+        signature_type: int = 0,
+        wallet_address: str | None = None,
+    ) -> None:
+        self.configuration = AccountConfiguration.from_values(
+            signature_type=signature_type,
+            wallet_address=wallet_address,
+        )
 
     @staticmethod
     def _blocked(operation: str) -> AuthenticatedTradingUnavailable:
