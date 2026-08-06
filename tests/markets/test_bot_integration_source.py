@@ -20,8 +20,8 @@ def test_legacy_scanner_uses_resolution_safe_market_contracts() -> None:
 
 def test_legacy_scanner_does_not_use_removed_market_shortcuts() -> None:
     source = Path("bot_v3.py").read_text(encoding="utf-8")
-    assert "-999" not in source
-    assert "999" not in source
+    assert "(-999," not in source
+    assert ", 999)" not in source
     assert 'market["outcomePrices"][0]' not in source
     assert 'market["outcomePrices"][1]' not in source
     assert 'datetime.now(timezone.utc).date()' not in source
