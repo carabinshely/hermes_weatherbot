@@ -1,0 +1,29 @@
+name: Patch legacy account config
+
+on:
+  push:
+    branches: [agent/official-polymarket-sdk]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/official-polymarket-sdk
+
+      - name: Apply scoped patch
+        run: python tools/patch_legacy_account_config.py
+
+      - name: Commit bot patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot_v3.py
+          git commit -m "fix: validate configured Polymarket account mode"
+          git push origin HEAD:agent/official-polymarket-sdk
