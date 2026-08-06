@@ -417,10 +417,8 @@ def apply_event(state: LedgerState, event: LedgerEvent) -> LedgerState:
         next_state = _apply_unknown(state, event)
     elif isinstance(event, MarketResolved):
         next_state = _apply_resolution(state, event)
-    elif isinstance(event, PositionSettled):
-        next_state = _apply_settlement(state, event)
     else:
-        raise TypeError(f"unsupported domain event: {type(event).__name__}")
+        next_state = _apply_settlement(state, event)
 
     next_state = _record_event(next_state, event, event_fp)
     next_state.assert_invariants()

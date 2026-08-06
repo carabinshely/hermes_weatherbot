@@ -60,12 +60,8 @@ class LedgerState:
     reserved_cash: Money
     orders: Mapping[OrderIntentId, OrderAggregate] = field(default_factory=_empty_orders)
     positions: Mapping[PositionKey, Position] = field(default_factory=_empty_positions)
-    resolutions: Mapping[MarketId, MarketResolution] = field(
-        default_factory=_empty_resolutions
-    )
-    event_fingerprints: Mapping[EventId, str] = field(
-        default_factory=_empty_event_fingerprints
-    )
+    resolutions: Mapping[MarketId, MarketResolution] = field(default_factory=_empty_resolutions)
+    event_fingerprints: Mapping[EventId, str] = field(default_factory=_empty_event_fingerprints)
 
     def __post_init__(self) -> None:
         currency = self.currency.strip().upper()

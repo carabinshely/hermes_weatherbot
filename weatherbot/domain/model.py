@@ -281,9 +281,7 @@ class OrderAggregate:
     backend_order_id: str | None = None
     terminal_reason: str | None = None
     unknown_reason: str | None = None
-    fill_fingerprints: Mapping[FillId, str] = field(
-        default_factory=_empty_fill_fingerprints
-    )
+    fill_fingerprints: Mapping[FillId, str] = field(default_factory=_empty_fill_fingerprints)
 
     @classmethod
     def new(cls, intent: OrderIntent) -> Self:
