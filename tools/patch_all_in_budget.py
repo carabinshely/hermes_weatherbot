@@ -195,7 +195,7 @@ replace_once(
 )
 replace_once(
     "tests/quoting/test_depth_and_costs.py",
-    '''    assert result.detail == "requested budget 6 exceeds displayed ask notional 5.40"
+    '''    assert result.detail == ("requested budget 6 exceeds displayed ask notional 5.40")
 ''',
     '''    assert result.detail is not None
     assert "displayed ask notional 5.40" in result.detail
