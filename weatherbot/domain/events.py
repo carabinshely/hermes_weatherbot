@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import cast
 
 from weatherbot.domain.model import (
     EventId,
@@ -24,26 +24,29 @@ from weatherbot.domain.model import (
 from weatherbot.domain.money import Money, as_decimal, require_nonnegative
 
 
-def _canonicalize(value: Any) -> Any:
+def _canonicalize(value: object) -> object:
     if is_dataclass(value) and not isinstance(value, type):
-        return {field.name: _canonicalize(getattr(value, field.name)) for field in fields(value)}
+        return {
+            field.name: _canonicalize(cast(object, getattr(value, field.name)))
+            for field in fields(value)
+        }
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, datetime):
         return value.isoformat()
     if isinstance(value, Enum):
-        return value.value
+        return cast(object, value.value)
     if isinstance(value, Mapping):
-        return {
-            str(key): _canonicalize(item)
-            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
-        }
+        mapping = cast(Mapping[object, object], value)
+        entries = sorted(mapping.items(), key=lambda pair: str(pair[0]))
+        return {str(key): _canonicalize(item) for key, item in entries}
     if isinstance(value, (tuple, list, frozenset, set)):
-        return [_canonicalize(item) for item in value]
+        items = cast(Iterable[object], value)
+        return [_canonicalize(item) for item in items]
     return value
 
 
-def fingerprint(value: Any) -> str:
+def fingerprint(value: object) -> str:
     encoded = json.dumps(
         _canonicalize(value),
         sort_keys=True,
