@@ -32,7 +32,7 @@ class ResolutionContext:
     market_date: date
     market_timezone: str
     bucket: TemperatureBucket
-    declared_resolution_source: str
+    declared_resolution_source: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
