@@ -30,7 +30,30 @@ def _event_id(evidence: WeatherObservationEvidence) -> EventId:
 class ObservationRecorder:
     store: SQLiteEventStore
 
+    def _validate_market_context(self, evidence: WeatherObservationEvidence) -> None:
+        from weatherbot.resolution.context import StoredDecisionContextProvider
+
+        context = StoredDecisionContextProvider().context_for_market(
+            self.store,
+            evidence.market_id,
+        )
+        if evidence.market_date != context.market_date:
+            raise ValueError("observation date differs from the signal-time market date")
+        if evidence.market_timezone != context.market_timezone:
+            raise ValueError("observation timezone differs from the signal-time timezone")
+        if evidence.unit != context.bucket.unit.value:
+            raise ValueError("observation unit differs from the market bucket unit")
+        if (
+            context.declared_resolution_source is not None
+            and evidence.source_url.rstrip("/")
+            != context.declared_resolution_source.rstrip("/")
+        ):
+            raise ValueError(
+                "observation source differs from the declared resolution source"
+            )
+
     def record(self, evidence: WeatherObservationEvidence) -> bool:
+        self._validate_market_context(evidence)
         result = self.store.append(
             WeatherObservationRecorded(
                 event_id=_event_id(evidence),
@@ -45,21 +68,10 @@ def latest_learning_observation(
     state: LedgerState,
     market_id: MarketId,
 ) -> WeatherObservationEvidence | None:
-    candidates = [
-        evidence
-        for evidence in state.weather_observations.get(market_id, ())
-        if evidence.learning_eligible
-    ]
-    if not candidates:
-        return None
-    return max(
-        candidates,
-        key=lambda evidence: (
-            evidence.retrieved_at,
-            evidence.source_revision,
-            evidence.payload_hash,
-        ),
-    )
+    for evidence in reversed(state.weather_observations.get(market_id, ())):
+        if evidence.learning_eligible:
+            return evidence
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,9 +90,10 @@ class VerifiedLearningOutcome:
             raise ValueError("settlement and observation use different market dates")
         if self.settlement.market_timezone != self.observation.market_timezone:
             raise ValueError("settlement and observation use different market timezones")
-        if self.settlement.declared_resolution_source.rstrip(
-            "/"
-        ) != self.observation.source_url.rstrip("/"):
+        if (
+            self.settlement.declared_resolution_source.rstrip("/")
+            != self.observation.source_url.rstrip("/")
+        ):
             raise ValueError("observation source differs from the market resolution source")
 
     @property
