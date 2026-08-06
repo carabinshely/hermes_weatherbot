@@ -16,4 +16,4 @@ def test_live_dependency_error_is_actionable_and_precedes_imports() -> None:
         require_live_dependencies(finder)
 
     assert attempts == ["eth_account", "polymarket", "web3"]
-    assert "uv sync --locked --extra live" in str(error.value)
+    assert "uv sync --locked --no-dev --extra live" in str(error.value)
