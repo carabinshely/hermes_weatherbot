@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 from weatherbot.domain import (
@@ -85,7 +86,7 @@ class VerifiedLearningOutcome:
             raise ValueError("observation source differs from the market resolution source")
 
     @property
-    def observed_temperature(self):
+    def observed_temperature(self) -> Decimal:
         return self.observation.temperature
 
     @property
@@ -97,7 +98,7 @@ class VerifiedLearningOutcome:
         return tuple(
             str(payout.outcome_id)
             for payout in self.settlement.payouts
-            if payout.payout == 1
+            if payout.payout == Decimal("1")
         )
 
 
