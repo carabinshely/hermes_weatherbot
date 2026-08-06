@@ -1,0 +1,35 @@
+name: Fix Polymarket protocol types
+
+on:
+  push:
+    branches: [agent/official-polymarket-sdk]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/official-polymarket-sdk
+
+      - name: Apply type fix
+        run: python tools/fix_polymarket_protocol_types.py
+
+      - name: Format changed file
+        run: |
+          python -m pip install --quiet ruff==0.15.22
+          ruff check --fix weatherbot/polymarket/read_client.py
+          ruff format weatherbot/polymarket/read_client.py
+
+      - name: Commit type fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/polymarket/read_client.py
+          git commit -m "fix: align Polymarket protocol datetime types"
+          git push origin HEAD:agent/official-polymarket-sdk
