@@ -52,7 +52,10 @@ def test_safe_entry_points_do_not_import_live_packages_at_module_load() -> None:
 
 def test_missing_live_dependencies_are_reported_without_importing() -> None:
     available = {"eth_account"}
-    finder = lambda name: object() if name in available else None
+
+    def finder(name: str) -> object | None:
+        return object() if name in available else None
+
     assert missing_live_dependencies(finder) == (
         "polymarket-client",
         "web3",
@@ -65,4 +68,7 @@ def test_missing_live_dependencies_are_reported_without_importing() -> None:
 
 
 def test_complete_live_profile_passes_without_importing() -> None:
-    require_live_dependencies(lambda _name: object())
+    def finder(_name: str) -> object:
+        return object()
+
+    require_live_dependencies(finder)
