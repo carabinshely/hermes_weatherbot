@@ -23,8 +23,10 @@ jobs:
       - name: Install development profile
         run: uv sync --locked --all-groups
 
-      - name: Apply type alias fix
-        run: python tools/fix_executable_edge_type_alias.py
+      - name: Apply contract patches
+        run: |
+          python tools/fix_executable_edge_type_alias.py
+          python tools/patch_all_in_budget.py
 
       - name: Apply canonical formatting
         run: |
@@ -38,5 +40,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add weatherbot/quoting tests/quoting
-          git commit -m "style: format executable edge contracts"
+          git commit -m "fix: cap executable quote by all-in budget"
           git push origin HEAD:agent/executable-edge-validation
