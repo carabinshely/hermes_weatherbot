@@ -83,14 +83,24 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Install locked dependencies
-        run: uv sync --locked --all-groups
+      - name: Install audit tooling and all optional packages
+        run: uv sync --locked --all-groups --extra live
 
-      - name: Export runtime dependency set
-        run: uv export --locked --no-dev --format requirements-txt --output-file /tmp/runtime.txt
+      - name: Export minimal runtime dependency set
+        run: >
+          uv export --locked --no-dev --format requirements-txt
+          --output-file /tmp/runtime-minimal.txt
 
-      - name: Audit runtime dependencies
-        run: uv run pip-audit --requirement /tmp/runtime.txt
+      - name: Export live runtime dependency set
+        run: >
+          uv export --locked --no-dev --extra live --format requirements-txt
+          --output-file /tmp/runtime-live.txt
+
+      - name: Audit minimal runtime dependencies
+        run: uv run pip-audit --requirement /tmp/runtime-minimal.txt
+
+      - name: Audit live runtime dependencies
+        run: uv run pip-audit --requirement /tmp/runtime-live.txt
 
   workflow-lint:
     name: Workflow lint

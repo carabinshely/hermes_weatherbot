@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from datetime import datetime
 from decimal import Decimal
+from importlib import import_module
 from typing import Protocol, Self, cast
 
-from polymarket import PublicClient
-
+from weatherbot.dependencies import require_live_dependencies, require_module_attribute
 from weatherbot.polymarket.errors import MarketDataUnavailable
 from weatherbot.polymarket.models import (
     MarketIdentifiers,
@@ -125,6 +125,16 @@ def _decimal(value: object, *, label: str) -> Decimal:
     return result
 
 
+def _default_public_client() -> PublicSdkClient:
+    require_live_dependencies()
+    module = import_module("polymarket")
+    factory = cast(
+        Callable[[], object],
+        require_module_attribute(module, "PublicClient"),
+    )
+    return cast(PublicSdkClient, factory())
+
+
 class OfficialPolymarketReadClient:
     """Normalize public SDK objects into repository-owned immutable models."""
 
@@ -137,7 +147,7 @@ class OfficialPolymarketReadClient:
         if sdk_client is not None and client_factory is not None:
             raise ValueError("provide sdk_client or client_factory, not both")
         if sdk_client is None:
-            factory = client_factory or (lambda: cast(PublicSdkClient, PublicClient()))
+            factory = client_factory or _default_public_client
             sdk_client = factory()
             self._owns_client = True
         else:

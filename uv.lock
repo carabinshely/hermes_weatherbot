@@ -614,10 +614,14 @@ name = "hermes-weatherbot"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
-    { name = "eth-account" },
-    { name = "polymarket-client" },
     { name = "python-dotenv" },
     { name = "requests" },
+]
+
+[package.optional-dependencies]
+live = [
+    { name = "eth-account" },
+    { name = "polymarket-client" },
     { name = "web3" },
 ]
 
@@ -633,12 +637,13 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "eth-account", specifier = "==0.13.7" },
-    { name = "polymarket-client", specifier = "==0.1.0b21" },
+    { name = "eth-account", marker = "extra == 'live'", specifier = "==0.13.7" },
+    { name = "polymarket-client", marker = "extra == 'live'", specifier = "==0.1.0b21" },
     { name = "python-dotenv", specifier = "==1.2.2" },
     { name = "requests", specifier = "==2.34.2" },
-    { name = "web3", specifier = "==7.16.0" },
+    { name = "web3", marker = "extra == 'live'", specifier = "==7.16.0" },
 ]
+provides-extras = ["live"]
 
 [package.metadata.requires-dev]
 dev = [

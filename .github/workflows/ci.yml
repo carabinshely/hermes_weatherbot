@@ -39,8 +39,50 @@ jobs:
       - name: Verify lock file
         run: uv lock --check
 
-      - name: Install locked dependencies
+      - name: Install minimal runtime and development tools
         run: uv sync --locked --all-groups
+
+      - name: Verify live packages are absent from minimal profile
+        run: |
+          uv run python - <<'PY'
+          from importlib.util import find_spec
+
+          forbidden = ("eth_account", "polymarket", "web3")
+          present = [name for name in forbidden if find_spec(name) is not None]
+          if present:
+              raise SystemExit(f"minimal profile unexpectedly installed: {present}")
+
+          import weatherbot.polymarket
+          import weatherbot.resolution
+          PY
+
+      - name: Verify safe command imports without live extras
+        run: |
+          uv run python bot_v3.py --help
+          uv run python -m weatherbot.resolution --help
+          uv run python -m weatherbot.resolution.observation_cli --help
+
+      - name: Verify live command fails with installation guidance
+        run: |
+          cp config.json /tmp/config.json
+          trap 'mv /tmp/config.json config.json' EXIT
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path("config.json")
+          config = json.loads(path.read_text(encoding="utf-8"))
+          config["mode"] = "live"
+          path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+          PY
+          set +e
+          output="$(uv run python bot_v3.py status --mode live --confirm-live 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+          test "$status" -eq 2
+          grep -F 'uv sync --locked --no-dev --extra live' <<<"$output"
+          grep -F 'live mode requires optional dependencies' <<<"$output"
 
       - name: Check formatting
         run: uv run ruff format --check execution_modes.py runtime_security.py weatherbot tests
@@ -65,3 +107,23 @@ jobs:
 
       - name: Run tests
         run: uv run pytest
+
+      - name: Install and smoke-test live extra
+        if: matrix.python-version == '3.12'
+        run: |
+          uv sync --locked --all-groups --extra live
+          uv run --extra live python - <<'PY'
+          from importlib.util import find_spec
+
+          required = ("eth_account", "polymarket", "web3")
+          missing = [name for name in required if find_spec(name) is None]
+          if missing:
+              raise SystemExit(f"live profile is missing: {missing}")
+
+          from weatherbot.dependencies import require_live_dependencies
+          from weatherbot.polymarket import OfficialPolymarketReadClient
+
+          require_live_dependencies()
+          assert OfficialPolymarketReadClient is not None
+          PY
+          uv run --extra live pytest -q tests/polymarket

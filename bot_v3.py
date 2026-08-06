@@ -39,6 +39,10 @@ from execution_modes import (
     run_live_operation,
 )
 from runtime_security import credential_status_line
+from weatherbot.dependencies import (
+    LiveDependenciesUnavailable,
+    require_live_dependencies,
+)
 from weatherbot.forecasting import (
     WeatherInputError,
     WeatherInputSnapshot,
@@ -421,16 +425,21 @@ def get_clob() -> UnsupportedTradingClient:
 # ON-CHAIN HELPERS
 # =============================================================================
 
-from web3 import Web3
-from eth_account import Account
-
-_w3: Web3 = None
+_w3: Any = None
 
 
-def get_w3() -> Web3:
+def _web3_class():
+    require_live_dependencies()
+    from web3 import Web3
+
+    return Web3
+
+
+def get_w3():
     global _w3
     if _w3 is None:
-        _w3 = Web3(Web3.HTTPProvider("https://1rpc.io/matic"))
+        web3_class = _web3_class()
+        _w3 = web3_class(web3_class.HTTPProvider("https://1rpc.io/matic"))
     return _w3
 
 
@@ -461,8 +470,9 @@ def wait_for_receipt(w3, tx_hash: str, timeout=120):
 def get_usdc_balance(wallet: str) -> float:
     """Get USDC.e balance on Polygon via raw eth_call (avoids web3 contract ABI issues)."""
     w3 = get_w3()
-    wallet_checksum = Web3.to_checksum_address(wallet)
-    usdc_checksum = Web3.to_checksum_address(USDC_ADDRESS)
+    web3_class = _web3_class()
+    wallet_checksum = web3_class.to_checksum_address(wallet)
+    usdc_checksum = web3_class.to_checksum_address(USDC_ADDRESS)
 
     # balanceOf(address) — the "data" is the function selector hash + padded address
     selector = "0x70a08231"  # balanceOf(address)
@@ -484,7 +494,7 @@ def get_usdc_balance(wallet: str) -> float:
 
 def get_pol_balance(wallet: str) -> float:
     w3 = get_w3()
-    bal = w3.eth.get_balance(Web3.to_checksum_address(wallet))
+    bal = w3.eth.get_balance(_web3_class().to_checksum_address(wallet))
     return int(bal) / 1e18
 
 
@@ -630,10 +640,12 @@ def is_approved(token: str, spender: str, wallet: str) -> bool:
             "type": "function",
         }
     ]
-    usdc = w3.eth.contract(address=Web3.to_checksum_address(token), abi=usdc_abi)
+    web3_class = _web3_class()
+    usdc = w3.eth.contract(address=web3_class.to_checksum_address(token), abi=usdc_abi)
     try:
         allowance = usdc.functions.allowance(
-            Web3.to_checksum_address(wallet), Web3.to_checksum_address(spender)
+            web3_class.to_checksum_address(wallet),
+            web3_class.to_checksum_address(spender),
         ).call()
         return allowance > 0
     except Exception:
@@ -662,9 +674,12 @@ def approve_token(
             "type": "function",
         }
     ]
-    usdc = w3.eth.contract(address=Web3.to_checksum_address(token), abi=usdc_abi)
+    web3_class = _web3_class()
+    usdc = w3.eth.contract(address=web3_class.to_checksum_address(token), abi=usdc_abi)
     nonce = get_nonce(wallet)
-    build = usdc.functions.approve(Web3.to_checksum_address(spender), amount_wei).build_transaction(
+    build = usdc.functions.approve(
+        web3_class.to_checksum_address(spender), amount_wei
+    ).build_transaction(
         {
             "from": wallet,
             "nonce": nonce,
@@ -895,7 +910,9 @@ def get_ecmwf(city_slug, dates):
                 market_timezone=market_timezone,
                 retrieved_at_utc=retrieved_at,
             )
-            return {market_date.isoformat(): forecast for market_date, forecast in forecasts.items()}
+            return {
+                market_date.isoformat(): forecast for market_date, forecast in forecasts.items()
+            }
         except (requests.RequestException, ValueError, WeatherInputError) as exc:
             if attempt < 2:
                 time.sleep(2)
@@ -1661,6 +1678,11 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Execution mode: {context.label}")
     if context.mode is ExecutionMode.LIVE:
+        try:
+            require_live_dependencies()
+        except LiveDependenciesUnavailable as exc:
+            print(f"ERROR: {exc}", file=sys.stderr)
+            return 2
         print(credential_status_line())
         if not PK or not WALLET:
             print("ERROR: live mode requires PK and WALLET in .env", file=sys.stderr)
