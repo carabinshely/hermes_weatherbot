@@ -23,9 +23,7 @@ def missing_live_dependencies(
 ) -> tuple[str, ...]:
     """Return missing live distribution names without importing their modules."""
     return tuple(
-        distribution
-        for import_name, distribution in LIVE_IMPORTS
-        if finder(import_name) is None
+        distribution for import_name, distribution in LIVE_IMPORTS if finder(import_name) is None
     )
 
 

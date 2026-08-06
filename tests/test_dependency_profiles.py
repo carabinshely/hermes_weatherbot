@@ -45,9 +45,9 @@ def test_base_runtime_excludes_wallet_and_sdk_distributions() -> None:
 def test_safe_entry_points_do_not_import_live_packages_at_module_load() -> None:
     forbidden = {"eth_account", "polymarket", "web3"}
     assert _top_level_imports(ROOT / "bot_v3.py").isdisjoint(forbidden)
-    assert _top_level_imports(
-        ROOT / "weatherbot" / "polymarket" / "read_client.py"
-    ).isdisjoint(forbidden)
+    assert _top_level_imports(ROOT / "weatherbot" / "polymarket" / "read_client.py").isdisjoint(
+        forbidden
+    )
 
 
 def test_missing_live_dependencies_are_reported_without_importing() -> None:

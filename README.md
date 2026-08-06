@@ -35,12 +35,30 @@ The bot monitors **6 US cities** (NYC, Chicago, Miami, Dallas, Seattle, Atlanta)
 
 ### 1. Clone & Install
 
+Install [uv](https://docs.astral.sh/uv/) and choose the smallest dependency profile
+that matches the execution mode:
+
 ```bash
-git clone https://github.com/nicolastinkl/hermes_weatherbot.git
+git clone https://github.com/carabinshely/hermes_weatherbot.git
 cd hermes_weatherbot
-python3.13 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+
+# Research, paper, resolution, and observation tooling only.
+# No wallet, Web3, signing, or official SDK packages are installed.
+uv sync --locked --no-dev
+
+# Development and tests, still without live extras.
+uv sync --locked --all-groups
+
+# Explicit live-capable environment. Funded-wallet operation remains fail-closed.
+uv sync --locked --no-dev --extra live
+```
+
+Run commands through the selected locked environment, for example:
+
+```bash
+uv run --no-dev python bot_v3.py scan --mode research
+uv run --no-dev python bot_v3.py scan --mode paper
+uv run --no-dev python -m weatherbot.resolution --help
 ```
 
 ### 2. Configure
@@ -94,14 +112,17 @@ python bot_v3.py scan --mode research
 # Paper-mode candidate generation; simulated fills arrive in #27
 python bot_v3.py scan --mode paper
 
-# Live mode is fail-closed and requires all three gates:
-# 1. config.json mode=live
-# 2. --mode live
-# 3. --confirm-live
-python bot_v3.py scan --mode live --confirm-live
+# Live mode is fail-closed and requires the live extra plus all three gates:
+# 1. uv sync --locked --no-dev --extra live
+# 2. config.json mode=live
+# 3. --mode live
+# 4. --confirm-live
+uv run --no-dev --extra live python bot_v3.py scan --mode live --confirm-live
 ```
 
-Research and paper modes do not require `PK` or `WALLET`.
+Research and paper modes do not require `PK`, `WALLET`, Web3, signing packages, or the
+optional official SDK. A live command in a minimal environment exits with an actionable
+installation error before credential or wallet access.
 
 ### 4. Start the configured mode
 
