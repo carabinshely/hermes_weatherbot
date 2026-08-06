@@ -196,6 +196,61 @@ class OrderBookSnapshot:
             book_hash=self.book_hash,
         )
 
+    def quote_buy_budget(
+        self,
+        budget: Decimal | int | str | float,
+    ) -> ExecutableQuote:
+        """Consume ask depth without spending more than the approved cash budget."""
+        requested_budget = _decimal(budget, label="cash budget")
+        if requested_budget <= 0:
+            raise OrderBookError("cash budget must be positive")
+
+        remaining_budget = requested_budget
+        shares = Decimal("0")
+        cost = Decimal("0")
+        worst_price: Decimal | None = None
+
+        for level in self.asks:
+            level_cost = level.size * level.price
+            if remaining_budget >= level_cost:
+                shares += level.size
+                cost += level_cost
+                remaining_budget -= level_cost
+                worst_price = level.price
+            else:
+                shares += remaining_budget / level.price
+                cost += remaining_budget
+                remaining_budget = Decimal("0")
+                worst_price = level.price
+            if remaining_budget == 0:
+                break
+
+        if remaining_budget > 0:
+            available_budget = requested_budget - remaining_budget
+            raise OrderBookError(
+                "insufficient ask depth for cash budget: "
+                f"requested {requested_budget}, executable {available_budget}"
+            )
+        if shares < self.minimum_order_size:
+            raise OrderBookError(
+                f"cash budget buys {shares} shares, below minimum {self.minimum_order_size}"
+            )
+        assert worst_price is not None
+        if cost > requested_budget:
+            raise OrderBookError("executable quote exceeds approved cash budget")
+
+        return ExecutableQuote(
+            token_id=self.token_id,
+            shares=shares,
+            total_cost=cost,
+            average_price=cost / shares,
+            worst_price=worst_price,
+            best_bid=self.best_bid,
+            best_ask=self.best_ask,
+            observed_at=self.observed_at,
+            book_hash=self.book_hash,
+        )
+
 
 def _levels(value: object, *, side: str) -> tuple[OrderLevel, ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):

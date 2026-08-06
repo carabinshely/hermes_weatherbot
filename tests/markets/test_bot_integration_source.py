@@ -12,7 +12,7 @@ def test_legacy_scanner_uses_resolution_safe_market_contracts() -> None:
         "parse_order_book",
         "BinaryOutcome.YES",
         "MarketCalendar",
-        "quote_buy",
+        "quote_buy_budget",
     )
     for symbol in required:
         assert symbol in source

@@ -76,6 +76,22 @@ def test_size_aware_average_fill_uses_available_ask_depth() -> None:
     assert quote.best_ask == Decimal("0.40")
 
 
+def test_cash_budget_quote_absorbs_depth_without_overspending() -> None:
+    book = parse_order_book(
+        payload(),
+        expected_condition_id=CONDITION,
+        expected_token_id=TOKEN,
+    )
+    budget = Decimal("2")
+    quote = book.quote_buy_budget(budget)
+    assert quote.total_cost == budget
+    assert quote.total_cost <= budget
+    assert quote.shares == Decimal("3") + Decimal("0.80") / Decimal("0.42")
+    assert quote.average_price == quote.total_cost / quote.shares
+    assert quote.worst_price == Decimal("0.42")
+    assert quote.best_ask == Decimal("0.40")
+
+
 def _empty_bids(data: dict[str, object]) -> None:
     data["bids"] = []
 
@@ -162,3 +178,7 @@ def test_insufficient_depth_and_minimum_size_fail_closed() -> None:
         book.quote_buy(Decimal("0.5"))
     with pytest.raises(OrderBookError, match="insufficient"):
         book.quote_buy(Decimal("20"))
+    with pytest.raises(OrderBookError, match="below minimum"):
+        book.quote_buy_budget(Decimal("0.30"))
+    with pytest.raises(OrderBookError, match="insufficient"):
+        book.quote_buy_budget(Decimal("10"))

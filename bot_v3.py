@@ -26,7 +26,7 @@ import logging
 import dotenv
 import requests
 import threading
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal
 
 from execution_modes import (
     ExecutionContext,
@@ -1231,11 +1231,8 @@ def scan_and_trade(context: ExecutionContext):
             if size < 0.50:
                 continue
 
-            shares_decimal = (Decimal(str(size)) / book.best_ask).quantize(
-                Decimal("0.000001"), rounding=ROUND_DOWN
-            )
             try:
-                quote = book.quote_buy(shares_decimal)
+                quote = book.quote_buy_budget(Decimal(str(size)))
             except OrderBookError as exc:
                 errors.append(f"{loc['name']} {horizon}: {exc}")
                 continue
