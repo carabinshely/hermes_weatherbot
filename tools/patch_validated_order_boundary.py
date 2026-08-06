@@ -115,7 +115,7 @@ content = content.replace(
 def test_live_order_boundary_does_not_reconstruct_notional_from_price() -> None:
     source = (ROOT / "bot_v3.py").read_text(encoding="utf-8")
     start = source.index("def place_buy_order")
-    end = source.index("\n\ndef cancel_order", start)
+    end = source.index("\\n\\ndef cancel_order", start)
     block = source[start:end]
     assert "validated_quote: ValidatedExecutableQuote" in block
     assert "amount = float(quote.total_cost)" in block
