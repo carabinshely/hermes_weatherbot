@@ -13,7 +13,7 @@ type DecimalInput = Decimal | int | str
 _QUANTUM = Decimal("0.000001")
 
 
-def as_decimal(value: DecimalInput) -> Decimal:
+def as_decimal(value: object) -> Decimal:
     """Return a finite six-decimal value without accepting binary floats."""
     if isinstance(value, bool):
         raise TypeError("boolean values are not valid decimal amounts")
