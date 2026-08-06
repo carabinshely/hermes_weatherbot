@@ -1,0 +1,40 @@
+name: Fix validated order boundary
+
+on:
+  push:
+    branches: [agent/executable-edge-validation]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/executable-edge-validation
+
+      - name: Apply order-boundary patch
+        run: python tools/patch_validated_order_boundary.py
+
+      - name: Validate full implementation
+        run: |
+          python -m pip install --quiet uv==0.11.33
+          uv sync --locked --all-groups
+          uv run ruff check --fix execution_modes.py runtime_security.py weatherbot tests
+          uv run ruff check --select E9,F63,F7,F82 bot_v1.py bot_v2.py bot_v3.py
+          uv run ruff format execution_modes.py runtime_security.py weatherbot tests
+          uv run pyright execution_modes.py runtime_security.py weatherbot tests
+          uv run pytest -q
+          uv run python -m compileall -q execution_modes.py runtime_security.py weatherbot bot_v1.py bot_v2.py bot_v3.py tests
+
+      - name: Commit boundary fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot_v3.py tests/quoting/test_scanner_integration.py
+          git commit -m "fix: pass validated quote into live boundary"
+          git push origin HEAD:agent/executable-edge-validation
