@@ -5,14 +5,18 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Protocol
 
 from weatherbot.resolution.model import ResolutionCycleReport
-from weatherbot.resolution.worker import ResolutionWorker
+
+
+class ResolutionCycleRunner(Protocol):
+    def run_once(self) -> ResolutionCycleReport: ...
 
 
 @dataclass(slots=True)
 class ResolutionMonitor:
-    worker: ResolutionWorker
+    worker: ResolutionCycleRunner
     interval_seconds: float = 600.0
     sleep: Callable[[float], None] = time.sleep
     on_report: Callable[[ResolutionCycleReport], None] | None = None
