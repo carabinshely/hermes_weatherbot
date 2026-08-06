@@ -16,35 +16,49 @@ from weatherbot.polymarket.errors import (
 
 
 class AccountSignatureType(IntEnum):
+    """Signature values used by the published official SDK."""
+
     EOA = 0
     POLY_PROXY = 1
-    POLY_GNOSIS_SAFE = 2
-    POLY_1271 = 3
+    GNOSIS_SAFE = 2
+    DEPOSIT_WALLET = 3
+
+    @property
+    def sdk_wallet_type(self) -> str:
+        return {
+            AccountSignatureType.EOA: "EOA",
+            AccountSignatureType.POLY_PROXY: "POLY_PROXY",
+            AccountSignatureType.GNOSIS_SAFE: "GNOSIS_SAFE",
+            AccountSignatureType.DEPOSIT_WALLET: "DEPOSIT_WALLET",
+        }[self]
 
 
 @dataclass(frozen=True, slots=True)
 class AccountConfiguration:
+    """Expected wallet classification for a future secure SDK client.
+
+    The official SDK derives the signature type from the signer and requested wallet.
+    This configuration records the expected result so a future live adapter can reject
+    a mismatch before constructing or posting an order.
+    """
+
     signature_type: AccountSignatureType
-    funder_address: str | None = None
+    wallet_address: str | None = None
 
     def __post_init__(self) -> None:
-        if self.signature_type is AccountSignatureType.EOA:
-            if self.funder_address is not None:
-                raise UnsupportedAccountConfiguration(
-                    "EOA signing must not specify a separate funder address"
-                )
-            return
-        if self.funder_address is None or not self.funder_address.strip():
+        normalized_wallet = self.wallet_address.strip() if self.wallet_address else None
+        if self.signature_type is not AccountSignatureType.EOA and normalized_wallet is None:
             raise UnsupportedAccountConfiguration(
-                f"{self.signature_type.name} signing requires a funder address"
+                f"{self.signature_type.name} signing requires an explicit wallet address"
             )
+        object.__setattr__(self, "wallet_address", normalized_wallet)
 
     @classmethod
     def from_values(
         cls,
         *,
         signature_type: int,
-        funder_address: str | None = None,
+        wallet_address: str | None = None,
     ) -> AccountConfiguration:
         try:
             parsed = AccountSignatureType(signature_type)
@@ -52,8 +66,17 @@ class AccountConfiguration:
             raise UnsupportedAccountConfiguration(
                 f"unsupported Polymarket signature type: {signature_type}"
             ) from exc
-        normalized_funder = funder_address.strip() if funder_address else None
-        return cls(signature_type=parsed, funder_address=normalized_funder)
+        return cls(signature_type=parsed, wallet_address=wallet_address)
+
+    def require_detected_wallet_type(self, detected_wallet_type: str) -> None:
+        """Reject an SDK-classified wallet that disagrees with configuration."""
+        normalized = detected_wallet_type.strip().upper()
+        expected = self.signature_type.sdk_wallet_type
+        if normalized != expected:
+            raise UnsupportedAccountConfiguration(
+                f"configured signature type expects {expected}, but the official SDK "
+                f"classified the wallet as {normalized or '<blank>'}"
+            )
 
 
 class AuthenticatedPolymarketTrading:
