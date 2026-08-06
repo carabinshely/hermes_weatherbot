@@ -30,7 +30,8 @@ def test_revalidation_rejects_changed_decision_inputs() -> None:
         freshness_policy=freshness_policy(),
         cost_policy=cost_policy(),
     )
-    assert initial.quote is not None
+    validated = initial.quote
+    assert validated is not None
 
     def assert_mismatch(
         *,
@@ -42,7 +43,7 @@ def test_revalidation_rejects_changed_decision_inputs() -> None:
         cost: CostPolicy | None = None,
     ) -> None:
         result = revalidate_executable_buy(
-            initial.quote,
+            validated,
             probability=probability,
             requested_budget=requested_budget,
             weather=weather_snapshot(),
