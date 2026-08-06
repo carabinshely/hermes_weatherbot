@@ -98,9 +98,7 @@ def gamma_payload(
     no: str = "0",
     closed: bool = True,
     status: str = "resolved",
-    question: str = (
-        "Will the highest temperature in Chicago be between 62-63°F on April 18?"
-    ),
+    question: str = ("Will the highest temperature in Chicago be between 62-63°F on April 18?"),
     end_date: str = "2026-04-19T04:00:00Z",
     closed_time: str = "2026-04-19T05:00:00Z",
 ) -> dict[str, object]:

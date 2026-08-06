@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from weatherbot.domain import MarketId
@@ -118,9 +117,7 @@ class StoredDecisionContextProvider:
                 continue
             contexts.append(_context_from_metadata(market_id, claim.metadata))
         if not contexts:
-            raise ResolutionContextError(
-                f"market {market_id} has no committed decision metadata"
-            )
+            raise ResolutionContextError(f"market {market_id} has no committed decision metadata")
         first = contexts[0]
         if any(context != first for context in contexts[1:]):
             raise ResolutionContextError(

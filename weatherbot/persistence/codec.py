@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import cast
 
@@ -18,6 +18,8 @@ from weatherbot.domain import (
     LedgerEvent,
     MarketId,
     MarketResolution,
+    MarketResolutionEvidence,
+    MarketResolutionEvidenceRecorded,
     MarketResolved,
     Money,
     OrderAcknowledged,
@@ -31,6 +33,7 @@ from weatherbot.domain import (
     OutcomeId,
     OutcomePayout,
     PositionSettled,
+    ResolutionEvidenceStatus,
     Side,
 )
 from weatherbot.persistence.errors import CorruptLedgerError, SchemaVersionError
@@ -46,6 +49,7 @@ _EVENT_TYPE_BY_CLASS: dict[type[object], str] = {
     OrderRejected: "order_rejected",
     OrderCancelled: "order_cancelled",
     OrderOutcomeUnknown: "order_outcome_unknown",
+    MarketResolutionEvidenceRecorded: "market_resolution_evidence_recorded",
     MarketResolved: "market_resolved",
     PositionSettled: "position_settled",
 }
@@ -110,6 +114,30 @@ def _intent_to_data(value: OrderIntent) -> dict[str, object]:
     }
 
 
+def _evidence_to_data(value: MarketResolutionEvidence) -> dict[str, object]:
+    return {
+        "market_id": str(value.market_id),
+        "condition_id": value.condition_id,
+        "source_name": value.source_name,
+        "source_url": value.source_url,
+        "declared_resolution_source": value.declared_resolution_source,
+        "retrieved_at": value.retrieved_at.isoformat(),
+        "finalized_at": value.finalized_at.isoformat(),
+        "market_date": value.market_date.isoformat(),
+        "market_timezone": value.market_timezone,
+        "status": value.status.value,
+        "resolution_value": value.resolution_value,
+        "payouts": [
+            {
+                "outcome_id": str(payout.outcome_id),
+                "payout": format(payout.payout, "f"),
+            }
+            for payout in value.payouts
+        ],
+        "payload_hash": value.payload_hash,
+    }
+
+
 def _resolution_to_data(value: MarketResolution) -> dict[str, object]:
     return {
         "market_id": str(value.market_id),
@@ -156,6 +184,8 @@ def _event_data(event: LedgerEvent) -> dict[str, object]:
             "intent_id": str(event.intent_id),
             "reason": event.reason,
         }
+    if isinstance(event, MarketResolutionEvidenceRecorded):
+        return {**common, "evidence": _evidence_to_data(event.evidence)}
     if isinstance(event, MarketResolved):
         return {**common, "resolution": _resolution_to_data(event.resolution)}
     return {
@@ -189,6 +219,8 @@ def _index_fields(
         ),
     ):
         return str(event.intent_id), None, None, None
+    if isinstance(event, MarketResolutionEvidenceRecorded):
+        return None, None, str(event.evidence.market_id), None
     if isinstance(event, MarketResolved):
         return None, None, str(event.resolution.market_id), None
     if isinstance(event, PositionSettled):
@@ -295,6 +327,14 @@ def _decimal(value: object, *, label: str) -> Decimal:
     return result
 
 
+def _date(value: object, *, label: str) -> date:
+    text = _text(value, label=label)
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise CorruptLedgerError(f"{label} is not an ISO-8601 date") from exc
+
+
 def _datetime(value: object, *, label: str) -> datetime:
     text = _text(value, label=label)
     try:
@@ -346,6 +386,80 @@ def _intent(value: object) -> OrderIntent:
         limit_price=_decimal(data["limit_price"], label="intent.limit_price"),
         fee_reserve=_money(data["fee_reserve"], label="intent.fee_reserve"),
         created_at=_datetime(data["created_at"], label="intent.created_at"),
+    )
+
+
+def _evidence(value: object) -> MarketResolutionEvidence:
+    data = _mapping(value, label="evidence")
+    _expect_keys(
+        data,
+        required={
+            "market_id",
+            "condition_id",
+            "source_name",
+            "source_url",
+            "declared_resolution_source",
+            "retrieved_at",
+            "finalized_at",
+            "market_date",
+            "market_timezone",
+            "status",
+            "resolution_value",
+            "payouts",
+            "payload_hash",
+        },
+        label="evidence",
+    )
+    payouts: list[OutcomePayout] = []
+    for index, raw_payout in enumerate(_sequence(data["payouts"], label="evidence.payouts")):
+        payout = _mapping(raw_payout, label=f"evidence.payouts[{index}]")
+        _expect_keys(
+            payout,
+            required={"outcome_id", "payout"},
+            label=f"evidence.payouts[{index}]",
+        )
+        payouts.append(
+            OutcomePayout(
+                outcome_id=OutcomeId(
+                    _text(
+                        payout["outcome_id"],
+                        label=f"evidence.payouts[{index}].outcome_id",
+                    )
+                ),
+                payout=_decimal(
+                    payout["payout"],
+                    label=f"evidence.payouts[{index}].payout",
+                ),
+            )
+        )
+    status_text = _text(data["status"], label="evidence.status")
+    try:
+        status = ResolutionEvidenceStatus(status_text)
+    except ValueError as exc:
+        raise CorruptLedgerError(f"evidence.status is unsupported: {status_text!r}") from exc
+    return MarketResolutionEvidence(
+        market_id=MarketId(_text(data["market_id"], label="evidence.market_id")),
+        condition_id=_text(data["condition_id"], label="evidence.condition_id"),
+        source_name=_text(data["source_name"], label="evidence.source_name"),
+        source_url=_text(data["source_url"], label="evidence.source_url"),
+        declared_resolution_source=_text(
+            data["declared_resolution_source"],
+            label="evidence.declared_resolution_source",
+        ),
+        retrieved_at=_datetime(data["retrieved_at"], label="evidence.retrieved_at"),
+        finalized_at=_datetime(data["finalized_at"], label="evidence.finalized_at"),
+        market_date=_date(data["market_date"], label="evidence.market_date"),
+        market_timezone=_text(
+            data["market_timezone"],
+            label="evidence.market_timezone",
+        ),
+        status=status,
+        resolution_value=_text(
+            data["resolution_value"],
+            label="evidence.resolution_value",
+        ),
+        payouts=tuple(payouts),
+        payload_hash=_text(data["payload_hash"], label="evidence.payload_hash"),
     )
 
 
@@ -484,6 +598,13 @@ def decode_event(payload_json: str) -> LedgerEvent:
             occurred_at=occurred_at,
             intent_id=intent_id,
             reason=reason,
+        )
+    if event_type == "market_resolution_evidence_recorded":
+        event_id, occurred_at = _common(data, required={"evidence"})
+        return MarketResolutionEvidenceRecorded(
+            event_id=event_id,
+            occurred_at=occurred_at,
+            evidence=_evidence(data["evidence"]),
         )
     if event_type == "market_resolved":
         event_id, occurred_at = _common(data, required={"resolution"})

@@ -15,6 +15,7 @@ from weatherbot.domain.events import (
     AccountOpened,
     FillReceived,
     LedgerEvent,
+    MarketResolutionEvidenceRecorded,
     MarketResolved,
     OrderAcknowledged,
     OrderCancelled,
@@ -337,7 +338,33 @@ def _apply_fill(state: LedgerState, event: FillReceived) -> LedgerState:
     return _replace_order(state, order)
 
 
+def _apply_resolution_evidence(
+    state: LedgerState,
+    event: MarketResolutionEvidenceRecorded,
+) -> LedgerState:
+    _require_opened(state)
+    market_id = event.evidence.market_id
+    existing = state.resolution_evidence.get(market_id)
+    if existing is not None:
+        if existing == event.evidence:
+            return state
+        raise DuplicateEventConflict(
+            "authoritative market resolution evidence changed after recording"
+        )
+    resolution = state.resolutions.get(market_id)
+    if resolution is not None and resolution.payouts != event.evidence.payouts:
+        raise DuplicateEventConflict(
+            "authoritative evidence conflicts with the recorded payout vector"
+        )
+    evidence = dict(state.resolution_evidence)
+    evidence[market_id] = event.evidence
+    return replace(state, resolution_evidence=evidence)
+
+
 def _apply_resolution(state: LedgerState, event: MarketResolved) -> LedgerState:
+    evidence = state.resolution_evidence.get(event.resolution.market_id)
+    if evidence is not None and evidence.payouts != event.resolution.payouts:
+        raise DuplicateEventConflict("market resolution payout differs from authoritative evidence")
     existing = state.resolutions.get(event.resolution.market_id)
     if existing is not None:
         if existing == event.resolution:
@@ -417,6 +444,8 @@ def apply_event(state: LedgerState, event: LedgerEvent) -> LedgerState:
         )
     elif isinstance(event, OrderOutcomeUnknown):
         next_state = _apply_unknown(state, event)
+    elif isinstance(event, MarketResolutionEvidenceRecorded):
+        next_state = _apply_resolution_evidence(state, event)
     elif isinstance(event, MarketResolved):
         next_state = _apply_resolution(state, event)
     else:

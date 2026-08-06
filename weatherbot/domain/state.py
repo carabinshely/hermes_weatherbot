@@ -27,6 +27,7 @@ from weatherbot.domain.money import (
     money_from_unit_price,
     require_nonnegative,
 )
+from weatherbot.domain.resolution import MarketResolutionEvidence
 
 type PositionKey = tuple[MarketId, OutcomeId]
 
@@ -51,6 +52,10 @@ def _empty_resolutions() -> Mapping[MarketId, MarketResolution]:
     return {}
 
 
+def _empty_resolution_evidence() -> Mapping[MarketId, MarketResolutionEvidence]:
+    return {}
+
+
 def _empty_event_fingerprints() -> Mapping[EventId, str]:
     return {}
 
@@ -66,6 +71,9 @@ class LedgerState:
     orders: Mapping[OrderIntentId, OrderAggregate] = field(default_factory=_empty_orders)
     positions: Mapping[PositionKey, Position] = field(default_factory=_empty_positions)
     resolutions: Mapping[MarketId, MarketResolution] = field(default_factory=_empty_resolutions)
+    resolution_evidence: Mapping[MarketId, MarketResolutionEvidence] = field(
+        default_factory=_empty_resolution_evidence
+    )
     event_fingerprints: Mapping[EventId, str] = field(default_factory=_empty_event_fingerprints)
 
     def __post_init__(self) -> None:
@@ -76,6 +84,11 @@ class LedgerState:
         object.__setattr__(self, "orders", _freeze_mapping(self.orders))
         object.__setattr__(self, "positions", _freeze_mapping(self.positions))
         object.__setattr__(self, "resolutions", _freeze_mapping(self.resolutions))
+        object.__setattr__(
+            self,
+            "resolution_evidence",
+            _freeze_mapping(self.resolution_evidence),
+        )
         object.__setattr__(
             self,
             "event_fingerprints",
@@ -191,11 +204,21 @@ class LedgerState:
             if reserved_quantity and key not in self.positions:
                 raise InvariantViolation("sell order reserves a missing position")
 
+        for market_id, evidence in self.resolution_evidence.items():
+            if market_id != evidence.market_id:
+                raise InvariantViolation("resolution evidence map key does not match market")
+            resolution = self.resolutions.get(market_id)
+            if resolution is not None and resolution.payouts != evidence.payouts:
+                raise InvariantViolation(
+                    "recorded resolution differs from its authoritative evidence"
+                )
+
         if not self.opened and (
             not self.cash.is_zero
             or not self.reserved_cash.is_zero
             or self.orders
             or self.positions
             or self.resolutions
+            or self.resolution_evidence
         ):
             raise InvariantViolation("an unopened ledger must have no financial state")

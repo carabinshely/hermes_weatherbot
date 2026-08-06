@@ -158,11 +158,9 @@ class GammaResolutionSource:
             declared_source = market.resolution_source
             if declared_source is None:
                 raise GammaMarketError("market has no declared resolution source")
-            if (
-                context.declared_resolution_source is not None
-                and declared_source.rstrip("/")
-                != context.declared_resolution_source.rstrip("/")
-            ):
+            if context.declared_resolution_source is not None and declared_source.rstrip(
+                "/"
+            ) != context.declared_resolution_source.rstrip("/"):
                 raise GammaMarketError(
                     "declared resolution source changed after the signal was recorded"
                 )
@@ -176,7 +174,7 @@ class GammaResolutionSource:
                     f"UMA resolution is disputed ({status_text})",
                 )
             if not market.closed:
-                if market.end_at is not None and checked > market.end_at + self.delay_grace:
+                if market.end_at is not None and checked >= market.end_at + self.delay_grace:
                     return _poll_result(
                         context,
                         ResolutionPollStatus.DELAYED,

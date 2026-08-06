@@ -69,7 +69,9 @@ def test_terminal_resolution_is_atomic_and_replayable(
         assert state.cash.amount == Decimal(expected_cash)
         assert MARKET_ID in state.resolutions
         assert MARKET_ID in state.resolution_evidence
-        assert len(eligible_resolution_evidence(state)) == (0 if status is ResolutionPollStatus.VOID else 1)
+        assert len(eligible_resolution_evidence(state)) == (
+            0 if status is ResolutionPollStatus.VOID else 1
+        )
 
     with SQLiteEventStore(database, read_only=True) as restarted:
         state = restarted.load_state()

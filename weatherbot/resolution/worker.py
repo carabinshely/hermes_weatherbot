@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import hashlib
 from collections import defaultdict
-from collections.abc import Callable, Protocol
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Protocol
 
 from weatherbot.domain import (
     DomainError,
@@ -14,8 +15,8 @@ from weatherbot.domain import (
     LedgerState,
     MarketId,
     MarketResolution,
-    MarketResolved,
     MarketResolutionEvidenceRecorded,
+    MarketResolved,
     Money,
     Position,
     PositionSettled,
@@ -119,9 +120,15 @@ class ResolutionWorker:
             is PositionStatus.SETTLED
             for position in positions
         )
+        evidence = state.resolution_evidence.get(resolution.market_id)
+        status = (
+            ResolutionPollStatus.VOID
+            if evidence is not None and not evidence.learning_eligible
+            else ResolutionPollStatus.FINAL
+        )
         return ResolutionCycleItem(
             market_id=resolution.market_id,
-            status=ResolutionPollStatus.FINAL,
+            status=status,
             reason="settled positions from an already-recorded market resolution",
             events_appended=len(result.appended_sequences),
             positions_settled=settled,
@@ -163,9 +170,7 @@ class ResolutionWorker:
             identity_material=evidence.payload_hash,
             currency=state.currency,
         )
-        result = self.store.append_many(
-            (evidence_event, resolution_event, *settlements)
-        )
+        result = self.store.append_many((evidence_event, resolution_event, *settlements))
         settled = sum(
             result.state.positions[(position.market_id, position.outcome_id)].status
             is PositionStatus.SETTLED

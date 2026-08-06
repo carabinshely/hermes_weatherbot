@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, fields, is_dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 from typing import cast
@@ -22,6 +22,7 @@ from weatherbot.domain.model import (
     require_aware,
 )
 from weatherbot.domain.money import Money, as_decimal, require_nonnegative
+from weatherbot.domain.resolution import MarketResolutionEvidence
 
 
 def _canonicalize(value: object) -> object:
@@ -40,6 +41,8 @@ def _canonicalize(value: object) -> object:
     if isinstance(value, Decimal):
         return format(value, "f")
     if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, date):
         return value.isoformat()
     if isinstance(value, Enum):
         return cast(object, value.value)
@@ -172,6 +175,11 @@ class OrderOutcomeUnknown(DomainEvent):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class MarketResolutionEvidenceRecorded(DomainEvent):
+    evidence: MarketResolutionEvidence
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MarketResolved(DomainEvent):
     resolution: MarketResolution
 
@@ -196,6 +204,7 @@ type LedgerEvent = (
     | OrderRejected
     | OrderCancelled
     | OrderOutcomeUnknown
+    | MarketResolutionEvidenceRecorded
     | MarketResolved
     | PositionSettled
 )

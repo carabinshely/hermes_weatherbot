@@ -44,9 +44,9 @@ def context() -> ResolutionContext:
 
 
 def evidence_event(*, yes: str = "1", no: str = "0") -> MarketResolutionEvidenceRecorded:
-    result = GammaResolutionSource(
-        StaticGammaTransport(gamma_payload(yes=yes, no=no))
-    ).poll(context(), checked_at=NOW)
+    result = GammaResolutionSource(StaticGammaTransport(gamma_payload(yes=yes, no=no))).poll(
+        context(), checked_at=NOW
+    )
     assert result.evidence is not None
     return MarketResolutionEvidenceRecorded(
         event_id=EventId(f"evidence-{yes}-{no}"),

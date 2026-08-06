@@ -66,9 +66,9 @@ def test_final_binary_payout_maps_to_explicit_outcome_tokens(
 
 
 def test_half_payout_is_typed_as_void_and_not_learnable() -> None:
-    result = GammaResolutionSource(
-        StaticGammaTransport(gamma_payload(yes="0.5", no="0.5"))
-    ).poll(context(), checked_at=NOW)
+    result = GammaResolutionSource(StaticGammaTransport(gamma_payload(yes="0.5", no="0.5"))).poll(
+        context(), checked_at=NOW
+    )
     assert result.status is ResolutionPollStatus.VOID
     assert result.evidence is not None
     assert not result.evidence.learning_eligible
@@ -101,9 +101,7 @@ def test_pending_delayed_and_disputed_markets_do_not_emit_resolution() -> None:
         {**gamma_payload(), "conditionId": "0x" + "cd" * 32},
         {
             **gamma_payload(),
-            "question": (
-                "Will the highest temperature in Chicago be between 64-65°F on April 18?"
-            ),
+            "question": ("Will the highest temperature in Chicago be between 64-65°F on April 18?"),
         },
         {**gamma_payload(), "resolutionSource": ""},
         {**gamma_payload(), "closedTime": "2027-01-01T00:00:00Z"},
@@ -156,7 +154,7 @@ def test_tail_and_exact_degree_contracts_are_reused_at_resolution(
     bucket_key: str,
     question: str,
 ) -> None:
-    result = GammaResolutionSource(
-        StaticGammaTransport(gamma_payload(question=question))
-    ).poll(context(bucket_key), checked_at=NOW)
+    result = GammaResolutionSource(StaticGammaTransport(gamma_payload(question=question))).poll(
+        context(bucket_key), checked_at=NOW
+    )
     assert result.status is ResolutionPollStatus.FINAL
