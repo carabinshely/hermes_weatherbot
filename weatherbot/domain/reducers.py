@@ -37,6 +37,7 @@ from weatherbot.domain.model import (
     require_transition,
 )
 from weatherbot.domain.money import Money, as_decimal, money_from_unit_price
+from weatherbot.domain.observation import ObservationEvidenceStatus
 from weatherbot.domain.state import LedgerState, PositionKey, position_key
 
 
@@ -353,7 +354,12 @@ def _apply_weather_observation(
             raise DuplicateEventConflict(
                 "weather observation payload hash was reused with different evidence"
             )
-    if evidence.supersedes_payload_hash is not None:
+
+    terminal_history = tuple(prior for prior in existing if prior.learning_eligible)
+    if evidence.status is ObservationEvidenceStatus.FINAL:
+        if terminal_history:
+            raise DuplicateEventConflict("weather observation history already has a final root")
+    elif evidence.status is ObservationEvidenceStatus.REVISED:
         superseded = next(
             (prior for prior in existing if prior.payload_hash == evidence.supersedes_payload_hash),
             None,
@@ -361,6 +367,15 @@ def _apply_weather_observation(
         if superseded is None:
             raise DuplicateEventConflict(
                 "weather observation revision supersedes an unknown payload"
+            )
+        if not terminal_history:
+            raise DuplicateEventConflict(
+                "weather observation revision requires an existing final root"
+            )
+        latest = terminal_history[-1]
+        if evidence.supersedes_payload_hash != latest.payload_hash:
+            raise DuplicateEventConflict(
+                "weather observation revision must supersede the latest terminal payload"
             )
         identity_fields = (
             "source_name",
@@ -371,10 +386,11 @@ def _apply_weather_observation(
             "market_timezone",
             "unit",
         )
-        if any(getattr(superseded, field) != getattr(evidence, field) for field in identity_fields):
+        if any(getattr(latest, field) != getattr(evidence, field) for field in identity_fields):
             raise DuplicateEventConflict(
                 "weather observation revision changed source or measurement identity"
             )
+
     observations = dict(state.weather_observations)
     observations[evidence.market_id] = (*existing, evidence)
     return replace(state, weather_observations=observations)

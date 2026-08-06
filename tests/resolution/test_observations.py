@@ -172,13 +172,14 @@ def test_provisional_or_wrong_source_observation_is_excluded_from_learning(
         )
         assert eligible_learning_outcomes(store.load_state()) == ()
 
-        assert recorder.record(
-            observation(
-                revision="final-other-source",
-                payload=b"other-source",
-                source_url="https://weather.example.test/other-station",
+        with pytest.raises(ValueError, match="declared resolution source"):
+            recorder.record(
+                observation(
+                    revision="final-other-source",
+                    payload=b"other-source",
+                    source_url="https://weather.example.test/other-station",
+                )
             )
-        )
         assert eligible_learning_outcomes(store.load_state()) == ()
 
 
@@ -186,3 +187,56 @@ def test_payload_hash_is_computed_from_captured_source_bytes(tmp_path: Path) -> 
     capture = tmp_path / "source-capture.json"
     capture.write_bytes(b'{"daily_high":63,"station":"KMDW"}')
     assert payload_sha256(capture) == hashlib.sha256(capture.read_bytes()).hexdigest()
+
+
+def test_second_final_root_is_rejected_without_mutating_history(tmp_path: Path) -> None:
+    database = tmp_path / "ledger.sqlite3"
+    with SQLiteEventStore(database) as store:
+        seed_open_position(store)
+        recorder = ObservationRecorder(store)
+        original = observation()
+        assert recorder.record(original)
+        before = store.event_count()
+        with pytest.raises(DuplicateEventConflict, match="final root"):
+            recorder.record(
+                observation(
+                    temperature="64",
+                    revision="independent-final-v2",
+                    payload=b"independent-final-v2",
+                )
+            )
+        assert store.event_count() == before
+        assert store.load_state().weather_observations[MARKET_ID] == (original,)
+
+
+def test_branching_revision_is_rejected_without_mutating_history(tmp_path: Path) -> None:
+    database = tmp_path / "ledger.sqlite3"
+    with SQLiteEventStore(database) as store:
+        seed_open_position(store)
+        recorder = ObservationRecorder(store)
+        original = observation()
+        first_revision = observation(
+            temperature="64",
+            status=ObservationEvidenceStatus.REVISED,
+            revision="final-v2",
+            payload=b"linear-final-v2",
+            supersedes=original.payload_hash,
+        )
+        assert recorder.record(original)
+        assert recorder.record(first_revision)
+        before = store.event_count()
+        with pytest.raises(DuplicateEventConflict, match="latest terminal payload"):
+            recorder.record(
+                observation(
+                    temperature="65",
+                    status=ObservationEvidenceStatus.REVISED,
+                    revision="branch-v3",
+                    payload=b"branch-final-v3",
+                    supersedes=original.payload_hash,
+                )
+            )
+        assert store.event_count() == before
+        assert store.load_state().weather_observations[MARKET_ID] == (
+            original,
+            first_revision,
+        )

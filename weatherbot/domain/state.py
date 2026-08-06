@@ -6,6 +6,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from decimal import Decimal
+from itertools import pairwise
 from types import MappingProxyType
 from typing import Self
 
@@ -27,7 +28,10 @@ from weatherbot.domain.money import (
     money_from_unit_price,
     require_nonnegative,
 )
-from weatherbot.domain.observation import WeatherObservationEvidence
+from weatherbot.domain.observation import (
+    ObservationEvidenceStatus,
+    WeatherObservationEvidence,
+)
 from weatherbot.domain.resolution import MarketResolutionEvidence
 
 type PositionKey = tuple[MarketId, OutcomeId]
@@ -233,6 +237,7 @@ class LedgerState:
 
         for market_id, observations in self.weather_observations.items():
             hashes: set[str] = set()
+            terminal_history: list[WeatherObservationEvidence] = []
             for observation in observations:
                 if observation.market_id != market_id:
                     raise InvariantViolation("weather observation map key does not match market")
@@ -248,6 +253,26 @@ class LedgerState:
                         "weather observation revision supersedes an unknown prior payload"
                     )
                 hashes.add(observation.payload_hash)
+                if observation.learning_eligible:
+                    terminal_history.append(observation)
+
+            if terminal_history:
+                root = terminal_history[0]
+                if (
+                    root.status is not ObservationEvidenceStatus.FINAL
+                    or root.supersedes_payload_hash is not None
+                ):
+                    raise InvariantViolation(
+                        "weather observation terminal history must begin with one final root"
+                    )
+                for previous, current in pairwise(terminal_history):
+                    if (
+                        current.status is not ObservationEvidenceStatus.REVISED
+                        or current.supersedes_payload_hash != previous.payload_hash
+                    ):
+                        raise InvariantViolation(
+                            "weather observation terminal revisions must form one linear chain"
+                        )
 
         if not self.opened and (
             not self.cash.is_zero
