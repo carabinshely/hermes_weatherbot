@@ -43,10 +43,10 @@ jobs:
         run: uv sync --locked --all-groups
 
       - name: Check formatting
-        run: uv run ruff format --check execution_modes.py runtime_security.py tests
+        run: uv run ruff format --check execution_modes.py runtime_security.py weatherbot tests
 
       - name: Lint maintained code
-        run: uv run ruff check execution_modes.py runtime_security.py tests
+        run: uv run ruff check execution_modes.py runtime_security.py weatherbot tests
 
       - name: Check critical legacy errors
         run: >
@@ -55,12 +55,12 @@ jobs:
           bot_v1.py bot_v2.py bot_v3.py
 
       - name: Type-check maintained code
-        run: uv run pyright execution_modes.py runtime_security.py tests
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
 
       - name: Compile Python sources
         run: >
           python -m compileall -q
-          execution_modes.py runtime_security.py
+          execution_modes.py runtime_security.py weatherbot
           bot_v1.py bot_v2.py bot_v3.py tests
 
       - name: Run tests
