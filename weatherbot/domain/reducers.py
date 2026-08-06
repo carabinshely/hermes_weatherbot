@@ -24,6 +24,7 @@ from weatherbot.domain.events import (
     OrderRejected,
     OrderSubmitted,
     PositionSettled,
+    WeatherObservationRecorded,
     fingerprint,
 )
 from weatherbot.domain.model import (
@@ -338,6 +339,47 @@ def _apply_fill(state: LedgerState, event: FillReceived) -> LedgerState:
     return _replace_order(state, order)
 
 
+def _apply_weather_observation(
+    state: LedgerState,
+    event: WeatherObservationRecorded,
+) -> LedgerState:
+    _require_opened(state)
+    evidence = event.evidence
+    existing = state.weather_observations.get(evidence.market_id, ())
+    for prior in existing:
+        if prior.payload_hash == evidence.payload_hash:
+            if prior == evidence:
+                return state
+            raise DuplicateEventConflict(
+                "weather observation payload hash was reused with different evidence"
+            )
+    if evidence.supersedes_payload_hash is not None:
+        superseded = next(
+            (prior for prior in existing if prior.payload_hash == evidence.supersedes_payload_hash),
+            None,
+        )
+        if superseded is None:
+            raise DuplicateEventConflict(
+                "weather observation revision supersedes an unknown payload"
+            )
+        identity_fields = (
+            "source_name",
+            "source_url",
+            "station_id",
+            "measurement_basis",
+            "market_date",
+            "market_timezone",
+            "unit",
+        )
+        if any(getattr(superseded, field) != getattr(evidence, field) for field in identity_fields):
+            raise DuplicateEventConflict(
+                "weather observation revision changed source or measurement identity"
+            )
+    observations = dict(state.weather_observations)
+    observations[evidence.market_id] = (*existing, evidence)
+    return replace(state, weather_observations=observations)
+
+
 def _apply_resolution_evidence(
     state: LedgerState,
     event: MarketResolutionEvidenceRecorded,
@@ -444,6 +486,8 @@ def apply_event(state: LedgerState, event: LedgerEvent) -> LedgerState:
         )
     elif isinstance(event, OrderOutcomeUnknown):
         next_state = _apply_unknown(state, event)
+    elif isinstance(event, WeatherObservationRecorded):
+        next_state = _apply_weather_observation(state, event)
     elif isinstance(event, MarketResolutionEvidenceRecorded):
         next_state = _apply_resolution_evidence(state, event)
     elif isinstance(event, MarketResolved):

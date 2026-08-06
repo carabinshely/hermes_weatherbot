@@ -22,6 +22,7 @@ from weatherbot.domain.model import (
     require_aware,
 )
 from weatherbot.domain.money import Money, as_decimal, require_nonnegative
+from weatherbot.domain.observation import WeatherObservationEvidence
 from weatherbot.domain.resolution import MarketResolutionEvidence
 
 
@@ -175,6 +176,11 @@ class OrderOutcomeUnknown(DomainEvent):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class WeatherObservationRecorded(DomainEvent):
+    evidence: WeatherObservationEvidence
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MarketResolutionEvidenceRecorded(DomainEvent):
     evidence: MarketResolutionEvidence
 
@@ -204,6 +210,7 @@ type LedgerEvent = (
     | OrderRejected
     | OrderCancelled
     | OrderOutcomeUnknown
+    | WeatherObservationRecorded
     | MarketResolutionEvidenceRecorded
     | MarketResolved
     | PositionSettled

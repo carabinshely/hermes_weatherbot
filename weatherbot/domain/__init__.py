@@ -20,6 +20,7 @@ from weatherbot.domain.events import (
     OrderRejected,
     OrderSubmitted,
     PositionSettled,
+    WeatherObservationRecorded,
     fingerprint,
 )
 from weatherbot.domain.model import (
@@ -43,6 +44,10 @@ from weatherbot.domain.model import (
     build_order_intent_id,
 )
 from weatherbot.domain.money import Money, as_decimal, money_from_unit_price
+from weatherbot.domain.observation import (
+    ObservationEvidenceStatus,
+    WeatherObservationEvidence,
+)
 from weatherbot.domain.ports import ExecutionAdapter
 from weatherbot.domain.reducers import apply_event, replay
 from weatherbot.domain.resolution import (
@@ -70,6 +75,7 @@ __all__ = [
     "MarketResolutionEvidenceRecorded",
     "MarketResolved",
     "Money",
+    "ObservationEvidenceStatus",
     "OrderAcknowledged",
     "OrderAggregate",
     "OrderCancelled",
@@ -91,6 +97,8 @@ __all__ = [
     "RiskDecisionStatus",
     "Side",
     "Signal",
+    "WeatherObservationEvidence",
+    "WeatherObservationRecorded",
     "allowed_transitions",
     "apply_event",
     "as_decimal",

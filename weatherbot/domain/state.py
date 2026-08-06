@@ -27,6 +27,7 @@ from weatherbot.domain.money import (
     money_from_unit_price,
     require_nonnegative,
 )
+from weatherbot.domain.observation import WeatherObservationEvidence
 from weatherbot.domain.resolution import MarketResolutionEvidence
 
 type PositionKey = tuple[MarketId, OutcomeId]
@@ -56,6 +57,10 @@ def _empty_resolution_evidence() -> Mapping[MarketId, MarketResolutionEvidence]:
     return {}
 
 
+def _empty_weather_observations() -> Mapping[MarketId, tuple[WeatherObservationEvidence, ...]]:
+    return {}
+
+
 def _empty_event_fingerprints() -> Mapping[EventId, str]:
     return {}
 
@@ -74,6 +79,9 @@ class LedgerState:
     resolution_evidence: Mapping[MarketId, MarketResolutionEvidence] = field(
         default_factory=_empty_resolution_evidence
     )
+    weather_observations: Mapping[MarketId, tuple[WeatherObservationEvidence, ...]] = field(
+        default_factory=_empty_weather_observations
+    )
     event_fingerprints: Mapping[EventId, str] = field(default_factory=_empty_event_fingerprints)
 
     def __post_init__(self) -> None:
@@ -88,6 +96,16 @@ class LedgerState:
             self,
             "resolution_evidence",
             _freeze_mapping(self.resolution_evidence),
+        )
+        object.__setattr__(
+            self,
+            "weather_observations",
+            _freeze_mapping(
+                {
+                    market_id: tuple(observations)
+                    for market_id, observations in self.weather_observations.items()
+                }
+            ),
         )
         object.__setattr__(
             self,
@@ -213,6 +231,24 @@ class LedgerState:
                     "recorded resolution differs from its authoritative evidence"
                 )
 
+        for market_id, observations in self.weather_observations.items():
+            hashes: set[str] = set()
+            for observation in observations:
+                if observation.market_id != market_id:
+                    raise InvariantViolation("weather observation map key does not match market")
+                if observation.payload_hash in hashes:
+                    raise InvariantViolation(
+                        "weather observation history contains a duplicate payload hash"
+                    )
+                if (
+                    observation.supersedes_payload_hash is not None
+                    and observation.supersedes_payload_hash not in hashes
+                ):
+                    raise InvariantViolation(
+                        "weather observation revision supersedes an unknown prior payload"
+                    )
+                hashes.add(observation.payload_hash)
+
         if not self.opened and (
             not self.cash.is_zero
             or not self.reserved_cash.is_zero
@@ -220,5 +256,6 @@ class LedgerState:
             or self.positions
             or self.resolutions
             or self.resolution_evidence
+            or self.weather_observations
         ):
             raise InvariantViolation("an unopened ledger must have no financial state")

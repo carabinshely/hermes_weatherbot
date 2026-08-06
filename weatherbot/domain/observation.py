@@ -99,9 +99,7 @@ class WeatherObservationEvidence:
             require_aware(source_timestamp, label="source_timestamp")
             local_date = source_timestamp.astimezone(ZoneInfo(timezone_name)).date()
             if local_date != self.market_date:
-                raise InvariantViolation(
-                    "source timestamp local date differs from the market date"
-                )
+                raise InvariantViolation("source timestamp local date differs from the market date")
         source_revision = _require_text(
             self.source_revision,
             label="source_revision",
@@ -118,9 +116,7 @@ class WeatherObservationEvidence:
         if self.status is ObservationEvidenceStatus.REVISED and supersedes is None:
             raise InvariantViolation("revised observation requires a superseded payload hash")
         if self.status is not ObservationEvidenceStatus.REVISED and supersedes is not None:
-            raise InvariantViolation(
-                "only revised observations may name a superseded payload hash"
-            )
+            raise InvariantViolation("only revised observations may name a superseded payload hash")
 
         object.__setattr__(self, "source_name", source_name)
         object.__setattr__(self, "source_url", source_url)

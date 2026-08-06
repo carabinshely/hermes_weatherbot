@@ -21,9 +21,8 @@ from weatherbot.persistence import SQLiteEventStore
 
 def _event_id(evidence: WeatherObservationEvidence) -> EventId:
     material = (
-        f"{evidence.market_id}\n{evidence.payload_hash}\n"
-        f"{evidence.source_revision}"
-    ).encode("utf-8")
+        f"{evidence.market_id}\n{evidence.payload_hash}\n{evidence.source_revision}"
+    ).encode()
     return EventId(f"weather_observation_{hashlib.sha256(material).hexdigest()}")
 
 
@@ -79,10 +78,9 @@ class VerifiedLearningOutcome:
             raise ValueError("settlement and observation use different market dates")
         if self.settlement.market_timezone != self.observation.market_timezone:
             raise ValueError("settlement and observation use different market timezones")
-        if (
-            self.settlement.declared_resolution_source.rstrip("/")
-            != self.observation.source_url.rstrip("/")
-        ):
+        if self.settlement.declared_resolution_source.rstrip(
+            "/"
+        ) != self.observation.source_url.rstrip("/"):
             raise ValueError("observation source differs from the market resolution source")
 
     @property

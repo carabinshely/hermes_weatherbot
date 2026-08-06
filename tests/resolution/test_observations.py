@@ -55,7 +55,7 @@ def observation(
         temperature=Decimal(temperature),
         unit="F",
         retrieved_at=NOW + timedelta(minutes=5),
-        source_timestamp=NOW - timedelta(hours=1),
+        source_timestamp=NOW - timedelta(hours=2),
         source_revision=revision,
         status=status,
         payload_hash=hashlib.sha256(payload).hexdigest(),
