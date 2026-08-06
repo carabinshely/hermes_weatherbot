@@ -103,15 +103,11 @@ def _freeze_fill_fingerprints(
 
 replace_once(
     "weatherbot/domain/model.py",
-    '''    fill_fingerprints: Mapping[FillId, str] = field(
-        default_factory=_empty_fill_fingerprints
-    )
+    '''    fill_fingerprints: Mapping[FillId, str] = field(default_factory=_empty_fill_fingerprints)
 
     @classmethod
 ''',
-    '''    fill_fingerprints: Mapping[FillId, str] = field(
-        default_factory=_empty_fill_fingerprints
-    )
+    '''    fill_fingerprints: Mapping[FillId, str] = field(default_factory=_empty_fill_fingerprints)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -159,8 +155,6 @@ replace_once(
 
 replace_once(
     "weatherbot/domain/reducers.py",
-    '''    order = replace(order, reserved_cash=order.reserved_cash - reservation_release)
-''',
-    '''    order = replace(order, reserved_cash=remaining_reservation)
-''',
+    "    order = replace(order, reserved_cash=order.reserved_cash - reservation_release)\n",
+    "    order = replace(order, reserved_cash=remaining_reservation)\n",
 )
