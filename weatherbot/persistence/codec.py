@@ -460,17 +460,28 @@ def decode_event(payload_json: str) -> LedgerEvent:
         "order_outcome_unknown",
     }:
         event_id, occurred_at = _common(data, required={"intent_id", "reason"})
-        arguments = {
-            "event_id": event_id,
-            "occurred_at": occurred_at,
-            "intent_id": OrderIntentId(_text(data["intent_id"], label="intent_id")),
-            "reason": _text(data["reason"], label="reason"),
-        }
+        intent_id = OrderIntentId(_text(data["intent_id"], label="intent_id"))
+        reason = _text(data["reason"], label="reason")
         if event_type == "order_rejected":
-            return OrderRejected(**arguments)
+            return OrderRejected(
+                event_id=event_id,
+                occurred_at=occurred_at,
+                intent_id=intent_id,
+                reason=reason,
+            )
         if event_type == "order_cancelled":
-            return OrderCancelled(**arguments)
-        return OrderOutcomeUnknown(**arguments)
+            return OrderCancelled(
+                event_id=event_id,
+                occurred_at=occurred_at,
+                intent_id=intent_id,
+                reason=reason,
+            )
+        return OrderOutcomeUnknown(
+            event_id=event_id,
+            occurred_at=occurred_at,
+            intent_id=intent_id,
+            reason=reason,
+        )
     if event_type == "market_resolved":
         event_id, occurred_at = _common(data, required={"resolution"})
         return MarketResolved(

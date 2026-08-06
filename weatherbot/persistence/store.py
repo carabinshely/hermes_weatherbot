@@ -6,11 +6,12 @@ import os
 import sqlite3
 import threading
 import uuid
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Generator, Iterable, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from types import TracebackType
 from typing import Self, cast
 
 from weatherbot.domain import (
@@ -231,7 +232,12 @@ class SQLiteEventStore:
         self._ensure_open()
         return self
 
-    def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
         self.close()
 
     def close(self) -> None:
@@ -251,7 +257,7 @@ class SQLiteEventStore:
             raise PersistenceError("event store was opened read-only")
 
     @contextmanager
-    def _transaction(self) -> Iterator[None]:
+    def _transaction(self) -> Generator[None, None, None]:
         self._ensure_writable()
         self._connection.execute("BEGIN IMMEDIATE")
         try:

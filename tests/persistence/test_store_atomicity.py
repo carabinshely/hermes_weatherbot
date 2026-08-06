@@ -100,13 +100,11 @@ def test_concurrent_scans_cannot_create_duplicate_intents(tmp_path: Path) -> Non
     with SQLiteEventStore(database) as store:
         store.append(account_opened())
 
+    def commit(owner: str) -> tuple[bool, int]:
+        return _commit_same_intent(database, owner)
+
     with ThreadPoolExecutor(max_workers=2) as executor:
-        results = list(
-            executor.map(
-                lambda owner: _commit_same_intent(database, owner),
-                ("worker-a", "worker-b"),
-            )
-        )
+        results = list(executor.map(commit, ("worker-a", "worker-b")))
 
     assert sorted(appended for appended, _ in results) == [False, True]
     assert {sequence for _, sequence in results} == {2}
