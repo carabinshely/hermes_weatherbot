@@ -1,0 +1,30 @@
+name: Normalize persistence gitignore
+
+on:
+  push:
+    branches: [agent/durable-event-store]
+
+permissions:
+  contents: write
+
+jobs:
+  normalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/durable-event-store
+          fetch-depth: 0
+
+      - name: Normalize gitignore
+        run: python tools/normalize_persistence_gitignore.py
+
+      - name: Commit normalized gitignore
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .gitignore
+          git commit -m "chore: ignore runtime ledger files"
+          git push origin HEAD:agent/durable-event-store
