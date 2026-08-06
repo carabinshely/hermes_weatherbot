@@ -21,6 +21,10 @@ EventId = NewType("EventId", str)
 FillId = NewType("FillId", str)
 
 
+def _empty_fill_fingerprints() -> Mapping[FillId, str]:
+    return {}
+
+
 def _require_text(value: str, *, label: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -277,7 +281,9 @@ class OrderAggregate:
     backend_order_id: str | None = None
     terminal_reason: str | None = None
     unknown_reason: str | None = None
-    fill_fingerprints: Mapping[FillId, str] = field(default_factory=dict)
+    fill_fingerprints: Mapping[FillId, str] = field(
+        default_factory=_empty_fill_fingerprints
+    )
 
     @classmethod
     def new(cls, intent: OrderIntent) -> Self:
