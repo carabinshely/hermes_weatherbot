@@ -94,8 +94,8 @@ def parse_open_meteo_daily_highs(
     """Parse daily maximum temperatures without treating current conditions as forecasts."""
     retrieved = _aware_utc(retrieved_at_utc, label="forecast retrieval time")
     timezone = ZoneInfo(market_timezone)
-    response_timezone = payload.get("timezone")
-    if response_timezone not in (None, market_timezone):
+    response_timezone = _text(payload.get("timezone"), label="timezone")
+    if response_timezone != market_timezone:
         raise WeatherInputError(
             f"Open-Meteo timezone {response_timezone!r} does not match {market_timezone!r}"
         )
@@ -109,12 +109,13 @@ def parse_open_meteo_daily_highs(
     if len(raw_dates) != len(raw_highs):
         raise WeatherInputError("daily time and maximum-temperature lengths do not match")
 
-    units_value = payload.get("daily_units")
-    if units_value is not None:
-        units = _mapping(units_value, label="daily_units")
-        temperature_unit = units.get("temperature_2m_max")
-        if temperature_unit not in {"°F", "F", "fahrenheit"}:
-            raise WeatherInputError("daily maximum temperatures must be Fahrenheit")
+    units = _mapping(payload.get("daily_units"), label="daily_units")
+    temperature_unit = _text(
+        units.get("temperature_2m_max"),
+        label="daily_units.temperature_2m_max",
+    )
+    if temperature_unit not in {"°F", "F", "fahrenheit"}:
+        raise WeatherInputError("daily maximum temperatures must be Fahrenheit")
 
     requested = set(requested_dates)
     forecasts: dict[date, DailyHighForecast] = {}
