@@ -88,6 +88,16 @@ def test_authenticated_boundary_never_constructs_or_submits_an_order() -> None:
         trading.open_orders()
 
 
+def test_legacy_bridge_validates_environment_account_configuration() -> None:
+    with pytest.raises(UnsupportedAccountConfiguration, match="unsupported"):
+        UnsupportedTradingClient(signature_type=99)
+    with pytest.raises(UnsupportedAccountConfiguration, match="explicit wallet"):
+        UnsupportedTradingClient(signature_type=2)
+
+    client = UnsupportedTradingClient(signature_type=2, wallet_address="0xsafe")
+    assert client.configuration.signature_type is AccountSignatureType.GNOSIS_SAFE
+
+
 def test_legacy_bridge_fails_before_authenticated_sdk_use() -> None:
     client = UnsupportedTradingClient()
     args = MarketOrderArgs(token_id="token", amount=1.0, side="BUY", price=0.4)
