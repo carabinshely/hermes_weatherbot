@@ -218,6 +218,8 @@ class ValidatedExecutableQuote:
     requested_budget: Decimal
     book_budget_limit: Decimal
     executable_budget: Decimal
+    freshness_policy: FreshnessPolicy
+    cost_policy: CostPolicy
     platform_fee: Decimal
     transaction_cost: Decimal
     safety_margin: Decimal
@@ -274,6 +276,26 @@ class ValidatedExecutableQuote:
             raise QuoteValidationError("quote event id must not be blank")
         if executable != self.quote.total_cost:
             raise QuoteValidationError("executable budget must equal order-book cost")
+        if normalized["platform_fee"] != (
+            self.quote.total_cost * self.cost_policy.platform_fee_rate
+        ):
+            raise QuoteValidationError("platform fee does not match the recorded policy")
+        if normalized["transaction_cost"] != self.cost_policy.transaction_cost:
+            raise QuoteValidationError("transaction cost does not match the recorded policy")
+        if normalized["safety_margin"] != (
+            self.quote.total_cost * self.cost_policy.safety_margin_rate
+        ):
+            raise QuoteValidationError("safety margin does not match the recorded policy")
+        expected_average_slippage = self.quote.average_price - self.quote.best_ask
+        expected_worst_slippage = self.quote.worst_price - self.quote.best_ask
+        if normalized["average_slippage"] != expected_average_slippage:
+            raise QuoteValidationError("average slippage does not reconcile")
+        if normalized["worst_slippage"] != expected_worst_slippage:
+            raise QuoteValidationError("worst slippage does not reconcile")
+        if normalized["average_slippage"] > self.cost_policy.maximum_average_slippage:
+            raise QuoteValidationError("average slippage exceeds the recorded policy")
+        if normalized["worst_slippage"] > self.cost_policy.maximum_worst_slippage:
+            raise QuoteValidationError("worst slippage exceeds the recorded policy")
         if normalized["total_all_in_cost"] < self.quote.total_cost:
             raise QuoteValidationError("all-in cost cannot be below order-book cost")
         if normalized["total_all_in_cost"] > requested:
@@ -292,11 +314,33 @@ class ValidatedExecutableQuote:
             raise QuoteValidationError("expected return does not reconcile")
         if edge != probability - normalized["all_in_average_price"]:
             raise QuoteValidationError("probability edge does not reconcile")
+        if normalized["all_in_average_price"] >= self.cost_policy.maximum_all_in_price:
+            raise QuoteValidationError("all-in price exceeds the recorded policy")
+        if expected_profit <= 0 or edge <= 0:
+            raise QuoteValidationError("validated quote must retain positive executable edge")
+        if expected_return < self.cost_policy.minimum_expected_return:
+            raise QuoteValidationError("expected return is below the recorded policy")
         if self.depth_reduced != (executable < book_limit):
             raise QuoteValidationError("depth reduction flag does not match the book budget")
+        if self.depth_reduced and self.cost_policy.depth_policy is DepthPolicy.REJECT:
+            raise QuoteValidationError("reject-depth policy cannot produce a reduced quote")
         freshness = MappingProxyType(dict(self.freshness))
         if any(not check.fresh for check in freshness.values()):
             raise QuoteValidationError("validated quote contains a stale freshness check")
+        expected_maximum_ages = {
+            "forecast": self.freshness_policy.maximum_forecast_age.total_seconds(),
+            "event": self.freshness_policy.maximum_event_age.total_seconds(),
+            "order_book": self.freshness_policy.maximum_order_book_age.total_seconds(),
+            "balance": self.freshness_policy.maximum_balance_age.total_seconds(),
+        }
+        for label, check in freshness.items():
+            expected_maximum = expected_maximum_ages.get(label)
+            if expected_maximum is None:
+                raise QuoteValidationError(f"unsupported freshness label: {label}")
+            if check.maximum_age_seconds != expected_maximum:
+                raise QuoteValidationError(
+                    f"{label} freshness limit differs from the recorded policy"
+                )
         object.__setattr__(self, "model_probability", probability)
         object.__setattr__(self, "requested_budget", requested)
         object.__setattr__(self, "book_budget_limit", book_limit)
@@ -323,6 +367,14 @@ class ValidatedExecutableQuote:
             "shares": format(self.quote.shares, "f"),
             "total_all_in_cost": format(self.total_all_in_cost, "f"),
             "probability": format(self.model_probability, "f"),
+            "platform_fee_rate": format(self.cost_policy.platform_fee_rate, "f"),
+            "transaction_cost": format(self.cost_policy.transaction_cost, "f"),
+            "safety_margin_rate": format(self.cost_policy.safety_margin_rate, "f"),
+            "maximum_average_slippage": format(self.cost_policy.maximum_average_slippage, "f"),
+            "maximum_worst_slippage": format(self.cost_policy.maximum_worst_slippage, "f"),
+            "maximum_all_in_price": format(self.cost_policy.maximum_all_in_price, "f"),
+            "minimum_expected_return": format(self.cost_policy.minimum_expected_return, "f"),
+            "depth_policy": self.cost_policy.depth_policy.value,
             "evaluated_at": self.evaluated_at_utc.isoformat(),
         }
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -342,8 +394,20 @@ class ValidatedExecutableQuote:
             "quote_shares": format(self.quote.shares, "f"),
             "quote_book_cost": format(self.quote.total_cost, "f"),
             "quote_platform_fee": format(self.platform_fee, "f"),
+            "quote_platform_fee_rate": format(self.cost_policy.platform_fee_rate, "f"),
             "quote_transaction_cost": format(self.transaction_cost, "f"),
             "quote_safety_margin": format(self.safety_margin, "f"),
+            "quote_safety_margin_rate": format(self.cost_policy.safety_margin_rate, "f"),
+            "quote_maximum_average_slippage": format(
+                self.cost_policy.maximum_average_slippage, "f"
+            ),
+            "quote_maximum_worst_slippage": format(self.cost_policy.maximum_worst_slippage, "f"),
+            "quote_maximum_all_in_price": format(self.cost_policy.maximum_all_in_price, "f"),
+            "quote_minimum_expected_return": format(self.cost_policy.minimum_expected_return, "f"),
+            "quote_depth_policy": self.cost_policy.depth_policy.value,
+            "quote_future_tolerance_seconds": (
+                self.freshness_policy.future_tolerance.total_seconds()
+            ),
             "quote_total_all_in_cost": format(self.total_all_in_cost, "f"),
             "quote_average_price": format(self.quote.average_price, "f"),
             "quote_all_in_average_price": format(self.all_in_average_price, "f"),

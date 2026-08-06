@@ -13,6 +13,7 @@ from tests.quoting.helpers import (
     weather_snapshot,
 )
 from weatherbot.quoting import (
+    DepthPolicy,
     QuoteRejectionReason,
     evaluate_executable_buy,
 )
@@ -51,6 +52,9 @@ def test_accepted_quote_reconciles_depth_costs_edge_and_metadata() -> None:
     assert quote.freshness["event"].age_seconds == 10
     assert quote.freshness["order_book"].age_seconds == 5
     assert quote.freshness["balance"].age_seconds == 2
+    assert quote.cost_policy.platform_fee_rate == Decimal("0.01")
+    assert quote.cost_policy.depth_policy is DepthPolicy.REJECT
+    assert quote.freshness_policy.maximum_order_book_age == timedelta(seconds=30)
 
     metadata = quote.metadata()
     metadata_all_in = Decimal(str(metadata["quote_total_all_in_cost"]))
@@ -62,6 +66,10 @@ def test_accepted_quote_reconciles_depth_costs_edge_and_metadata() -> None:
     assert metadata["event_freshness_passed"] is True
     assert metadata["order_book_freshness_passed"] is True
     assert metadata["balance_freshness_passed"] is True
+    assert metadata["quote_platform_fee_rate"] == "0.01"
+    assert metadata["quote_safety_margin_rate"] == "0.02"
+    assert metadata["quote_depth_policy"] == "reject"
+    assert metadata["quote_future_tolerance_seconds"] == 5.0
     assert isinstance(metadata["quote_fingerprint"], str)
 
 

@@ -319,6 +319,8 @@ def evaluate_executable_buy(
         requested_budget=budget,
         book_budget_limit=book_budget_limit,
         executable_budget=quote.total_cost,
+        freshness_policy=freshness_policy,
+        cost_policy=cost_policy,
         platform_fee=platform_fee,
         transaction_cost=cost_policy.transaction_cost,
         safety_margin=safety_margin,
@@ -352,14 +354,39 @@ def revalidate_executable_buy(
     balance: BalanceSnapshot | None = None,
 ) -> QuoteEvaluation:
     """Re-evaluate immediately before adapter execution against a refreshed book."""
-    if order_book.token_id != previous.token_id:
+    evaluated = as_utc(evaluated_at, label="quote evaluation time")
+    try:
+        current_probability = as_decimal(probability, label="model probability")
+        current_budget = as_decimal(requested_budget, label="requested budget")
+    except QuoteValidationError as exc:
         return _reject(
-            as_utc(evaluated_at, label="quote evaluation time"),
+            evaluated,
+            QuoteRejectionReason.INVALID_INPUT,
+            str(exc),
+        )
+    mismatch: str | None = None
+    if order_book.token_id != previous.token_id:
+        mismatch = (
+            f"refreshed token {order_book.token_id} does not match "
+            f"validated token {previous.token_id}"
+        )
+    elif event.event_id != previous.event_id:
+        mismatch = (
+            f"refreshed event {event.event_id} does not match validated event {previous.event_id}"
+        )
+    elif current_probability != previous.model_probability:
+        mismatch = "model probability changed after quote validation"
+    elif current_budget != previous.requested_budget:
+        mismatch = "requested budget changed after quote validation"
+    elif freshness_policy != previous.freshness_policy:
+        mismatch = "freshness policy changed after quote validation"
+    elif cost_policy != previous.cost_policy:
+        mismatch = "cost policy changed after quote validation"
+    if mismatch is not None:
+        return _reject(
+            evaluated,
             QuoteRejectionReason.SNAPSHOT_MISMATCH,
-            (
-                f"refreshed token {order_book.token_id} does not match "
-                f"validated token {previous.token_id}"
-            ),
+            mismatch,
         )
     return evaluate_executable_buy(
         probability=probability,
