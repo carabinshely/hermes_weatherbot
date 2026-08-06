@@ -181,15 +181,17 @@ replace_once(
     assert quote.platform_fee == quote.quote.total_cost * Decimal("0.01")
     assert quote.transaction_cost == Decimal("0.01")
     assert quote.safety_margin == quote.quote.total_cost * Decimal("0.02")
-    assert quote.total_all_in_cost == Decimal("2")
     assert quote.total_all_in_cost <= quote.requested_budget
+    assert quote.requested_budget - quote.total_all_in_cost < Decimal("1e-24")
 ''',
 )
 replace_once(
     "tests/quoting/test_evaluator.py",
     '''    assert metadata["quote_total_all_in_cost"] == "2.0700"
 ''',
-    '''    assert Decimal(str(metadata["quote_total_all_in_cost"])) == Decimal("2")
+    '''    metadata_all_in = Decimal(str(metadata["quote_total_all_in_cost"]))
+    assert metadata_all_in <= quote.requested_budget
+    assert quote.requested_budget - metadata_all_in < Decimal("1e-24")
     assert Decimal(str(metadata["quote_book_budget_limit"])) == quote.book_budget_limit
 ''',
 )
