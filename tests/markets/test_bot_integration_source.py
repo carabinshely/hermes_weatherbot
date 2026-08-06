@@ -12,7 +12,8 @@ def test_legacy_scanner_uses_resolution_safe_market_contracts() -> None:
         "parse_order_book",
         "BinaryOutcome.YES",
         "MarketCalendar",
-        "quote_buy_budget",
+        "evaluate_executable_buy",
+        "revalidate_executable_buy",
     )
     for symbol in required:
         assert symbol in source
@@ -26,3 +27,4 @@ def test_legacy_scanner_does_not_use_removed_market_shortcuts() -> None:
     assert 'market["outcomePrices"][1]' not in source
     assert "datetime.now(timezone.utc).date()" not in source
     assert "get_book(token_id=condition_id)" not in source
+    assert "book.quote_buy_budget" not in source
