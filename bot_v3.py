@@ -340,7 +340,10 @@ _clob: UnsupportedTradingClient | None = None
 def get_clob() -> UnsupportedTradingClient:
     global _clob
     if _clob is None:
-        _clob = UnsupportedTradingClient()
+        _clob = UnsupportedTradingClient(
+            signature_type=SIG_TYPE,
+            wallet_address=WALLET or None,
+        )
     return _clob
 
 # =============================================================================
