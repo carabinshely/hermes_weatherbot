@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from decimal import Decimal
 from typing import Protocol, Self, cast
 
@@ -35,7 +36,7 @@ class _MarketState(Protocol):
     active: bool | None
     closed: bool | None
     accepting_orders: bool | None
-    end_date: object | None
+    end_date: datetime | None
 
 
 class _MarketMetrics(Protocol):
@@ -61,7 +62,7 @@ class _Level(Protocol):
 class _OrderBook(Protocol):
     market: str
     token_id: object
-    timestamp: object | None
+    timestamp: datetime | None
     bids: Sequence[_Level]
     asks: Sequence[_Level]
     min_order_size: Decimal
@@ -184,7 +185,7 @@ class OfficialPolymarketReadClient:
             active=value.state.active,
             closed=value.state.closed,
             accepting_orders=value.state.accepting_orders,
-            end_date=cast(object, end_date),
+            end_date=end_date,
             volume=value.metrics.volume,
             liquidity=value.metrics.liquidity,
             yes=OutcomeSnapshot(
@@ -243,7 +244,7 @@ class OfficialPolymarketReadClient:
             return OrderBookSnapshot(
                 market_id=_text(book.market, label="order-book market id"),
                 token_id=returned_token,
-                timestamp=cast(object, book.timestamp),
+                timestamp=book.timestamp,
                 bids=tuple(
                     OrderBookLevel(
                         price=_decimal(level.price, label="bid price"),
