@@ -17,8 +17,10 @@ jobs:
         with:
           ref: agent/executable-edge-validation
 
-      - name: Apply provenance patch
-        run: python tools/patch_quote_policy_provenance.py
+      - name: Apply provenance patches
+        run: |
+          python tools/patch_quote_policy_provenance.py
+          python tools/fix_quote_provenance_test_typing.py
 
       - name: Validate full implementation
         run: |
