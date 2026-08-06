@@ -81,7 +81,7 @@ jobs:
           set -e
           printf '%s\n' "$output"
           test "$status" -eq 2
-          grep -F 'uv sync --locked --extra live' <<<"$output"
+          grep -F 'uv sync --locked --no-dev --extra live' <<<"$output"
           grep -F 'live mode requires optional dependencies' <<<"$output"
 
       - name: Check formatting
