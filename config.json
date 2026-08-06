@@ -10,5 +10,14 @@
   "scan_interval": 3600,
   "calibration_min": 30,
   "mode": "research",
-  "max_slippage": 0.03
+  "max_slippage": 0.03,
+  "max_worst_slippage": 0.05,
+  "max_forecast_age_seconds": 21600,
+  "max_event_age_seconds": 120,
+  "max_order_book_age_seconds": 30,
+  "max_balance_age_seconds": 30,
+  "platform_fee_reserve_rate": 0.01,
+  "transaction_cost_reserve": 0.01,
+  "execution_safety_margin_rate": 0.02,
+  "depth_policy": "reject"
 }

@@ -6,7 +6,10 @@ ROOT = Path(__file__).resolve().parents[2]
 def scanner_source() -> str:
     source = (ROOT / "bot_v3.py").read_text(encoding="utf-8")
     start = source.index("def scan_and_trade")
-    end = source.index("\n\n# =============================================================================\n# STATUS", start)
+    end = source.index(
+        "\n\n# =============================================================================\n# STATUS",
+        start,
+    )
     return source[start:end]
 
 
@@ -18,9 +21,9 @@ def test_scanner_uses_one_validated_quote_contract_for_all_modes() -> None:
     assert '"book_cost": book_cost' in source
     assert '"all_in_price": all_in_price' in source
     assert '"cost": cost' in source
-    assert 'if context.mode is ExecutionMode.RESEARCH:' in source
-    assert 'if context.mode is ExecutionMode.PAPER:' in source
-    assert "require_live(context, operation=\"place order\")" in source
+    assert "if context.mode is ExecutionMode.RESEARCH:" in source
+    assert "if context.mode is ExecutionMode.PAPER:" in source
+    assert 'require_live(context, operation="place order")' in source
 
 
 def test_scanner_does_not_reconstruct_final_edge_from_best_ask() -> None:
