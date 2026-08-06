@@ -17,29 +17,8 @@ jobs:
         with:
           ref: agent/domain-state-machines
 
-      - name: Exhaust the event union explicitly
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("weatherbot/domain/reducers.py")
-          content = path.read_text(encoding="utf-8")
-          old = '''    elif isinstance(event, MarketResolved):
-        next_state = _apply_resolution(state, event)
-    elif isinstance(event, PositionSettled):
-        next_state = _apply_settlement(state, event)
-    else:
-        raise TypeError(f"unsupported domain event: {type(event).__name__}")
-'''
-          new = '''    elif isinstance(event, MarketResolved):
-        next_state = _apply_resolution(state, event)
-    else:
-        next_state = _apply_settlement(state, event)
-'''
-          if content.count(old) != 1:
-              raise SystemExit(f"event union marker count: {content.count(old)}")
-          path.write_text(content.replace(old, new), encoding="utf-8")
-          PY
+      - name: Apply strict typing patch
+        run: python tools/fix_domain_pyright.py
 
       - name: Format changed domain files
         run: |
@@ -51,6 +30,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add weatherbot/domain/events.py weatherbot/domain/model.py weatherbot/domain/state.py weatherbot/domain/reducers.py
+          git add -A -- ':!tools/fix_domain_pyright.py' ':!.github/workflows/fix-domain-pyright.yml'
           git commit -m "fix: satisfy strict domain typing"
           git push origin HEAD:agent/domain-state-machines
