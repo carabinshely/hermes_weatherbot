@@ -23,6 +23,9 @@ jobs:
       - name: Install development profile
         run: uv sync --locked --all-groups
 
+      - name: Apply type alias fix
+        run: python tools/fix_executable_edge_type_alias.py
+
       - name: Apply canonical formatting
         run: |
           uv run ruff check --fix weatherbot/quoting tests/quoting
