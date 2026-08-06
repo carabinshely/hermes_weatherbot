@@ -20,8 +20,8 @@ from weatherbot.persistence import (
     CURRENT_SCHEMA_VERSION,
     CorruptLedgerError,
     PersistenceError,
-    SQLiteEventStore,
     SchemaVersionError,
+    SQLiteEventStore,
     initialize_database,
     restore_backup,
 )

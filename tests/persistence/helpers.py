@@ -139,8 +139,8 @@ def position_settled() -> PositionSettled:
 
 
 __all__ = [
-    "acknowledged",
     "account_opened",
+    "acknowledged",
     "cancelled",
     "fill",
     "intent_created",

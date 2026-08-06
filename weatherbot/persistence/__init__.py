@@ -29,9 +29,9 @@ from weatherbot.persistence.store import (
 )
 
 __all__ = [
+    "CURRENT_SCHEMA_VERSION",
     "AdapterMetadata",
     "AppendResult",
-    "CURRENT_SCHEMA_VERSION",
     "ConcurrentDecisionError",
     "CorruptLedgerError",
     "DecisionClaim",

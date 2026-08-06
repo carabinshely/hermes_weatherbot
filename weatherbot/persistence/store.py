@@ -26,7 +26,6 @@ from weatherbot.domain import (
 )
 from weatherbot.domain.events import fingerprint
 from weatherbot.persistence.codec import (
-    EncodedEvent,
     chain_hash,
     decode_event,
     decode_metadata,
@@ -40,7 +39,6 @@ from weatherbot.persistence.errors import (
     DuplicateIntentError,
     PersistenceError,
     RecoveryRequiredError,
-    SchemaVersionError,
     StoreClosedError,
 )
 from weatherbot.persistence.migrations import (
