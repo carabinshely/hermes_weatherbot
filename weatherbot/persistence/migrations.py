@@ -204,8 +204,7 @@ def validate_migrations(
     current = max(versions, default=0)
     if require_current and current != CURRENT_SCHEMA_VERSION:
         raise SchemaVersionError(
-            f"database schema version {current} requires migration to "
-            f"{CURRENT_SCHEMA_VERSION}"
+            f"database schema version {current} requires migration to {CURRENT_SCHEMA_VERSION}"
         )
     return current
 

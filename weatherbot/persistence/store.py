@@ -272,9 +272,7 @@ class SQLiteEventStore:
             raise CorruptLedgerError(f"SQLite integrity check failed to run: {exc}") from exc
         messages = [str(row[0]) for row in rows]
         if messages != ["ok"]:
-            raise CorruptLedgerError(
-                "SQLite integrity check failed: " + "; ".join(messages)
-            )
+            raise CorruptLedgerError("SQLite integrity check failed: " + "; ".join(messages))
 
     def _checkpoint_rows_locked(self) -> dict[int, StateCheckpoint]:
         rows = self._connection.execute(
@@ -355,9 +353,7 @@ class SQLiteEventStore:
                 )
             stored_previous_hash = _row_text(row, "previous_chain_hash")
             if stored_previous_hash != previous_hash:
-                raise CorruptLedgerError(
-                    f"ledger event {sequence} chain predecessor mismatch"
-                )
+                raise CorruptLedgerError(f"ledger event {sequence} chain predecessor mismatch")
             event_type = _row_text(row, "event_type")
             schema_version = _row_int(row, "event_schema_version")
             calculated_chain_hash = chain_hash(
@@ -380,9 +376,7 @@ class SQLiteEventStore:
                     f"ledger event {sequence} cannot be decoded safely: {exc}"
                 ) from exc
             if encoded.payload_json != payload_json:
-                raise CorruptLedgerError(
-                    f"ledger event {sequence} payload is not canonical"
-                )
+                raise CorruptLedgerError(f"ledger event {sequence} payload is not canonical")
             expected_columns = {
                 "event_id": encoded.event_id,
                 "event_type": encoded.event_type,
@@ -454,9 +448,7 @@ class SQLiteEventStore:
     def event_count(self) -> int:
         with self._lock:
             self._ensure_open()
-            row = self._connection.execute(
-                "SELECT COUNT(*) AS count FROM ledger_events"
-            ).fetchone()
+            row = self._connection.execute("SELECT COUNT(*) AS count FROM ledger_events").fetchone()
             if row is None:
                 return 0
             return _row_int(cast(sqlite3.Row, row), "count")
@@ -734,8 +726,7 @@ class SQLiteEventStore:
                 if claim.status == "committed":
                     if claim.intent_id != event.intent.intent_id:
                         raise DuplicateIntentError(
-                            f"decision {decision_key!r} already committed intent "
-                            f"{claim.intent_id}"
+                            f"decision {decision_key!r} already committed intent {claim.intent_id}"
                         )
                     prior = self._intent_event_locked(str(event.intent.intent_id))
                     if prior is None:
@@ -748,8 +739,7 @@ class SQLiteEventStore:
                         raise CorruptLedgerError("stored intent row decoded as another event type")
                     if prior_event.intent != event.intent:
                         raise DuplicateIntentError(
-                            f"order intent {event.intent.intent_id} was reused with "
-                            "different data"
+                            f"order intent {event.intent.intent_id} was reused with different data"
                         )
                     _, state, last_sequence, tail_hash = self._load_locked()
                     return AppendResult(
@@ -761,8 +751,7 @@ class SQLiteEventStore:
                     )
                 if claim.status != "claimed" or claim.owner_id != owner_id:
                     raise ConcurrentDecisionError(
-                        f"decision {decision_key!r} is {claim.status} by owner "
-                        f"{claim.owner_id!r}"
+                        f"decision {decision_key!r} is {claim.status} by owner {claim.owner_id!r}"
                     )
                 if _row_text(row, "metadata_hash") != metadata_hash:
                     raise ConcurrentDecisionError(
@@ -792,9 +781,7 @@ class SQLiteEventStore:
                 ORDER BY claimed_at, decision_key
                 """
             ).fetchall()
-            return tuple(
-                self._claim_from_row(cast(sqlite3.Row, row)) for row in rows
-            )
+            return tuple(self._claim_from_row(cast(sqlite3.Row, row)) for row in rows)
 
     def _adapter_from_row(self, row: sqlite3.Row) -> AdapterMetadata:
         return AdapterMetadata(
@@ -859,8 +846,7 @@ class SQLiteEventStore:
                 existing_backend = _row_text(existing, "backend_name")
                 if existing_backend != backend_name:
                     raise RecoveryRequiredError(
-                        f"intent {intent_text} is already assigned to backend "
-                        f"{existing_backend!r}"
+                        f"intent {intent_text} is already assigned to backend {existing_backend!r}"
                     )
                 self._connection.execute(
                     """
@@ -905,11 +891,7 @@ class SQLiteEventStore:
                 else:
                     continue
                 adapter_row = self._adapter_row_locked(str(order.intent.intent_id))
-                adapter = (
-                    self._adapter_from_row(adapter_row)
-                    if adapter_row is not None
-                    else None
-                )
+                adapter = self._adapter_from_row(adapter_row) if adapter_row is not None else None
                 pending_orders.append(
                     PendingOrderRecovery(
                         order=order,
@@ -977,9 +959,7 @@ class SQLiteEventStore:
                     created_at=_row_text(cast(sqlite3.Row, existing), "created_at"),
                 )
                 if checkpoint.chain_hash != tail_hash or checkpoint.state_hash != state_hash:
-                    raise CorruptLedgerError(
-                        f"checkpoint {sequence} conflicts with current replay"
-                    )
+                    raise CorruptLedgerError(f"checkpoint {sequence} conflicts with current replay")
                 return checkpoint
             created_at = _utc_now()
             self._connection.execute(
@@ -1001,9 +981,7 @@ class SQLiteEventStore:
         if destination_path.resolve() == self._path.resolve():
             raise ValueError("backup destination must differ from the active database")
         destination_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = destination_path.with_name(
-            f".{destination_path.name}.{uuid.uuid4().hex}.tmp"
-        )
+        temporary = destination_path.with_name(f".{destination_path.name}.{uuid.uuid4().hex}.tmp")
         with self._lock:
             self._ensure_open()
             self.verify_integrity()

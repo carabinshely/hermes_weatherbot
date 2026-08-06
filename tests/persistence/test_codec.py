@@ -65,10 +65,7 @@ def test_metadata_is_canonical_and_preserves_decimal_as_text() -> None:
         }
     )
 
-    assert payload == (
-        '{"a":{"backend_order":"paper-1"},'
-        '"z":[3,"0.123456789",true]}'
-    )
+    assert payload == ('{"a":{"backend_order":"paper-1"},"z":[3,"0.123456789",true]}')
     assert decode_metadata(payload, payload_hash) == {
         "a": {"backend_order": "paper-1"},
         "z": [3, "0.123456789", True],

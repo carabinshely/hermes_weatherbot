@@ -35,9 +35,7 @@ def test_schema_upgrade_from_version_one_is_explicit_and_replay_safe(
 
     connection = sqlite3.connect(database)
     try:
-        version = connection.execute(
-            "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()
+        version = connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
         assert version == (1,)
         with pytest.raises(sqlite3.OperationalError, match="no such table"):
             connection.execute("SELECT * FROM adapter_metadata").fetchall()

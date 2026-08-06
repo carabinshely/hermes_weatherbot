@@ -73,7 +73,4 @@ class StartupRecovery:
 
     @property
     def backend_reconciliation_required(self) -> bool:
-        return any(
-            item.action is RecoveryAction.RECONCILE_BACKEND
-            for item in self.pending_orders
-        )
+        return any(item.action is RecoveryAction.RECONCILE_BACKEND for item in self.pending_orders)
