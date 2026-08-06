@@ -1,0 +1,42 @@
+name: Enforce linear observation revisions
+
+on:
+  push:
+    branches: [agent/authoritative-resolution-worker]
+
+permissions:
+  contents: write
+
+jobs:
+  enforce:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/authoritative-resolution-worker
+          fetch-depth: 0
+
+      - name: Apply revision-chain invariant
+        run: python tools/enforce_linear_observation_revisions.py
+
+      - name: Validate full repository
+        run: |
+          python -m pip install --quiet uv==0.11.33
+          uv lock --check
+          uv sync --locked --all-groups
+          uv run ruff check --fix weatherbot/domain weatherbot/persistence weatherbot/resolution tests/resolution
+          uv run ruff check --select E9,F63,F7,F82 bot_v3.py
+          uv run ruff format weatherbot/domain weatherbot/persistence weatherbot/resolution tests/resolution bot_v3.py
+          uv run pyright execution_modes.py runtime_security.py weatherbot tests
+          uv run pytest -q
+          uv run python -m compileall -q weatherbot bot_v3.py
+
+      - name: Commit invariant
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/domain/reducers.py weatherbot/domain/state.py tests/resolution/test_observations.py
+          git commit -m "fix: enforce linear observation revision history"
+          git push origin HEAD:agent/authoritative-resolution-worker
