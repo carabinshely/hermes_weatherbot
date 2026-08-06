@@ -10,6 +10,7 @@ from weatherbot.domain import (
     LedgerEvent,
     Money,
     OrderAggregate,
+    OrderIntent,
     OrderSubmitted,
     PreTradeDecision,
     RiskDecisionStatus,
@@ -22,13 +23,12 @@ class FakePaperAdapter:
     def backend_name(self) -> str:
         return "paper"
 
-    def submit(self, intent: object) -> tuple[LedgerEvent, ...]:
-        order_intent = buy_intent() if not hasattr(intent, "intent_id") else intent
+    def submit(self, intent: OrderIntent) -> tuple[LedgerEvent, ...]:
         return (
             OrderSubmitted(
                 event_id=event_id("paper-submit"),
                 occurred_at=NOW,
-                intent_id=order_intent.intent_id,  # type: ignore[attr-defined]
+                intent_id=intent.intent_id,
                 backend_order_id="paper-1",
             ),
         )
@@ -44,7 +44,6 @@ class FakeLiveAdapter(FakePaperAdapter):
     @property
     def backend_name(self) -> str:
         return "live"
-
 
 
 def test_paper_and_live_backends_share_one_execution_protocol() -> None:
