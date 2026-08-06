@@ -3,7 +3,8 @@
 """
 Weather Trading Bot v3 — Polymarket CLOB Real Trading
 ======================================================
-bot_v2 strategy logic + py_clob_client on-chain order execution.
+bot_v2 strategy logic + official Polymarket public SDK boundary.
+Authenticated order execution remains fail-closed.
 Only trades US cities (F) for now — EU/Asia cities need CLOB market support.
 
 Usage:
@@ -384,19 +385,22 @@ def get_learning_stats() -> dict:
 # CLOB CLIENT
 # =============================================================================
 
-from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs, MarketOrderArgs, OrderType
+from weatherbot.polymarket.legacy import (
+    MarketOrderArgs,
+    OrderArgs,
+    OrderType,
+    UnsupportedTradingClient,
+)
 
-_clob: ClobClient = None
+_clob: UnsupportedTradingClient | None = None
 
 
-def get_clob() -> ClobClient:
+def get_clob() -> UnsupportedTradingClient:
     global _clob
     if _clob is None:
-        _clob = ClobClient(
-            host=CLOB_HOST,
-            chain_id=CHAIN_ID,
-            key=PK,
+        _clob = UnsupportedTradingClient(
+            signature_type=SIG_TYPE,
+            wallet_address=WALLET or None,
         )
     return _clob
 
