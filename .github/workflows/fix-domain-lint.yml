@@ -1,0 +1,32 @@
+name: Fix domain lint
+
+on:
+  push:
+    branches: [agent/domain-state-machines]
+
+permissions:
+  contents: write
+
+jobs:
+  lint:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/domain-state-machines
+
+      - name: Apply Ruff fixes
+        run: |
+          python -m pip install --quiet ruff==0.15.22
+          ruff check --fix weatherbot/domain/money.py weatherbot/domain/reducers.py weatherbot/domain/state.py
+          ruff format weatherbot/domain/money.py weatherbot/domain/reducers.py weatherbot/domain/state.py
+
+      - name: Commit lint fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/domain/money.py weatherbot/domain/reducers.py weatherbot/domain/state.py
+          git commit -m "style: fix domain lint"
+          git push origin HEAD:agent/domain-state-machines
