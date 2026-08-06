@@ -22,6 +22,7 @@ jobs:
         run: |
           python tools/patch_resolution_evidence.py
           python tools/patch_resolution_runtime.py
+          python tools/fix_resolution_typing.py
 
       - name: Validate implementation
         run: |
