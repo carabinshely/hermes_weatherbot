@@ -17,6 +17,10 @@ def as_decimal(value: DecimalInput) -> Decimal:
     """Return a finite six-decimal value without accepting binary floats."""
     if isinstance(value, bool):
         raise TypeError("boolean values are not valid decimal amounts")
+    if isinstance(value, float):
+        raise TypeError("binary floating-point values are not valid decimal amounts")
+    if not isinstance(value, (Decimal, int, str)):
+        raise TypeError(f"unsupported decimal value type: {type(value).__name__}")
     try:
         result = value if isinstance(value, Decimal) else Decimal(value)
         if not result.is_finite():
