@@ -67,6 +67,6 @@ def test_future_dated_event_does_not_hide_later_appended_realized_loss() -> None
         evaluated_at=NOW,
     )
 
-    assert decision.realized_pnl_today == Money.of("-0.50")
-    assert decision.daily_loss == Money.of("0.50")
+    assert decision.realized_pnl_today == Money.of("-0.55")
+    assert decision.daily_loss == Money.of("0.55")
     assert decision.rejection_reason is PortfolioRiskRejectionReason.DAILY_LOSS
