@@ -1,0 +1,39 @@
+name: Temporary issue 12 training verification
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - run: uv sync --locked --all-groups
+      - run: uv run ruff check --fix weatherbot/forecasting/calibration_io.py weatherbot/forecasting/calibration_train.py tests/forecasting/test_calibration_io_train.py
+      - run: uv run ruff format weatherbot/forecasting/calibration_io.py weatherbot/forecasting/calibration_train.py tests/forecasting/test_calibration_io_train.py
+      - name: Verify strict typing
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
+      - name: Verify forecasting tests
+        run: PYTHONPATH=. uv run pytest -q tests/forecasting
+      - name: Commit verified training pipeline
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/forecasting/calibration_io.py weatherbot/forecasting/calibration_train.py tests/forecasting/test_calibration_io_train.py
+          git commit -m "Verify deterministic calibration training pipeline"
+          git push origin HEAD:agent/issue-12-calibrated-uncertainty
