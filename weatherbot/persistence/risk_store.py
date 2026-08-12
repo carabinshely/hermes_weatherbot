@@ -28,6 +28,7 @@ from weatherbot.persistence.store import AppendResult, SQLiteEventStore
 from weatherbot.risk import (
     PortfolioRiskDecision,
     PortfolioRiskPolicy,
+    PortfolioRiskRejectionReason,
     evaluate_portfolio_risk,
 )
 
@@ -171,6 +172,11 @@ class PortfolioRiskEventStore(SQLiteEventStore):
             committed_metadata = dict(metadata or {})
             committed_metadata.update(decision.metadata())
             metadata_json, metadata_hash = encode_metadata(committed_metadata)
+            valuation_event = PortfolioValuationRecorded(
+                event_id=_valuation_event_id(decision_key, valuation),
+                occurred_at=valuation.assembled_at,
+                valuation=valuation,
+            )
 
             if decision.status is RiskDecisionStatus.REJECTED:
                 if row is None:
@@ -201,9 +207,18 @@ class PortfolioRiskEventStore(SQLiteEventStore):
                         """,
                         (metadata_json, metadata_hash, now, decision_key),
                     )
+                invalid_valuation_reasons = {
+                    PortfolioRiskRejectionReason.STALE_VALUATION,
+                    PortfolioRiskRejectionReason.VALUATION_MISMATCH,
+                }
+                append_result = (
+                    self._current_append_result_locked()
+                    if decision.rejection_reason in invalid_valuation_reasons
+                    else self._append_events_locked((valuation_event,))
+                )
                 return RiskCheckedCommitResult(
                     decision=decision,
-                    append_result=self._current_append_result_locked(),
+                    append_result=append_result,
                     committed=False,
                 )
 
@@ -247,11 +262,6 @@ class PortfolioRiskEventStore(SQLiteEventStore):
                 event_id=risk_scope_event_id(scope),
                 occurred_at=evaluated_at,
                 scope=scope,
-            )
-            valuation_event = PortfolioValuationRecorded(
-                event_id=_valuation_event_id(decision_key, valuation),
-                occurred_at=valuation.assembled_at,
-                valuation=valuation,
             )
             appended = self._append_events_locked(
                 (scope_event, valuation_event, event),
