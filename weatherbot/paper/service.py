@@ -86,6 +86,14 @@ class PaperEntryRequest:
         probability = Decimal(self.model_probability)
         if probability <= 0 or probability >= 1:
             raise ValueError("paper model probability must be between zero and one")
+        bucket_key = self.audit_metadata.get("bucket_key")
+        if not isinstance(bucket_key, str) or not bucket_key.strip():
+            raise ValueError("paper entry requires a non-blank bucket_key for resolution")
+        declared_source = self.audit_metadata.get("declared_resolution_source")
+        if declared_source is not None and (
+            not isinstance(declared_source, str) or not declared_source.strip()
+        ):
+            raise ValueError("declared_resolution_source must be a non-blank string when supplied")
         object.__setattr__(self, "model_probability", probability)
 
 
@@ -195,6 +203,19 @@ def _market_metadata(event: MarketEventSnapshot) -> dict[str, object]:
             if event.source_updated_at_utc is None
             else event.source_updated_at_utc.isoformat()
         ),
+    }
+
+
+def _resolution_metadata(request: PaperEntryRequest) -> dict[str, object]:
+    bucket_key = request.audit_metadata["bucket_key"]
+    assert isinstance(bucket_key, str)
+    declared_source = request.audit_metadata.get("declared_resolution_source")
+    return {
+        "condition_id": str(request.decision_order_book.condition_id),
+        "market_date": request.scope.market_date.isoformat(),
+        "market_timezone": request.weather.forecast.market_timezone,
+        "bucket_key": bucket_key,
+        "declared_resolution_source": declared_source,
     }
 
 
@@ -343,6 +364,7 @@ class PaperTradingService:
             "paper_audit_version": 1,
             "model_version": request.model_version,
             "model_probability": format(request.model_probability, "f"),
+            **_resolution_metadata(request),
             "weather_snapshot": _weather_metadata(request.weather),
             "market_snapshot": _market_metadata(request.event),
             "decision_order_book": _book_metadata(request.decision_order_book),
