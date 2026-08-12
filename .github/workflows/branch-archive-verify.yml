@@ -21,6 +21,116 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
       - run: uv sync --locked --all-groups
+      - name: Apply bounded archive typing fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match, found {count}: {old!r}")
+              return text.replace(old, new)
+
+          archive = Path("weatherbot/forecasting/archive.py")
+          text = archive.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "from zoneinfo import ZoneInfo\n",
+              "from zoneinfo import ZoneInfo, ZoneInfoNotFoundError\n",
+          )
+          text = replace_once(
+              text,
+              "        except Exception as exc:\n",
+              "        except ZoneInfoNotFoundError as exc:\n",
+          )
+          text = replace_once(
+              text,
+              "        if isinstance(self.run_cycle_hour_utc, bool) or not isinstance(self.run_cycle_hour_utc, int):\n"
+              "            raise CalibrationError(\"run cycle hour must be an integer\")\n",
+              "        if isinstance(self.run_cycle_hour_utc, bool):\n"
+              "            raise CalibrationError(\"run cycle hour must be an integer\")\n",
+          )
+          text = replace_once(
+              text,
+              "        if any(isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 7 for value in horizons):\n",
+              "        if any(isinstance(value, bool) or not 0 <= value <= 7 for value in horizons):\n",
+          )
+          archive.write_text(text, encoding="utf-8")
+
+          tests = Path("tests/forecasting/test_archive.py")
+          text = tests.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "from datetime import UTC, date, datetime, timedelta\n",
+              "from datetime import UTC, date, datetime, time, timedelta\n",
+          )
+          text = replace_once(
+              text,
+              "    CalibrationLocation,\n",
+              "    CalibrationLocation,\n    OpenMeteoSingleRunCapture,\n",
+          )
+          text = replace_once(
+              text,
+              'def _payload(*, timezone: str = "America/New_York", unit: str = "°F") -> bytes:\n',
+              'def _payload(\n'
+              '    *,\n'
+              '    timezone: str = "America/New_York",\n'
+              '    unit: str = "°F",\n'
+              '    incomplete_date: date | None = None,\n'
+              ') -> bytes:\n',
+          )
+          text = replace_once(
+              text,
+              "        for hour in range(24):\n"
+              "            times.append(f\"{day.isoformat()}T{hour:02d}:00\")\n"
+              "            values.append(50.0 + day_offset + min(hour, 15) / 10)\n",
+              "        for hour in range(24):\n"
+              "            if incomplete_date == day and hour >= 10:\n"
+              "                continue\n"
+              "            times.append(f\"{day.isoformat()}T{hour:02d}:00\")\n"
+              "            values.append(50.0 + day_offset + min(hour, 15) / 10)\n",
+          )
+          text = replace_once(
+              text,
+              "    run_initialized_at_utc: datetime | None = None,\n"
+              "):\n",
+              "    run_initialized_at_utc: datetime | None = None,\n"
+              ") -> OpenMeteoSingleRunCapture:\n",
+          )
+          old = '''def test_single_run_rejects_incomplete_target_day() -> None:
+              payload = json.loads(_payload())
+              keep = [
+                  index
+                  for index, timestamp in enumerate(payload["hourly"]["time"])
+                  if not timestamp.startswith("2026-07-02") or int(timestamp[11:13]) < 10
+              ]
+              payload["hourly"]["time"] = [payload["hourly"]["time"][index] for index in keep]
+              payload["hourly"]["temperature_2m"] = [
+                  payload["hourly"]["temperature_2m"][index] for index in keep
+              ]
+
+              with pytest.raises(CalibrationError, match="insufficient local-day"):
+                  _parse(json.dumps(payload).encode())
+          '''
+          old = "\n".join(
+              line[14:] if line.startswith("              ") else line for line in old.splitlines()
+          ) + "\n"
+          new = '''def test_single_run_rejects_incomplete_target_day() -> None:
+              with pytest.raises(CalibrationError, match="insufficient local-day"):
+                  _parse(_payload(incomplete_date=date(2026, 7, 2)))
+          '''
+          new = "\n".join(
+              line[14:] if line.startswith("              ") else line for line in new.splitlines()
+          ) + "\n"
+          text = replace_once(text, old, new)
+          text = replace_once(
+              text,
+              '        decision_local_time=datetime.strptime("18:30", "%H:%M").time(),\n',
+              "        decision_local_time=time(hour=18, minute=30),\n",
+          )
+          tests.write_text(text, encoding="utf-8")
+          PY
       - run: uv run ruff format weatherbot/forecasting/archive.py tests/forecasting/test_archive.py
       - run: uv run ruff check weatherbot/forecasting/archive.py tests/forecasting/test_archive.py
       - name: Verify strict typing before commit
