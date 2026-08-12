@@ -17,6 +17,7 @@ from weatherbot.domain import (
     OutcomePayout,
     PositionStatus,
     ResolutionEvidenceStatus,
+    money_from_unit_price,
 )
 from weatherbot.paper import PaperEntryStatus, PaperTradingService, initialize_paper_store
 from weatherbot.resolution import (
@@ -119,11 +120,15 @@ def test_paper_position_win_loss_void_settles_exactly_once_across_restart(
         after = store.load_state()
         settled = after.positions[scope().position_key]
         payout = Decimal(yes)
-        expected_gross = position_before.quantity * payout
+        expected_gross = money_from_unit_price(
+            payout,
+            position_before.quantity,
+            before.currency,
+        )
         assert settled.status is PositionStatus.SETTLED
         assert settled.quantity == 0
-        assert settled.realized_pnl == Money.of(expected_gross - position_before.cost_basis.amount)
-        assert after.cash == before.cash + Money.of(expected_gross)
+        assert settled.realized_pnl == expected_gross - position_before.cost_basis
+        assert after.cash == before.cash + expected_gross
         count_after_resolution = store.event_count()
         assert count_after_resolution == count_before_resolution + 3
 
