@@ -92,6 +92,19 @@ def test_cash_budget_quote_absorbs_depth_without_overspending() -> None:
     assert quote.best_ask == Decimal("0.40")
 
 
+def test_small_cash_budget_never_reports_average_below_best_ask() -> None:
+    book = parse_order_book(
+        payload(),
+        expected_condition_id=CONDITION,
+        expected_token_id=TOKEN,
+    )
+    quote = book.quote_buy_budget(Decimal("0.4959543689320388349514563106"))
+
+    assert quote.total_cost <= Decimal("0.4959543689320388349514563106")
+    assert quote.average_price == book.best_ask
+    assert quote.average_price >= quote.best_ask
+
+
 def _empty_bids(data: dict[str, object]) -> None:
     data["bids"] = []
 
