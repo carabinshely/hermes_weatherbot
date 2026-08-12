@@ -41,6 +41,7 @@ class BindingCap(StrEnum):
     MAX_CASH_PER_TRADE = "max_cash_per_trade"
     AVAILABLE_CASH = "available_cash"
     EXECUTABLE_DEPTH = "executable_depth"
+    EXECUTABLE_SLIPPAGE = "executable_slippage"
     MINIMUM_ORDER = "minimum_order"
 
 
