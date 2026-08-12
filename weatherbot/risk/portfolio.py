@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -30,6 +31,28 @@ from weatherbot.risk.portfolio_model import (
 )
 
 _ZERO = Decimal("0")
+
+
+@dataclass(frozen=True, slots=True)
+class _DecisionInputs:
+    proposed_scope: RiskScope
+    proposed_cash: Money
+    total_before: Money
+    total_after: Money
+    event_before: Money
+    event_after: Money
+    city_date_before: Money
+    city_date_after: Money
+    correlation: tuple[CorrelationExposure, ...]
+    open_before: int
+    open_after: int
+    realized_today: Money
+    unrealized: Money
+    daily_pnl: Money
+    daily_loss: Money
+    current_equity: Money
+    high_water: Money
+    drawdown: Money
 
 
 def _risk_scopes(events: tuple[LedgerEvent, ...]) -> dict[PositionKey, RiskScope]:
@@ -90,10 +113,12 @@ def _realized_pnl_today(
     state = LedgerState.empty(currency)
     realized = Money.zero(currency)
     for event in events:
+        if event.occurred_at > evaluated_at:
+            break
         before = _realized_total(state)
         state = apply_event(state, event)
         after = _realized_total(state)
-        if start <= event.occurred_at.astimezone(UTC) <= end and event.occurred_at <= evaluated_at:
+        if start <= event.occurred_at.astimezone(UTC) <= end:
             realized += after - before
     return realized
 
@@ -179,46 +204,29 @@ def _decision(
     status: RiskDecisionStatus,
     reason: PortfolioRiskRejectionReason | None,
     detail: str | None,
-    proposed_scope: RiskScope,
-    proposed_cash: Money,
-    total_before: Money,
-    total_after: Money,
-    event_before: Money,
-    event_after: Money,
-    city_date_before: Money,
-    city_date_after: Money,
-    correlation: tuple[CorrelationExposure, ...],
-    open_before: int,
-    open_after: int,
-    realized_today: Money,
-    unrealized: Money,
-    daily_pnl: Money,
-    daily_loss: Money,
-    current_equity: Money,
-    high_water: Money,
-    drawdown: Money,
+    inputs: _DecisionInputs,
     missing_scope_keys: tuple[str, ...] = (),
 ) -> PortfolioRiskDecision:
     return PortfolioRiskDecision(
         status=status,
-        proposed_scope=proposed_scope,
-        proposed_cash=proposed_cash,
-        total_exposure_before=total_before,
-        total_exposure_after=total_after,
-        event_exposure_before=event_before,
-        event_exposure_after=event_after,
-        city_date_exposure_before=city_date_before,
-        city_date_exposure_after=city_date_after,
-        correlation_exposures=correlation,
-        open_positions_before=open_before,
-        open_positions_after=open_after,
-        realized_pnl_today=realized_today,
-        unrealized_pnl=unrealized,
-        daily_pnl=daily_pnl,
-        daily_loss=daily_loss,
-        current_equity=current_equity,
-        high_water_mark=high_water,
-        drawdown=drawdown,
+        proposed_scope=inputs.proposed_scope,
+        proposed_cash=inputs.proposed_cash,
+        total_exposure_before=inputs.total_before,
+        total_exposure_after=inputs.total_after,
+        event_exposure_before=inputs.event_before,
+        event_exposure_after=inputs.event_after,
+        city_date_exposure_before=inputs.city_date_before,
+        city_date_exposure_after=inputs.city_date_after,
+        correlation_exposures=inputs.correlation,
+        open_positions_before=inputs.open_before,
+        open_positions_after=inputs.open_after,
+        realized_pnl_today=inputs.realized_today,
+        unrealized_pnl=inputs.unrealized,
+        daily_pnl=inputs.daily_pnl,
+        daily_loss=inputs.daily_loss,
+        current_equity=inputs.current_equity,
+        high_water_mark=inputs.high_water,
+        drawdown=inputs.drawdown,
         rejection_reason=reason,
         detail=detail,
         missing_scope_keys=missing_scope_keys,
@@ -313,7 +321,7 @@ def evaluate_portfolio_risk(
     daily_loss = Money.of(max(_ZERO, -daily_pnl.amount), state.currency)
     drawdown = Money.of(max(_ZERO, high_water.amount - current_equity.amount), state.currency)
 
-    common = dict(
+    inputs = _DecisionInputs(
         proposed_scope=proposed_scope,
         proposed_cash=proposed_cash,
         total_before=total_before,
@@ -344,7 +352,7 @@ def evaluate_portfolio_risk(
             status=RiskDecisionStatus.REJECTED,
             reason=reason,
             detail=valuation_error,
-            **common,
+            inputs=inputs,
         )
     if missing_keys:
         return _decision(
@@ -352,56 +360,56 @@ def evaluate_portfolio_risk(
             reason=PortfolioRiskRejectionReason.MISSING_SCOPE,
             detail="existing exposure is missing durable portfolio risk scope",
             missing_scope_keys=missing_keys,
-            **common,
+            inputs=inputs,
         )
     if is_duplicate:
         return _decision(
             status=RiskDecisionStatus.REJECTED,
             reason=PortfolioRiskRejectionReason.DUPLICATE_EXPOSURE,
             detail="position key already has an open position or active BUY intent",
-            **common,
+            inputs=inputs,
         )
     if daily_loss.amount >= policy.maximum_daily_loss.amount:
         return _decision(
             status=RiskDecisionStatus.REJECTED,
             reason=PortfolioRiskRejectionReason.DAILY_LOSS,
             detail="realized-today plus current unrealized loss reached the daily limit",
-            **common,
+            inputs=inputs,
         )
     if drawdown.amount >= policy.maximum_drawdown.amount:
         return _decision(
             status=RiskDecisionStatus.REJECTED,
             reason=PortfolioRiskRejectionReason.DRAWDOWN,
             detail="current liquidation equity reached the drawdown limit",
-            **common,
+            inputs=inputs,
         )
     if open_after > policy.maximum_open_positions:
         return _decision(
             status=RiskDecisionStatus.REJECTED,
             reason=PortfolioRiskRejectionReason.MAX_OPEN_POSITIONS,
             detail="proposed exposure exceeds the maximum open-position count",
-            **common,
+            inputs=inputs,
         )
     if total_after.amount > policy.maximum_total_exposure.amount:
         return _decision(
             status=RiskDecisionStatus.REJECTED,
             reason=PortfolioRiskRejectionReason.TOTAL_EXPOSURE,
             detail="proposed exposure exceeds the total portfolio cap",
-            **common,
+            inputs=inputs,
         )
     if event_after.amount > policy.maximum_event_exposure.amount:
         return _decision(
             status=RiskDecisionStatus.REJECTED,
             reason=PortfolioRiskRejectionReason.EVENT_EXPOSURE,
             detail="proposed exposure exceeds the event cap",
-            **common,
+            inputs=inputs,
         )
     if city_date_after.amount > policy.maximum_city_date_exposure.amount:
         return _decision(
             status=RiskDecisionStatus.REJECTED,
             reason=PortfolioRiskRejectionReason.CITY_DATE_EXPOSURE,
             detail="proposed exposure exceeds the city/date cap",
-            **common,
+            inputs=inputs,
         )
     for item in correlation:
         if item.after.amount > policy.maximum_correlation_group_exposure.amount:
@@ -409,12 +417,12 @@ def evaluate_portfolio_risk(
                 status=RiskDecisionStatus.REJECTED,
                 reason=PortfolioRiskRejectionReason.CORRELATION_EXPOSURE,
                 detail=f"proposed exposure exceeds correlation cap for {item.group}",
-                **common,
+                inputs=inputs,
             )
 
     return _decision(
         status=RiskDecisionStatus.APPROVED,
         reason=None,
         detail=None,
-        **common,
+        inputs=inputs,
     )
