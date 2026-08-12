@@ -24,6 +24,7 @@ from weatherbot.domain.model import (
 from weatherbot.domain.money import Money, as_decimal, require_nonnegative
 from weatherbot.domain.observation import WeatherObservationEvidence
 from weatherbot.domain.resolution import MarketResolutionEvidence
+from weatherbot.domain.risk import PortfolioValuation, RiskScope, risk_scope_event_id
 
 
 def _canonicalize(value: object) -> object:
@@ -201,6 +202,30 @@ class PositionSettled(DomainEvent):
         require_nonnegative(self.fee, label="settlement fee")
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class RiskScopeRegistered(DomainEvent):
+    """Persist immutable portfolio/correlation identity for one position key."""
+
+    scope: RiskScope
+
+    def __post_init__(self) -> None:
+        DomainEvent.__post_init__(self)
+        if self.event_id != risk_scope_event_id(self.scope):
+            raise ValueError("risk scope event_id must be stable for its position key")
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class PortfolioValuationRecorded(DomainEvent):
+    """Persist one exact mark-to-liquidation snapshot used by risk controls."""
+
+    valuation: PortfolioValuation
+
+    def __post_init__(self) -> None:
+        DomainEvent.__post_init__(self)
+        if self.occurred_at != self.valuation.assembled_at:
+            raise ValueError("valuation event time must equal valuation assembly time")
+
+
 type LedgerEvent = (
     AccountOpened
     | OrderIntentCreated
@@ -214,4 +239,6 @@ type LedgerEvent = (
     | MarketResolutionEvidenceRecorded
     | MarketResolved
     | PositionSettled
+    | RiskScopeRegistered
+    | PortfolioValuationRecorded
 )

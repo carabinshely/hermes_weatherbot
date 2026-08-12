@@ -19,7 +19,9 @@ from weatherbot.domain.events import (
     OrderOutcomeUnknown,
     OrderRejected,
     OrderSubmitted,
+    PortfolioValuationRecorded,
     PositionSettled,
+    RiskScopeRegistered,
     WeatherObservationRecorded,
     fingerprint,
 )
@@ -53,6 +55,12 @@ from weatherbot.domain.reducers import apply_event, replay
 from weatherbot.domain.resolution import (
     MarketResolutionEvidence,
     ResolutionEvidenceStatus,
+)
+from weatherbot.domain.risk import (
+    PortfolioValuation,
+    PositionValuation,
+    RiskScope,
+    risk_scope_event_id,
 )
 from weatherbot.domain.state import LedgerState, PositionKey, position_key
 
@@ -88,13 +96,18 @@ __all__ = [
     "OrderSubmitted",
     "OutcomeId",
     "OutcomePayout",
+    "PortfolioValuation",
+    "PortfolioValuationRecorded",
     "Position",
     "PositionKey",
     "PositionSettled",
     "PositionStatus",
+    "PositionValuation",
     "PreTradeDecision",
     "ResolutionEvidenceStatus",
     "RiskDecisionStatus",
+    "RiskScope",
+    "RiskScopeRegistered",
     "Side",
     "Signal",
     "WeatherObservationEvidence",
@@ -107,4 +120,5 @@ __all__ = [
     "money_from_unit_price",
     "position_key",
     "replay",
+    "risk_scope_event_id",
 ]
