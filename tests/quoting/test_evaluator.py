@@ -73,6 +73,27 @@ def test_accepted_quote_reconciles_depth_costs_edge_and_metadata() -> None:
     assert isinstance(metadata["quote_fingerprint"], str)
 
 
+def test_small_budget_remains_within_ceiling_after_decimal_cost_reserves() -> None:
+    budget = Decimal("0.833333")
+    result = evaluate_executable_buy(
+        probability=Decimal("0.65"),
+        requested_budget=budget,
+        weather=weather_snapshot(),
+        event=event_snapshot(),
+        order_book=order_book(),
+        evaluated_at=NOW,
+        freshness_policy=freshness_policy(),
+        cost_policy=cost_policy(),
+    )
+
+    assert result.accepted
+    quote = result.quote
+    assert quote is not None
+    assert quote.total_all_in_cost <= budget
+    assert quote.average_slippage >= 0
+    assert quote.quote.average_price >= quote.quote.best_ask
+
+
 def test_stale_forecast_rejects_before_cost_calculation() -> None:
     result = evaluate_executable_buy(
         probability="0.65",
