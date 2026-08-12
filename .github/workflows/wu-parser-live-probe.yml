@@ -1,0 +1,65 @@
+name: Temporary issue 12 production Weather Underground parser probe
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Exercise production parser against canonical KLGA history page
+        env:
+          PYTHONPATH: .
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import date
+
+          from weatherbot.domain import MarketId
+          from weatherbot.resolution.wunderground import fetch_wunderground_daily_history
+
+          capture = fetch_wunderground_daily_history(
+              source_url=(
+                  "https://www.wunderground.com/history/daily/us/ny/new-york-city/"
+                  "KLGA/date/2026-4-18"
+              ),
+              market_id=MarketId("parity-klga-2026-04-18"),
+              station_id="KLGA",
+              market_date=date(2026, 4, 18),
+              market_timezone="America/New_York",
+          )
+          result = {
+              "station_id": capture.evidence.station_id,
+              "market_date": capture.evidence.market_date.isoformat(),
+              "market_timezone": capture.evidence.market_timezone,
+              "temperature_f": str(capture.evidence.temperature),
+              "unit": capture.evidence.unit,
+              "status": capture.evidence.status.value,
+              "learning_eligible": capture.evidence.learning_eligible,
+              "source_name": capture.evidence.source_name,
+              "source_revision": capture.evidence.source_revision,
+              "normalized_payload_sha256": capture.normalized_payload_sha256,
+              "raw_page_sha256": capture.raw_page_sha256,
+              "observation_count": capture.observation_count,
+              "first_observation_utc": capture.first_observation_utc.isoformat(),
+              "last_observation_utc": capture.last_observation_utc.isoformat(),
+              "high_observation_utc": capture.high_observation_utc.isoformat(),
+              "final_url": capture.final_url,
+          }
+          print("PRODUCTION_PARSER " + json.dumps(result, sort_keys=True))
+          assert capture.evidence.temperature == 61
+          assert capture.evidence.unit == "F"
+          assert capture.evidence.learning_eligible
+          assert capture.observation_count >= 18
+          assert capture.evidence.payload_hash == capture.normalized_payload_sha256
+          PY
