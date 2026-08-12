@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from threading import Barrier
 
 import pytest
@@ -77,6 +78,56 @@ def test_retry_of_same_approved_risk_decision_is_idempotent(tmp_path) -> None:
         assert not second.append_result.appended
         assert store.event_count() == count_after_first
         assert store.load_state().reserved_cash == Money.of("4")
+
+
+def test_valid_valuation_is_recorded_even_when_entry_is_rejected(tmp_path) -> None:
+    database = tmp_path / "risk.sqlite3"
+    initial_state = state_for((opened(),))
+    valuation = valuation_for(initial_state)
+    intent = buy_intent_created(decision_id="rejected-valid-valuation")
+
+    with PortfolioRiskEventStore(database) as store:
+        store.append(opened())
+        result = store.commit_risk_checked_order_intent(
+            intent,
+            scope=risk_scope(),
+            valuation=valuation,
+            policy=policy(total="3"),
+            evaluated_at=NOW,
+            owner_id="worker-a",
+        )
+
+        assert not result.committed
+        assert result.decision is not None
+        assert result.decision.rejection_reason is PortfolioRiskRejectionReason.TOTAL_EXPOSURE
+        assert result.append_result.appended
+        assert store.event_count() == 2
+        assert store.load_state().reserved_cash == Money.zero()
+        assert len(store.load_state().orders) == 0
+
+
+def test_stale_rejected_valuation_is_not_persisted(tmp_path) -> None:
+    database = tmp_path / "risk.sqlite3"
+    initial_state = state_for((opened(),))
+    stale = valuation_for(initial_state, assembled_at=NOW - timedelta(seconds=31))
+    intent = buy_intent_created(decision_id="rejected-stale-valuation")
+
+    with PortfolioRiskEventStore(database) as store:
+        store.append(opened())
+        result = store.commit_risk_checked_order_intent(
+            intent,
+            scope=risk_scope(),
+            valuation=stale,
+            policy=policy(),
+            evaluated_at=NOW,
+            owner_id="worker-a",
+        )
+
+        assert not result.committed
+        assert result.decision is not None
+        assert result.decision.rejection_reason is PortfolioRiskRejectionReason.STALE_VALUATION
+        assert not result.append_result.appended
+        assert store.event_count() == 1
 
 
 def test_different_concurrent_decisions_cannot_race_past_total_exposure_cap(tmp_path) -> None:
