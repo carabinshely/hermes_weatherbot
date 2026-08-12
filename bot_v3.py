@@ -49,6 +49,15 @@ from weatherbot.forecasting import (
     parse_aviation_weather_metar,
     parse_open_meteo_daily_highs,
 )
+from weatherbot.domain import MarketId, OutcomeId, RiskScope
+from weatherbot.paper import (
+    PaperEntryStatus,
+    PaperRuntimeConfig,
+    paper_runtime_status,
+    paper_scan_decision_id,
+    reset_paper_runtime,
+    submit_scanner_candidate,
+)
 from weatherbot.quoting import (
     BalanceSnapshot,
     CostPolicy,
@@ -62,9 +71,11 @@ from weatherbot.quoting import (
 from weatherbot.resolution import run_resolution_cycle as resolve_ledger_positions
 from weatherbot.markets import (
     BinaryOutcome,
+    ConditionId,
     GammaMarketError,
     MarketCalendar,
     OrderBookError,
+    OutcomeTokenId,
     TemperatureBucket,
     TemperatureMarketError,
     TemperatureMarketPartition,
@@ -115,6 +126,7 @@ _ledger_config_path = Path(_cfg.get("ledger_path", "state/ledger.sqlite3"))
 LEDGER_PATH = (
     _ledger_config_path if _ledger_config_path.is_absolute() else BOT_DIR / _ledger_config_path
 )
+PAPER_RUNTIME = PaperRuntimeConfig.from_mapping(_cfg, base_dir=BOT_DIR)
 
 # --- CLOB ---
 CLOB_HOST = "https://clob.polymarket.com"
@@ -560,6 +572,7 @@ def tg_signal(
     success: bool,
     mode: ExecutionMode,
     reason: str = "",
+    status_label: str | None = None,
 ):
     """Send a trade signal notification to Telegram."""
     mode_header = f"🔒 <b>{mode.value.upper()} MODE</b>\n"
@@ -570,7 +583,7 @@ def tg_signal(
             f"🎯 Bucket: <b>{bucket_label}</b>\n"
             f"💰 Cost: <b>${cost:.2f}</b> @ <b>${entry_price:.3f}</b>\n"
             f"📈 EV: <b>+{ev:.2f}</b> | Kelly: <b>{kelly:.2f}</b>\n"
-            f"✅ <b>ORDER FILLED</b>"
+            f"✅ <b>{status_label or 'ORDER FILLED'}</b>"
         )
     else:
         msg = (
@@ -1120,11 +1133,13 @@ def get_clob_positions():
 # =============================================================================
 
 
-def _fetch_selected_order_book(selection):
-    """Fetch the selected token book; point-in-time freshness is checked centrally."""
+def _fetch_token_order_book(
+    condition_id: ConditionId, token_id: OutcomeTokenId
+):
+    """Fetch one public CLOB token book; no wallet or authenticated write client is used."""
     response = requests.get(
         f"{CLOB_HOST}/book",
-        params={"token_id": str(selection.token_id)},
+        params={"token_id": str(token_id)},
         timeout=(3, 6),
     )
     response.raise_for_status()
@@ -1133,9 +1148,14 @@ def _fetch_selected_order_book(selection):
         raise OrderBookError("CLOB order-book response must be an object")
     return parse_order_book(
         payload,
-        expected_condition_id=selection.condition_id,
-        expected_token_id=selection.token_id,
+        expected_condition_id=condition_id,
+        expected_token_id=token_id,
     )
+
+
+def _fetch_selected_order_book(selection):
+    """Fetch the selected token book; point-in-time freshness is checked centrally."""
+    return _fetch_token_order_book(selection.condition_id, selection.token_id)
 
 
 def _parse_api_datetime(value, *, label):
@@ -1334,6 +1354,142 @@ def scan_and_trade(context: ExecutionContext):
 
             sigma = get_sigma(city_slug)
             probability = target_bucket.probability(forecast_temp, sigma)
+
+            if context.mode is ExecutionMode.PAPER:
+                paper_candidates += 1
+                evaluated_at = datetime.now(timezone.utc)
+                paper_scope = RiskScope(
+                    market_id=MarketId(str(selection.market_id)),
+                    outcome_id=OutcomeId(str(selection.token_id)),
+                    event_id=event_snapshot.event_id,
+                    city_key=city_slug,
+                    market_date=weathersnap.forecast.market_date,
+                )
+                model_version = "bot-v3-normal-cdf-sigma-v1"
+                decision_id = paper_scan_decision_id(
+                    model_version=model_version,
+                    scope=paper_scope,
+                    weather=weathersnap,
+                    event=event_snapshot,
+                    decision_book=book,
+                )
+                try:
+                    paper_result = submit_scanner_candidate(
+                        runtime=PAPER_RUNTIME,
+                        strategy_id="bot-v3-weather",
+                        decision_id=decision_id,
+                        model_version=model_version,
+                        probability=Decimal(str(probability)),
+                        scope=paper_scope,
+                        weather=weathersnap,
+                        event=event_snapshot,
+                        decision_book=book,
+                        condition_id=selection.condition_id,
+                        token_id=selection.token_id,
+                        evaluated_at=evaluated_at,
+                        freshness_policy=_quote_freshness_policy(),
+                        cost_policy=_quote_cost_policy(),
+                        fetch_book=_fetch_token_order_book,
+                        audit_metadata={
+                            "city": city_slug,
+                            "city_name": loc["name"],
+                            "horizon": horizon,
+                            "bucket_key": target_bucket.key,
+                            "bucket_label": target_bucket.label,
+                            "forecast_temperature_f": weathersnap.signal_temperature_f,
+                            "forecast_source": best_source,
+                            "sigma_f": Decimal(str(sigma)),
+                            "volume": volume,
+                            "question": market.question,
+                            "declared_resolution_source": market.resolution_source,
+                            "event_end_date": end_date,
+                        },
+                        owner_id=f"paper-scanner:{city_slug}:{market_date}",
+                    )
+                except (OrderBookError, requests.RequestException, ValueError) as exc:
+                    message = f"{loc['name']} {horizon}: PAPER execution failed: {exc}"
+                    errors.append(message)
+                    warn(f"  {message}")
+                    continue
+
+                plan = paper_result.execution_plan
+                if paper_result.status in {
+                    PaperEntryStatus.FILLED,
+                    PaperEntryStatus.PARTIAL_FILL,
+                }:
+                    assert plan is not None
+                    assert plan.average_price is not None
+                    new_trades += 1
+                    city_found_signal = True
+                    paper_cost = float((plan.gross_value + plan.fee).amount)
+                    paper_price = float(plan.average_price)
+                    paper_ev = 0.0
+                    paper_kelly = 0.0
+                    if paper_result.sizing is not None and paper_result.sizing.quote is not None:
+                        paper_ev = float(paper_result.sizing.quote.expected_return)
+                        paper_kelly = float(paper_result.sizing.fractional_kelly)
+                    top_signals.append(
+                        {
+                            "city": loc["name"],
+                            "horizon": horizon,
+                            "bucket": target_bucket.label,
+                            "ev": paper_ev,
+                            "price": paper_price,
+                            "true_prob": probability,
+                        }
+                    )
+                    status_label = (
+                        "PAPER FILLED"
+                        if paper_result.status is PaperEntryStatus.FILLED
+                        else "PAPER PARTIAL FILL"
+                    )
+                    info(
+                        f"  [PAPER] {status_label} | {plan.filled_quantity}/"
+                        f"{plan.requested_quantity} @ ${paper_price:.3f} | "
+                        f"simulated all-in ${paper_cost:.2f}"
+                    )
+                    tg_signal(
+                        city=loc["name"],
+                        horizon=horizon,
+                        date=market_date,
+                        bucket_label=target_bucket.label,
+                        forecast_temp=forecast_temp,
+                        entry_price=paper_price,
+                        cost=paper_cost,
+                        ev=paper_ev,
+                        kelly=paper_kelly,
+                        success=True,
+                        mode=context.mode,
+                        status_label=status_label,
+                    )
+                elif paper_result.status is PaperEntryStatus.IDEMPOTENT:
+                    info("  [PAPER] durable decision already processed; no duplicate intent/fill")
+                else:
+                    reason = paper_result.status.value
+                    if paper_result.risk_decision is not None:
+                        rejection = paper_result.risk_decision.rejection_reason
+                        reason = rejection.value if rejection is not None else reason
+                    elif paper_result.sizing is not None and paper_result.sizing.rejection_reason is not None:
+                        reason = paper_result.sizing.rejection_reason.value
+                    elif plan is not None:
+                        reason = plan.reason
+                    info(f"  [PAPER] rejected: {reason}")
+                    tg_signal(
+                        city=loc["name"],
+                        horizon=horizon,
+                        date=market_date,
+                        bucket_label=target_bucket.label,
+                        forecast_temp=forecast_temp,
+                        entry_price=float(book.best_ask),
+                        cost=0.0,
+                        ev=0.0,
+                        kelly=0.0,
+                        success=False,
+                        mode=context.mode,
+                        reason=reason,
+                    )
+                continue
+
             preliminary_kelly = get_adjusted_kelly(
                 calc_kelly(probability, float(book.best_ask))
             )
@@ -1521,11 +1677,6 @@ def scan_and_trade(context: ExecutionContext):
                 observed_signals += 1
                 info("  [RESEARCH] signal observed; no order or state mutation")
                 continue
-            if context.mode is ExecutionMode.PAPER:
-                paper_candidates += 1
-                info("  [PAPER] candidate only; simulated fills are implemented in #27")
-                continue
-
             require_live(context, operation="place order")
             assert balance is not None
             result = run_live_operation(
@@ -1665,7 +1816,26 @@ def show_status(context: ExecutionContext):
         print("=" * 60)
         print("  Wallet access: disabled")
         if context.mode is ExecutionMode.PAPER:
-            print("  Paper ledger:  pending implementation in #27")
+            status = paper_runtime_status(
+                runtime=PAPER_RUNTIME,
+                observed_at=datetime.now(timezone.utc),
+                freshness_policy=_quote_freshness_policy(),
+                cost_policy=_quote_cost_policy(),
+                fetch_book=_fetch_token_order_book,
+            )
+            print(f"  Paper ledger:      {PAPER_RUNTIME.ledger_path}")
+            print(f"  Starting cash:     ${status.starting_cash.amount}")
+            print(f"  Cash:              ${status.cash.amount}")
+            print(f"  Reserved cash:     ${status.reserved_cash.amount}")
+            print(f"  Available cash:    ${status.available_cash.amount}")
+            print(f"  Market value:      ${status.market_value.amount}")
+            print(f"  Realized P/L:      ${status.realized_pnl.amount}")
+            print(f"  Unrealized P/L:    ${status.unrealized_pnl.amount}")
+            print(f"  Fees:              ${status.fees.amount}")
+            print(f"  Exposure:          ${status.exposure.amount}")
+            print(f"  Equity:            ${status.equity.amount}")
+            print(f"  Drawdown:          ${status.drawdown.amount}")
+            print(f"  Open positions:    {status.open_positions}")
         print(f"{'=' * 60}\n")
         return
 
@@ -1719,11 +1889,11 @@ def show_status(context: ExecutionContext):
 MONITOR_INTERVAL = 600  # 10 minutes between monitor cycles
 
 
-def run_resolution_monitor_cycle():
+def run_resolution_monitor_cycle(ledger_path=LEDGER_PATH):
     """Resolve durable-ledger positions without wallet or trading-client access."""
-    report = resolve_ledger_positions(LEDGER_PATH)
+    report = resolve_ledger_positions(ledger_path)
     if report.checked == 0:
-        print(f"  Resolution: no pending ledger positions ({LEDGER_PATH})")
+        print(f"  Resolution: no pending ledger positions ({ledger_path})")
         return report
     print(
         f"  Resolution: checked={report.checked} resolved={report.resolved} "
@@ -1774,7 +1944,12 @@ def run_loop(context: ExecutionContext):
         else:
             print(f"[{now_str}] Monitoring...")
             try:
-                run_resolution_monitor_cycle()
+                ledger_path = (
+                    PAPER_RUNTIME.ledger_path
+                    if context.mode is ExecutionMode.PAPER
+                    else LEDGER_PATH
+                )
+                run_resolution_monitor_cycle(ledger_path)
             except Exception as exc:
                 warn(f"Resolution monitor error: {exc}")
             time.sleep(MONITOR_INTERVAL)
@@ -1791,7 +1966,7 @@ def build_parser() -> argparse.ArgumentParser:
         "command",
         nargs="?",
         default="scan",
-        choices=("scan", "run", "status", "resolve", "cancel"),
+        choices=("scan", "run", "status", "resolve", "cancel", "paper-reset"),
     )
     parser.add_argument("--mode", choices=("research", "paper", "live"))
     parser.add_argument(
@@ -1800,6 +1975,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="required in addition to config mode=live and --mode live",
     )
     parser.add_argument("--market", help="market identifier for cancellation")
+    parser.add_argument(
+        "--confirm-paper-reset",
+        action="store_true",
+        help="required to archive and reset PAPER history",
+    )
     return parser
 
 
@@ -1835,7 +2015,28 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "status":
         show_status(context)
     elif args.command == "resolve":
-        run_resolution_monitor_cycle()
+        ledger_path = (
+            PAPER_RUNTIME.ledger_path
+            if context.mode is ExecutionMode.PAPER
+            else LEDGER_PATH
+        )
+        run_resolution_monitor_cycle(ledger_path)
+    elif args.command == "paper-reset":
+        if context.mode is not ExecutionMode.PAPER:
+            print("ERROR: paper-reset requires --mode paper", file=sys.stderr)
+            return 2
+        if not args.confirm_paper_reset:
+            print(
+                "ERROR: paper-reset requires --confirm-paper-reset; history is archived first",
+                file=sys.stderr,
+            )
+            return 2
+        archive = reset_paper_runtime(
+            runtime=PAPER_RUNTIME,
+            reset_at=datetime.now(timezone.utc),
+        )
+        print(f"[PAPER] archived prior ledger to {archive}")
+        print(f"[PAPER] reset ledger: {PAPER_RUNTIME.ledger_path}")
     elif args.command == "cancel":
         try:
             require_live(context, operation="order cancellation")
