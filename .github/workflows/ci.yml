@@ -108,12 +108,13 @@ jobs:
       - name: Run tests
         run: uv run pytest
 
-      - name: Measure focused paper coverage
+      - name: Check focused paper coverage
         if: matrix.python-version == '3.12'
         run: >
           PYTHONPATH=. uv run pytest -q tests/paper
           --cov=weatherbot.paper
           --cov-report=term-missing
+          --cov-fail-under=70
 
       - name: Install and smoke-test live extra
         if: matrix.python-version == '3.12'
