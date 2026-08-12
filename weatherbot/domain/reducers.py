@@ -469,8 +469,7 @@ def _apply_settlement(state: LedgerState, event: PositionSettled) -> LedgerState
 
 def _apply_risk_scope_registered(state: LedgerState, event: RiskScopeRegistered) -> LedgerState:
     _require_opened(state)
-    if event.scope.market_id == "" or event.scope.outcome_id == "":
-        raise InvariantViolation("risk scope must identify a position")
+    del event
     return state
 
 
@@ -553,8 +552,10 @@ def apply_event(state: LedgerState, event: LedgerEvent) -> LedgerState:
         next_state = _apply_settlement(state, event)
     elif isinstance(event, RiskScopeRegistered):
         next_state = _apply_risk_scope_registered(state, event)
-    else:
+    elif isinstance(event, PortfolioValuationRecorded):
         next_state = _apply_portfolio_valuation(state, event)
+    else:
+        raise TypeError(f"unsupported ledger event type: {type(event).__name__}")
 
     next_state = _record_event(next_state, event, event_fp)
     next_state.assert_invariants()
