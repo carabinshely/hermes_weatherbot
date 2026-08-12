@@ -17,42 +17,38 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Compare April production captures with archived single runs
+      - name: Identify the archived run behind the April production capture
         run: |
           python - <<'PY'
+          import hashlib
           import json
           import urllib.error
           import urllib.parse
           import urllib.request
           from pathlib import Path
 
-          locations = {
-              "nyc": (40.7772, -73.8726, "America/New_York"),
-              "chicago": (41.9742, -87.9073, "America/Chicago"),
-              "miami": (25.7959, -80.2870, "America/New_York"),
-              "dallas": (32.8471, -96.8518, "America/Chicago"),
-              "seattle": (47.4502, -122.3088, "America/Los_Angeles"),
-              "atlanta": (33.6407, -84.4277, "America/New_York"),
-          }
-          reference = {}
-          for city in locations:
-              for target_date in ("2026-04-18", "2026-04-19", "2026-04-20"):
-                  path = Path("data/markets") / f"{city}_{target_date}.json"
-                  data = json.loads(path.read_text(encoding="utf-8"))
-                  snapshots = data["forecast_snapshots"]
-                  snap = min(snapshots, key=lambda item: item["ts"])
-                  reference[(city, target_date)] = {
-                      "timestamp": snap["ts"],
-                      "horizon": snap["horizon"],
-                      "ecmwf_rounded_f": snap["ecmwf"],
-                      "snapshot_file_sha": __import__("hashlib").sha256(path.read_bytes()).hexdigest(),
-                  }
+          city = "atlanta"
+          latitude = 33.6407
+          longitude = -84.4277
+          timezone = "America/New_York"
+          target_dates = ("2026-04-18", "2026-04-19", "2026-04-20")
 
-          def fetch(city, run):
-              lat, lon, timezone = locations[city]
+          reference = {}
+          for target_date in target_dates:
+              path = Path("data/markets") / f"{city}_{target_date}.json"
+              data = json.loads(path.read_text(encoding="utf-8"))
+              snap = min(data["forecast_snapshots"], key=lambda item: item["ts"])
+              reference[target_date] = {
+                  "timestamp": snap["ts"],
+                  "horizon": snap["horizon"],
+                  "ecmwf_rounded_f": snap["ecmwf"],
+                  "snapshot_file_sha": hashlib.sha256(path.read_bytes()).hexdigest(),
+              }
+
+          def fetch(run):
               params = {
-                  "latitude": lat,
-                  "longitude": lon,
+                  "latitude": latitude,
+                  "longitude": longitude,
                   "daily": "temperature_2m_max",
                   "temperature_unit": "fahrenheit",
                   "timezone": timezone,
@@ -61,20 +57,21 @@ jobs:
                   "run": run,
               }
               url = "https://single-runs-api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(params)
-              request = urllib.request.Request(url, headers={"User-Agent": "hermes-weatherbot-issue-12-parity/1"})
+              request = urllib.request.Request(
+                  url,
+                  headers={"User-Agent": "hermes-weatherbot-issue-12-parity/1"},
+              )
               try:
-                  with urllib.request.urlopen(request, timeout=30) as response:
-                      payload = json.load(response)
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      raw = response.read()
               except urllib.error.HTTPError as exc:
-                  body = exc.read().decode("utf-8", errors="replace")
                   print(
                       "HTTP_ERROR "
                       + json.dumps(
                           {
-                              "city": city,
                               "run": run,
                               "status": exc.code,
-                              "body": body,
+                              "body": exc.read().decode("utf-8", errors="replace"),
                               "url": url,
                           },
                           sort_keys=True,
@@ -82,54 +79,70 @@ jobs:
                   )
                   return {}
               except Exception as exc:
-                  print(json.dumps({"city": city, "run": run, "error": repr(exc), "url": url}))
+                  print("FETCH_ERROR " + json.dumps({"run": run, "error": repr(exc), "url": url}))
                   return {}
+              payload = json.loads(raw)
               print(
-                  json.dumps(
+                  "FETCH "
+                  + json.dumps(
                       {
-                          "city": city,
                           "run": run,
-                          "source_url": url,
+                          "response_sha256": hashlib.sha256(raw).hexdigest(),
                           "timezone": payload.get("timezone"),
                           "model": payload.get("model"),
+                          "utc_offset_seconds": payload.get("utc_offset_seconds"),
+                          "url": url,
                       },
                       sort_keys=True,
                   )
               )
               daily = payload.get("daily", {})
-              return dict(zip(daily.get("time", []), daily.get("temperature_2m_max", []), strict=True))
+              return dict(
+                  zip(
+                      daily.get("time", []),
+                      daily.get("temperature_2m_max", []),
+                      strict=True,
+                  )
+              )
 
-          results = []
           for run in ("2026-04-17T18:00", "2026-04-18T00:00"):
-              for city in locations:
-                  archived = fetch(city, run)
-                  for target_date in ("2026-04-18", "2026-04-19", "2026-04-20"):
-                      ref = reference[(city, target_date)]
-                      value = archived.get(target_date)
-                      row = {
+              archived = fetch(run)
+              rows = []
+              for target_date in target_dates:
+                  value = archived.get(target_date)
+                  ref = reference[target_date]
+                  row = {
+                      "run": run,
+                      "target_date": target_date,
+                      **ref,
+                      "archive_f": value,
+                      "archive_rounded_f": None if value is None else round(value),
+                      "rounded_error_f": (
+                          None if value is None else round(value) - ref["ecmwf_rounded_f"]
+                      ),
+                      "raw_error_from_rounded_reference_f": (
+                          None if value is None else value - ref["ecmwf_rounded_f"]
+                      ),
+                  }
+                  rows.append(row)
+                  print("PARITY " + json.dumps(row, sort_keys=True))
+              available = [row for row in rows if row["archive_f"] is not None]
+              exact = sum(row["rounded_error_f"] == 0 for row in available)
+              errors = [abs(row["raw_error_from_rounded_reference_f"]) for row in available]
+              print(
+                  "SUMMARY "
+                  + json.dumps(
+                      {
                           "run": run,
-                          "city": city,
-                          "target_date": target_date,
-                          **ref,
-                          "archive_f": value,
-                          "archive_rounded_f": None if value is None else round(value),
-                          "rounded_error_f": None if value is None else round(value) - ref["ecmwf_rounded_f"],
-                          "raw_error_from_rounded_reference_f": None if value is None else value - ref["ecmwf_rounded_f"],
-                      }
-                      results.append(row)
-                      print("PARITY " + json.dumps(row, sort_keys=True))
-
-          for run in ("2026-04-17T18:00", "2026-04-18T00:00"):
-              rows = [row for row in results if row["run"] == run and row["archive_f"] is not None]
-              matches = sum(row["rounded_error_f"] == 0 for row in rows)
-              errors = [abs(row["raw_error_from_rounded_reference_f"]) for row in rows]
-              summary = {
-                  "run": run,
-                  "pairs": len(rows),
-                  "rounded_exact_matches": matches,
-                  "rounded_exact_fraction": matches / len(rows) if rows else 0,
-                  "mae_vs_rounded_reference_f": sum(errors) / len(errors) if errors else None,
-                  "max_abs_vs_rounded_reference_f": max(errors) if errors else None,
-              }
-              print("SUMMARY " + json.dumps(summary, sort_keys=True))
+                          "pairs": len(available),
+                          "rounded_exact_matches": exact,
+                          "rounded_exact_fraction": exact / len(available) if available else 0,
+                          "mae_vs_rounded_reference_f": (
+                              sum(errors) / len(errors) if errors else None
+                          ),
+                          "max_abs_vs_rounded_reference_f": max(errors) if errors else None,
+                      },
+                      sort_keys=True,
+                  )
+              )
           PY
