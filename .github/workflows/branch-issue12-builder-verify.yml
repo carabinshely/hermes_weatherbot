@@ -28,41 +28,31 @@ jobs:
 
           path = Path("weatherbot/forecasting/calibration_build.py")
           text = path.read_text(encoding="utf-8")
-          old_constant = '''DEFAULT_PARITY_EVIDENCE = Path(
-              "tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json"
+          old_constant = (
+              'DEFAULT_PARITY_EVIDENCE = Path(\n'
+              '    "tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json"\n'
+              ')\n'
           )
-          '''
-          old_constant = "\n".join(
-              line[10:] if line.startswith("          ") else line
-              for line in old_constant.splitlines()
-          ) + "\n"
+          old_arg = (
+              '    parser.add_argument(\n'
+              '        "--parity-evidence",\n'
+              '        type=Path,\n'
+              '        default=DEFAULT_PARITY_EVIDENCE,\n'
+              '    )\n'
+          )
+          new_arg = (
+              '    parser.add_argument(\n'
+              '        "--parity-evidence",\n'
+              '        type=Path,\n'
+              '        required=True,\n'
+              '        help="Committed archive-parity evidence JSON used to authorize the capture contract",\n'
+              '    )\n'
+          )
           if text.count(old_constant) != 1:
               raise SystemExit("expected one default parity evidence constant")
-          text = text.replace(old_constant, "")
-          old_arg = '''    parser.add_argument(
-              "--parity-evidence",
-              type=Path,
-              default=DEFAULT_PARITY_EVIDENCE,
-          )
-          '''
-          old_arg = "\n".join(
-              line[10:] if line.startswith("          ") else line
-              for line in old_arg.splitlines()
-          ) + "\n"
-          new_arg = '''    parser.add_argument(
-              "--parity-evidence",
-              type=Path,
-              required=True,
-              help="Committed archive-parity evidence JSON used to authorize the capture contract",
-          )
-          '''
-          new_arg = "\n".join(
-              line[10:] if line.startswith("          ") else line
-              for line in new_arg.splitlines()
-          ) + "\n"
           if text.count(old_arg) != 1:
               raise SystemExit("expected one parity evidence CLI argument")
-          path.write_text(text.replace(old_arg, new_arg), encoding="utf-8")
+          path.write_text(text.replace(old_constant, "").replace(old_arg, new_arg), encoding="utf-8")
           PY
       - run: uv run ruff check --fix weatherbot/forecasting/calibration_build.py tests/forecasting/test_calibration_build.py
       - run: uv run ruff format weatherbot/forecasting/calibration_build.py tests/forecasting/test_calibration_build.py
