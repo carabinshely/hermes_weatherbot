@@ -20,6 +20,7 @@ from tests.risk.portfolio_helpers import (
 from weatherbot.domain import (
     DuplicateEventConflict,
     InvariantViolation,
+    LedgerEvent,
     Money,
     PortfolioValuation,
     PositionValuation,
@@ -41,8 +42,8 @@ from weatherbot.persistence.codec import decode_event, encode_event
         ),
     ),
 )
-def test_portfolio_risk_events_round_trip_without_schema_bump(event: object) -> None:
-    encoded = encode_event(event)  # type: ignore[arg-type]
+def test_portfolio_risk_events_round_trip_without_schema_bump(event: LedgerEvent) -> None:
+    encoded = encode_event(event)
     decoded = decode_event(encoded.payload_json)
 
     assert decoded == event
