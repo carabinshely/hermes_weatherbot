@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 
-from weatherbot.domain import PositionKey, RiskScope
+from weatherbot.domain import PositionKey, RiskScope, fingerprint
 from weatherbot.forecasting import WeatherInputSnapshot
 from weatherbot.markets import ConditionId, OrderBookSnapshot, OutcomeTokenId
 from weatherbot.paper.ledger import archive_and_reset_paper_ledger
@@ -14,6 +15,30 @@ from weatherbot.paper.model import PaperStatus
 from weatherbot.paper.runtime import PaperBookFetcher, PaperRuntimeConfig, load_open_position_books
 from weatherbot.paper.service import PaperEntryRequest, PaperEntryResult, PaperTradingService
 from weatherbot.quoting import CostPolicy, FreshnessPolicy, MarketEventSnapshot
+
+
+def paper_scan_decision_id(
+    *,
+    model_version: str,
+    scope: RiskScope,
+    weather: WeatherInputSnapshot,
+    event: MarketEventSnapshot,
+    decision_book: OrderBookSnapshot,
+) -> str:
+    """Stable same-snapshot identity; changed market evidence creates a new decision."""
+    if not model_version.strip():
+        raise ValueError("paper model version must not be blank")
+    material = "\n".join(
+        (
+            model_version.strip(),
+            str(scope.market_id),
+            str(scope.outcome_id),
+            fingerprint(weather),
+            fingerprint(event),
+            decision_book.book_hash,
+        )
+    ).encode()
+    return f"paper_scan_{hashlib.sha256(material).hexdigest()}"
 
 
 def submit_scanner_candidate(
