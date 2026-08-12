@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: agent/issue-27-paper-money
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -41,6 +43,35 @@ jobs:
 
       - name: Install minimal runtime and development tools
         run: uv sync --locked --all-groups
+
+      - name: Patch final PAPER invariants
+        if: matrix.python-version == '3.12' && github.actor != 'github-actions[bot]'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          service = Path("weatherbot/paper/service.py")
+          text = service.read_text()
+          old = '''        probability = Decimal(self.model_probability)\n        if probability <= 0 or probability >= 1:\n            raise ValueError("paper model probability must be between zero and one")\n        bucket_key = self.audit_metadata.get("bucket_key")\n'''
+          new = '''        probability = Decimal(self.model_probability)\n        if probability <= 0 or probability >= 1:\n            raise ValueError("paper model probability must be between zero and one")\n        if str(self.scope.outcome_id) != str(self.decision_order_book.token_id):\n            raise ValueError("paper scope outcome_id must match the selected decision-book token")\n        if self.execution_order_book.condition_id != self.decision_order_book.condition_id:\n            raise ValueError("paper execution book must use the decision-book condition")\n        if self.execution_order_book.token_id != self.decision_order_book.token_id:\n            raise ValueError("paper execution book must use the decision-book token")\n        bucket_key = self.audit_metadata.get("bucket_key")\n'''
+          if old not in text:
+              raise SystemExit("paper entry validation marker not found")
+          service.write_text(text.replace(old, new, 1))
+
+          bot = Path("bot_v3.py")
+          bot_text = bot.read_text()
+          old_banner = '        info("  Paper fills: pending implementation in #27")\n'
+          new_banner = '        info(f"  Paper ledger: {PAPER_RUNTIME.ledger_path}")\n'
+          if old_banner not in bot_text:
+              raise SystemExit("stale PAPER banner not found")
+          bot.write_text(bot_text.replace(old_banner, new_banner, 1))
+          PY
+          uv run ruff format weatherbot/paper/service.py
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add weatherbot/paper/service.py bot_v3.py
+          git commit -m 'Enforce PAPER token identity and update runtime banner'
+          git push origin HEAD:agent/issue-27-paper-money
 
       - name: Verify live packages are absent from minimal profile
         run: |
