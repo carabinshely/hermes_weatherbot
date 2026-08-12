@@ -1,0 +1,71 @@
+name: issue27-atomic-adapter-patch
+
+on:
+  push:
+    branches: [agent/issue-27-paper-money]
+    paths:
+      - .github/workflows/_issue27_atomic_adapter_patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-27-paper-money
+      - name: Patch atomic risk commit
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('weatherbot/persistence/risk_store.py')
+          text = path.read_text()
+
+          marker = '''    def commit_risk_checked_order_intent(\n        self,\n        event: OrderIntentCreated,\n'''
+          helper = '''    def _set_adapter_metadata_locked(\n        self,\n        intent_id: OrderIntentId,\n        *,\n        backend_name: str,\n        payload: Mapping[str, object],\n    ) -> None:\n        backend_name = _require_text(backend_name, label="backend_name")\n        payload_json, payload_hash = encode_metadata(payload)\n        intent_text = str(intent_id)\n        existing = self._adapter_row_locked(intent_text)\n        if existing is None:\n            now = _utc_now()\n            self._connection.execute(\n                """\n                INSERT INTO adapter_metadata(\n                    intent_id, backend_name, payload_json, payload_hash, created_at, updated_at\n                )\n                VALUES (?, ?, ?, ?, ?, ?)\n                """,\n                (intent_text, backend_name, payload_json, payload_hash, now, now),\n            )\n            return\n        adapter = self._adapter_from_row(existing)\n        if adapter.backend_name != backend_name:\n            raise ConcurrentDecisionError(\n                f"intent {intent_text} is already assigned to backend {adapter.backend_name!r}"\n            )\n        _, existing_hash = encode_metadata(adapter.payload)\n        if existing_hash != payload_hash:\n            raise ConcurrentDecisionError(\n                f"intent {intent_text} adapter metadata changed across an idempotent retry"\n            )\n\n'''
+          if marker not in text:
+              raise SystemExit('commit method marker not found')
+          text = text.replace(marker, helper + marker, 1)
+
+          old_import = '''    EventId,\n    OrderIntentCreated,\n'''
+          new_import = '''    EventId,\n    OrderIntentCreated,\n    OrderIntentId,\n'''
+          if old_import not in text:
+              raise SystemExit('domain import marker not found')
+          text = text.replace(old_import, new_import, 1)
+
+          old_sig = '''        evaluated_at: datetime,\n        owner_id: str,\n        metadata: Mapping[str, object] | None = None,\n    ) -> RiskCheckedCommitResult:\n'''
+          new_sig = '''        evaluated_at: datetime,\n        owner_id: str,\n        metadata: Mapping[str, object] | None = None,\n        adapter_backend_name: str | None = None,\n        adapter_payload: Mapping[str, object] | None = None,\n    ) -> RiskCheckedCommitResult:\n'''
+          if old_sig not in text:
+              raise SystemExit('signature marker not found')
+          text = text.replace(old_sig, new_sig, 1)
+
+          old_validation = '''        if scope.position_key != (event.intent.market_id, event.intent.outcome_id):\n            raise ValueError("risk scope does not match order-intent position key")\n\n        owner_id = _require_text(owner_id, label="owner_id")\n'''
+          new_validation = '''        if scope.position_key != (event.intent.market_id, event.intent.outcome_id):\n            raise ValueError("risk scope does not match order-intent position key")\n        if (adapter_backend_name is None) != (adapter_payload is None):\n            raise ValueError("adapter backend name and payload must be supplied together")\n\n        owner_id = _require_text(owner_id, label="owner_id")\n'''
+          if old_validation not in text:
+              raise SystemExit('validation marker not found')
+          text = text.replace(old_validation, new_validation, 1)
+
+          old_duplicate = '''                    return RiskCheckedCommitResult(\n                        decision=None,\n                        append_result=self._current_append_result_locked(\n                            duplicate_event_id=str(event.event_id)\n                        ),\n                        committed=True,\n                    )\n'''
+          new_duplicate = '''                    if adapter_backend_name is not None and adapter_payload is not None:\n                        self._set_adapter_metadata_locked(\n                            event.intent.intent_id,\n                            backend_name=adapter_backend_name,\n                            payload=adapter_payload,\n                        )\n                    return RiskCheckedCommitResult(\n                        decision=None,\n                        append_result=self._current_append_result_locked(\n                            duplicate_event_id=str(event.event_id)\n                        ),\n                        committed=True,\n                    )\n'''
+          if old_duplicate not in text:
+              raise SystemExit('duplicate return marker not found')
+          text = text.replace(old_duplicate, new_duplicate, 1)
+
+          old_final = '''            appended = self._append_events_locked(\n                events_to_append,\n                allow_intent_created=True,\n            )\n            return RiskCheckedCommitResult(\n'''
+          new_final = '''            appended = self._append_events_locked(\n                events_to_append,\n                allow_intent_created=True,\n            )\n            if adapter_backend_name is not None and adapter_payload is not None:\n                self._set_adapter_metadata_locked(\n                    event.intent.intent_id,\n                    backend_name=adapter_backend_name,\n                    payload=adapter_payload,\n                )\n            return RiskCheckedCommitResult(\n'''
+          if old_final not in text:
+              raise SystemExit('final append marker not found')
+          text = text.replace(old_final, new_final, 1)
+
+          path.write_text(text)
+          PY
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add weatherbot/persistence/risk_store.py
+          git commit -m 'Persist adapter recovery metadata atomically with approved intents'
+          git push origin HEAD:agent/issue-27-paper-money
