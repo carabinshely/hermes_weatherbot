@@ -196,9 +196,7 @@ def test_fixed_transaction_cost_can_require_multiple_downward_requotes() -> None
         sizing_policy=policy(maximum_cash="100"),
         costs=cost_policy(transaction_cost="0.10"),
     )
-    seed_raw_kelly = (Decimal("0.65") - Decimal("0.40")) / (
-        Decimal("1") - Decimal("0.40")
-    )
+    seed_raw_kelly = (Decimal("0.65") - Decimal("0.40")) / (Decimal("1") - Decimal("0.40"))
     seed_cash = Decimal("20") * Decimal("0.25") * seed_raw_kelly
 
     assert decision.status is RiskDecisionStatus.APPROVED
