@@ -21,6 +21,7 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          import urllib.error
           import urllib.parse
           import urllib.request
           from pathlib import Path
@@ -66,6 +67,22 @@ jobs:
               try:
                   with urllib.request.urlopen(request, timeout=30) as response:
                       payload = json.load(response)
+              except urllib.error.HTTPError as exc:
+                  body = exc.read().decode("utf-8", errors="replace")
+                  print(
+                      "HTTP_ERROR "
+                      + json.dumps(
+                          {
+                              "city": city,
+                              "run": run,
+                              "status": exc.code,
+                              "body": body,
+                              "url": url,
+                          },
+                          sort_keys=True,
+                      )
+                  )
+                  return {}
               except Exception as exc:
                   print(json.dumps({"city": city, "run": run, "error": repr(exc), "url": url}))
                   return {}
