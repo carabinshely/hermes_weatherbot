@@ -109,9 +109,7 @@ def _slippage_limited_requested_budget(
             average_headroom = maximum_average_price * shares - book_cost
             if average_headroom <= 0:
                 break
-            maximum_take = (
-                average_headroom / (level.price - maximum_average_price)
-            ).next_minus()
+            maximum_take = (average_headroom / (level.price - maximum_average_price)).next_minus()
             take = min(level.size, maximum_take)
 
         if take <= 0:
