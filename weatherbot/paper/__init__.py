@@ -8,6 +8,12 @@ from weatherbot.paper.model import (
     PaperFillLevel,
     PaperStatus,
 )
+from weatherbot.paper.runtime import (
+    PaperBookReference,
+    PaperRuntimeConfig,
+    load_open_position_books,
+    open_position_book_references,
+)
 from weatherbot.paper.service import (
     PaperEntryRequest,
     PaperEntryResult,
@@ -17,6 +23,7 @@ from weatherbot.paper.service import (
 from weatherbot.paper.valuation import build_paper_valuation, paper_status
 
 __all__ = [
+    "PaperBookReference",
     "PaperEntryRequest",
     "PaperEntryResult",
     "PaperEntryStatus",
@@ -24,11 +31,14 @@ __all__ = [
     "PaperExecutionPlan",
     "PaperExecutionStatus",
     "PaperFillLevel",
+    "PaperRuntimeConfig",
     "PaperStatus",
     "PaperTradingService",
     "archive_and_reset_paper_ledger",
     "build_paper_execution_plan",
     "build_paper_valuation",
     "initialize_paper_store",
+    "load_open_position_books",
+    "open_position_book_references",
     "paper_status",
 ]
