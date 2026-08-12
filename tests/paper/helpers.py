@@ -22,8 +22,8 @@ from weatherbot.markets import OrderBookSnapshot, parse_order_book
 from weatherbot.paper import PaperEntryRequest
 
 MARKET = MarketId("paper-weather-market")
-OUTCOME = OutcomeId("paper-yes")
-OTHER_OUTCOME = OutcomeId("paper-no")
+OUTCOME = OutcomeId(str(TOKEN))
+OTHER_OUTCOME = OutcomeId("98765432109876543210")
 
 
 def scope() -> RiskScope:
