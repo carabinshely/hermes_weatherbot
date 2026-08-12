@@ -141,7 +141,7 @@ jobs:
           )
           tests.write_text(text, encoding="utf-8")
           PY
-      - run: uv run ruff check --fix weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
+      - run: uv run ruff check --fix --unsafe-fixes weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
       - run: uv run ruff format weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
       - name: Verify strict typing before commit
         run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
