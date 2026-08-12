@@ -137,7 +137,7 @@ jobs:
       - name: Verify type fixes before commit
         run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
       - name: Verify calibration tests before commit
-        run: uv run pytest -q tests/forecasting/test_calibration.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py
+        run: PYTHONPATH=. uv run pytest -q tests/forecasting/test_calibration.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py
       - name: Commit verified type fixes
         run: |
           if git diff --quiet; then
