@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -11,6 +11,7 @@ from weatherbot.forecasting.archive import (
     SINGLE_RUN_CAPTURE_CONTRACT_ID,
     CalibrationForecastSamplingPolicy,
     CalibrationLocation,
+    OpenMeteoSingleRunCapture,
     calibration_decision_time,
     calibration_run_for_market_day,
     parse_single_run_daily_highs,
@@ -28,12 +29,19 @@ _LOCATION = CalibrationLocation(
 _MARKET_DAY = date(2026, 7, 1)
 
 
-def _payload(*, timezone: str = "America/New_York", unit: str = "°F") -> bytes:
+def _payload(
+    *,
+    timezone: str = "America/New_York",
+    unit: str = "°F",
+    incomplete_date: date | None = None,
+) -> bytes:
     times: list[str] = []
     values: list[float] = []
     for day_offset in range(5):
         day = _MARKET_DAY + timedelta(days=day_offset - 1)
         for hour in range(24):
+            if incomplete_date == day and hour >= 10:
+                continue
             times.append(f"{day.isoformat()}T{hour:02d}:00")
             values.append(50.0 + day_offset + min(hour, 15) / 10)
     return json.dumps(
@@ -53,7 +61,7 @@ def _parse(
     *,
     source_url: str | None = None,
     run_initialized_at_utc: datetime | None = None,
-):
+) -> OpenMeteoSingleRunCapture:
     run = calibration_run_for_market_day(_MARKET_DAY)
     return parse_single_run_daily_highs(
         _payload() if raw_payload is None else raw_payload,
@@ -96,8 +104,14 @@ def test_single_run_normalizes_three_local_calendar_horizons() -> None:
         Decimal("54.5"),
     ]
     assert all(item.forecast_as_of_utc == capture.decision_time_utc for item in capture.forecasts)
-    assert all(item.source_contract_id == PRODUCTION_FORECAST_CONTRACT_ID for item in capture.forecasts)
-    assert all(item.capture_contract_id == SINGLE_RUN_CAPTURE_CONTRACT_ID for item in capture.forecasts)
+    assert all(
+        item.source_contract_id == PRODUCTION_FORECAST_CONTRACT_ID
+        for item in capture.forecasts
+    )
+    assert all(
+        item.capture_contract_id == SINGLE_RUN_CAPTURE_CONTRACT_ID
+        for item in capture.forecasts
+    )
     assert all(item.bias_correction for item in capture.forecasts)
     assert all(item.payload_sha256 == capture.raw_payload_sha256 for item in capture.forecasts)
 
@@ -127,25 +141,14 @@ def test_single_run_rejects_wrong_timezone_or_units() -> None:
 
 
 def test_single_run_rejects_incomplete_target_day() -> None:
-    payload = json.loads(_payload())
-    keep = [
-        index
-        for index, timestamp in enumerate(payload["hourly"]["time"])
-        if not timestamp.startswith("2026-07-02") or int(timestamp[11:13]) < 10
-    ]
-    payload["hourly"]["time"] = [payload["hourly"]["time"][index] for index in keep]
-    payload["hourly"]["temperature_2m"] = [
-        payload["hourly"]["temperature_2m"][index] for index in keep
-    ]
-
     with pytest.raises(CalibrationError, match="insufficient local-day"):
-        _parse(json.dumps(payload).encode())
+        _parse(_payload(incomplete_date=date(2026, 7, 2)))
 
 
 def test_sampling_policy_rejects_decision_too_close_to_run() -> None:
     policy = CalibrationForecastSamplingPolicy(
         run_cycle_hour_utc=18,
-        decision_local_time=datetime.strptime("18:30", "%H:%M").time(),
+        decision_local_time=time(hour=18, minute=30),
         min_safe_run_age=timedelta(hours=8),
     )
 
