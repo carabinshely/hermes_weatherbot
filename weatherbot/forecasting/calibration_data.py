@@ -38,9 +38,23 @@ def _text(value: str, *, label: str) -> str:
 
 def _sha256(value: str, *, label: str) -> str:
     normalized = _text(value, label=label).lower()
-    if len(normalized) != 64 or any(character not in "0123456789abcdef" for character in normalized):
+    if len(normalized) != 64 or any(
+        character not in "0123456789abcdef" for character in normalized
+    ):
         raise CalibrationError(f"{label} must be a SHA-256 hex digest")
     return normalized
+
+
+def _integer(value: object, *, label: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise CalibrationError(f"{label} must be an integer")
+    return value
+
+
+def _boolean(value: object, *, label: str) -> bool:
+    if not isinstance(value, bool):
+        raise CalibrationError(f"{label} must be boolean")
+    return value
 
 
 def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:
@@ -123,12 +137,10 @@ class ForecastCalibrationEvidence:
             raise CalibrationError("forecast latitude is outside [-90, 90]")
         if not Decimal("-180") <= longitude <= Decimal("180"):
             raise CalibrationError("forecast longitude is outside [-180, 180]")
-        if isinstance(self.bias_correction, bool) is False:
-            raise CalibrationError("bias_correction must be boolean")
+        bias_correction = _boolean(self.bias_correction, label="bias_correction")
         payload_hash = _sha256(self.payload_sha256, label="forecast payload hash")
         as_of = _utc(self.forecast_as_of_utc, label="forecast as-of time")
-        if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
-            raise CalibrationError("forecast lead_days must be an integer")
+        _integer(self.lead_days, label="forecast lead_days")
         if not 0 <= self.lead_days <= 7:
             raise CalibrationError("forecast lead_days must be between 0 and 7")
 
@@ -159,6 +171,7 @@ class ForecastCalibrationEvidence:
         object.__setattr__(self, "source_url", source_url)
         object.__setattr__(self, "latitude", latitude)
         object.__setattr__(self, "longitude", longitude)
+        object.__setattr__(self, "bias_correction", bias_correction)
         object.__setattr__(self, "payload_sha256", payload_hash)
 
     @property
@@ -203,11 +216,13 @@ class ArchiveParityPolicy:
     max_abs_error_f: float
 
     def __post_init__(self) -> None:
-        if isinstance(self.min_pairs, bool) or not isinstance(self.min_pairs, int):
-            raise CalibrationError("parity min_pairs must be an integer")
+        _integer(self.min_pairs, label="parity min_pairs")
         if self.min_pairs < 2:
             raise CalibrationError("parity min_pairs must be at least two")
-        if not math.isfinite(self.min_reference_coverage) or not 0 < self.min_reference_coverage <= 1:
+        if (
+            not math.isfinite(self.min_reference_coverage)
+            or not 0 < self.min_reference_coverage <= 1
+        ):
             raise CalibrationError("parity reference coverage must be in (0, 1]")
         for label, value in (
             ("max_mae_f", self.max_mae_f),
@@ -250,8 +265,9 @@ class ArchiveParityReport:
             ("candidate_count", self.candidate_count),
             ("matched_count", self.matched_count),
         ):
-            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                raise CalibrationError(f"parity {label} must be a non-negative integer")
+            _integer(value, label=f"parity {label}")
+            if value < 0:
+                raise CalibrationError(f"parity {label} must be non-negative")
         for label, value in (
             ("reference_coverage", self.reference_coverage),
             ("mean_error_f", self.mean_error_f),
@@ -343,7 +359,10 @@ def compare_archive_parity(
     if not identities:
         raise CalibrationError("parity comparison has no overlapping forecast identities")
     errors = [
-        float(candidate_items[identity].forecast.temperature_f - reference_items[identity].forecast.temperature_f)
+        float(
+            candidate_items[identity].forecast.temperature_f
+            - reference_items[identity].forecast.temperature_f
+        )
         for identity in identities
     ]
     matched_identity_sha = hashlib.sha256(
@@ -431,8 +450,11 @@ class CalibrationDatasetRecord:
             "forecast_longitude",
             _decimal(self.forecast_longitude, label="dataset forecast longitude"),
         )
-        if isinstance(self.forecast_bias_correction, bool) is False:
-            raise CalibrationError("dataset forecast_bias_correction must be boolean")
+        bias_correction = _boolean(
+            self.forecast_bias_correction,
+            label="dataset forecast_bias_correction",
+        )
+        object.__setattr__(self, "forecast_bias_correction", bias_correction)
         object.__setattr__(
             self,
             "forecast_provenance_sha256",
@@ -525,7 +547,9 @@ class CalibrationDataset:
 
     def to_jsonl(self) -> str:
         return "".join(
-            json.dumps(record.to_mapping(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+            json.dumps(
+                record.to_mapping(), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            )
             + "\n"
             for record in self.records
         )
@@ -560,11 +584,13 @@ def build_calibration_dataset(
     for forecast, observation in pairs:
         if forecast.source_contract_id != effective_contract:
             raise CalibrationError("forecast evidence targets a different source contract")
-        if forecast.capture_contract_id != effective_contract:
-            if forecast.capture_contract_id not in accepted_archive_contracts:
-                raise CalibrationError(
-                    "archive forecast cannot enter the dataset without passing source parity"
-                )
+        if (
+            forecast.capture_contract_id != effective_contract
+            and forecast.capture_contract_id not in accepted_archive_contracts
+        ):
+            raise CalibrationError(
+                "archive forecast cannot enter the dataset without passing source parity"
+            )
         sample = calibration_sample_from_evidence(forecast, observation)
         records.append(
             CalibrationDatasetRecord(
@@ -611,7 +637,9 @@ def build_calibration_dataset(
         for record in ordered
     )
     dataset_hash = hashlib.sha256(jsonl.encode()).hexdigest()
-    used_capture_contracts = tuple(sorted({record.forecast_capture_contract_id for record in ordered}))
+    used_capture_contracts = tuple(
+        sorted({record.forecast_capture_contract_id for record in ordered})
+    )
     used_parity_hashes = tuple(
         sorted(
             accepted_archive_contracts[contract].report_sha256

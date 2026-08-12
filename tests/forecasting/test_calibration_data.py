@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -10,6 +11,7 @@ from weatherbot.domain import MarketId, ObservationEvidenceStatus, WeatherObserv
 from weatherbot.forecasting.calibration import CalibrationError
 from weatherbot.forecasting.calibration_data import (
     ArchiveParityPolicy,
+    ArchiveParityReport,
     ForecastCalibrationEvidence,
     ForecastCaptureMethod,
     build_calibration_dataset,
@@ -46,8 +48,10 @@ def _forecast(
     valid_until = datetime.combine(market_date + timedelta(days=1), time.min, timezone).astimezone(
         UTC
     )
-    retrieved = as_of_utc if capture_method is ForecastCaptureMethod.PRODUCTION else datetime(
-        2026, 8, 12, 10, tzinfo=UTC
+    retrieved = (
+        as_of_utc
+        if capture_method is ForecastCaptureMethod.PRODUCTION
+        else datetime(2026, 8, 12, 10, tzinfo=UTC)
     )
     forecast = DailyHighForecast(
         temperature_f=Decimal(temperature_f),
@@ -106,7 +110,7 @@ def _observation(
     )
 
 
-def _passing_parity_report() -> object:
+def _passing_parity_report() -> ArchiveParityReport:
     dates = tuple(date(2026, 7, day) for day in range(1, 5))
     references = tuple(
         _forecast(day, temperature_f=str(80 + index), payload_character=chr(ord("a") + index))
@@ -118,7 +122,7 @@ def _passing_parity_report() -> object:
             temperature_f=str(Decimal(80 + index) + Decimal("0.1")),
             capture_contract=_ARCHIVE_CONTRACT,
             capture_method=ForecastCaptureMethod.PREVIOUS_RUNS,
-            payload_character=chr(ord("e") + index),
+            payload_character=("1", "2", "3", "4")[index],
         )
         for index, day in enumerate(dates)
     )
@@ -136,7 +140,9 @@ def _passing_parity_report() -> object:
 
 def test_observation_is_normalized_to_fahrenheit_without_losing_truth_provenance() -> None:
     market_date = date(2026, 7, 10)
-    sample = calibration_sample_from_evidence(_forecast(market_date, temperature_f="85"), _observation(market_date))
+    sample = calibration_sample_from_evidence(
+        _forecast(market_date, temperature_f="85"), _observation(market_date)
+    )
 
     assert sample.observed_temperature_f == Decimal("86")
     assert sample.station_id == "KLGA"
@@ -217,10 +223,7 @@ def test_failed_parity_blocks_dataset_even_when_report_is_supplied() -> None:
         )
 
 
-def test_dataset_hash_and_manifest_are_independent_of_input_order(tmp_path: object) -> None:
-    from pathlib import Path
-
-    assert isinstance(tmp_path, Path)
+def test_dataset_hash_and_manifest_are_independent_of_input_order(tmp_path: Path) -> None:
     dates = (date(2026, 7, 10), date(2026, 7, 11))
     pairs = tuple(
         (_forecast(day, temperature_f=str(84 + index)), _observation(day))
