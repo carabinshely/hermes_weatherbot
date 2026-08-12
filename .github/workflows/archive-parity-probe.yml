@@ -59,8 +59,6 @@ jobs:
                   "models": "ecmwf_ifs025",
                   "bias_correction": "true",
                   "run": run,
-                  "start_date": "2026-04-18",
-                  "end_date": "2026-04-20",
               }
               url = "https://single-runs-api.open-meteo.com/v1/forecast?" + urllib.parse.urlencode(params)
               request = urllib.request.Request(url, headers={"User-Agent": "hermes-weatherbot-issue-12-parity/1"})
@@ -86,7 +84,18 @@ jobs:
               except Exception as exc:
                   print(json.dumps({"city": city, "run": run, "error": repr(exc), "url": url}))
                   return {}
-              print(json.dumps({"city": city, "run": run, "source_url": url, "timezone": payload.get("timezone")}))
+              print(
+                  json.dumps(
+                      {
+                          "city": city,
+                          "run": run,
+                          "source_url": url,
+                          "timezone": payload.get("timezone"),
+                          "model": payload.get("model"),
+                      },
+                      sort_keys=True,
+                  )
+              )
               daily = payload.get("daily", {})
               return dict(zip(daily.get("time", []), daily.get("temperature_2m_max", []), strict=True))
 
