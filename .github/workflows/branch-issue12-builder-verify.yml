@@ -21,13 +21,49 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
       - run: uv sync --locked --all-groups
-      - name: Make parity evidence explicit
+      - name: Apply bounded builder fixes
         run: |
           python - <<'PY'
           from pathlib import Path
 
+          def replace_once(text: str, old: str, new: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match, found {count}: {old!r}")
+              return text.replace(old, new)
+
           path = Path("weatherbot/forecasting/calibration_build.py")
           text = path.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "from weatherbot.domain import MarketId\n",
+              "from weatherbot.domain import MarketId, WeatherObservationEvidence\n",
+          )
+          text = replace_once(
+              text,
+              "    CalibrationLocation,\n",
+              "    CalibrationLocation,\n    OpenMeteoSingleRunCapture,\n",
+          )
+          text = replace_once(
+              text,
+              "    CalibrationDataset,\n",
+              "    CalibrationDataset,\n    ForecastCalibrationEvidence,\n",
+          )
+          text = replace_once(
+              text,
+              "    pairs = []\n",
+              "    pairs: list[tuple[ForecastCalibrationEvidence, WeatherObservationEvidence]] = []\n",
+          )
+          text = replace_once(
+              text,
+              "        observations = {}\n",
+              "        observations: dict[date, WeatherObservationEvidence] = {}\n",
+          )
+          text = replace_once(
+              text,
+              "        forecast_captures = {}\n",
+              "        forecast_captures: dict[date, OpenMeteoSingleRunCapture] = {}\n",
+          )
           old_constant = (
               'DEFAULT_PARITY_EVIDENCE = Path(\n'
               '    "tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json"\n'
@@ -48,11 +84,9 @@ jobs:
               '        help="Committed archive-parity evidence JSON used to authorize the capture contract",\n'
               '    )\n'
           )
-          if text.count(old_constant) != 1:
-              raise SystemExit("expected one default parity evidence constant")
-          if text.count(old_arg) != 1:
-              raise SystemExit("expected one parity evidence CLI argument")
-          path.write_text(text.replace(old_constant, "").replace(old_arg, new_arg), encoding="utf-8")
+          text = replace_once(text, old_constant, "")
+          text = replace_once(text, old_arg, new_arg)
+          path.write_text(text, encoding="utf-8")
           PY
       - run: uv run ruff check --fix weatherbot/forecasting/calibration_build.py tests/forecasting/test_calibration_build.py
       - run: uv run ruff format weatherbot/forecasting/calibration_build.py tests/forecasting/test_calibration_build.py
