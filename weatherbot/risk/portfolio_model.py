@@ -180,22 +180,12 @@ class PortfolioRiskDecision:
             "portfolio_risk_event_id": self.proposed_scope.event_id,
             "portfolio_risk_city_key": self.proposed_scope.city_key,
             "portfolio_risk_market_date": self.proposed_scope.market_date.isoformat(),
-            "portfolio_risk_correlation_groups": list(
-                self.proposed_scope.all_correlation_groups
-            ),
+            "portfolio_risk_correlation_groups": list(self.proposed_scope.all_correlation_groups),
             "portfolio_risk_proposed_cash": format(self.proposed_cash.amount, "f"),
-            "portfolio_risk_total_exposure_before": format(
-                self.total_exposure_before.amount, "f"
-            ),
-            "portfolio_risk_total_exposure_after": format(
-                self.total_exposure_after.amount, "f"
-            ),
-            "portfolio_risk_event_exposure_before": format(
-                self.event_exposure_before.amount, "f"
-            ),
-            "portfolio_risk_event_exposure_after": format(
-                self.event_exposure_after.amount, "f"
-            ),
+            "portfolio_risk_total_exposure_before": format(self.total_exposure_before.amount, "f"),
+            "portfolio_risk_total_exposure_after": format(self.total_exposure_after.amount, "f"),
+            "portfolio_risk_event_exposure_before": format(self.event_exposure_before.amount, "f"),
+            "portfolio_risk_event_exposure_after": format(self.event_exposure_after.amount, "f"),
             "portfolio_risk_city_date_exposure_before": format(
                 self.city_date_exposure_before.amount, "f"
             ),
@@ -211,9 +201,7 @@ class PortfolioRiskDecision:
             },
             "portfolio_risk_open_positions_before": self.open_positions_before,
             "portfolio_risk_open_positions_after": self.open_positions_after,
-            "portfolio_risk_realized_pnl_today": format(
-                self.realized_pnl_today.amount, "f"
-            ),
+            "portfolio_risk_realized_pnl_today": format(self.realized_pnl_today.amount, "f"),
             "portfolio_risk_unrealized_pnl": format(self.unrealized_pnl.amount, "f"),
             "portfolio_risk_daily_pnl": format(self.daily_pnl.amount, "f"),
             "portfolio_risk_daily_loss": format(self.daily_loss.amount, "f"),
