@@ -1249,7 +1249,7 @@ def scan_and_trade(context: ExecutionContext):
     else:
         print("  Wallet access: disabled")
         if context.mode is ExecutionMode.PAPER:
-            print("  Paper fills:   pending implementation in #27")
+            print(f"  Paper ledger:  {PAPER_RUNTIME.ledger_path}")
     print(f"  Max bet:      ${MAX_BET} | Min EV: {MIN_EV * 100:.0f}%")
     print()
 

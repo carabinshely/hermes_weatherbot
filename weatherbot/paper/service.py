@@ -87,6 +87,12 @@ class PaperEntryRequest:
         probability = Decimal(self.model_probability)
         if probability <= 0 or probability >= 1:
             raise ValueError("paper model probability must be between zero and one")
+        if str(self.scope.outcome_id) != str(self.decision_order_book.token_id):
+            raise ValueError("paper scope outcome_id must match the selected decision-book token")
+        if self.execution_order_book.condition_id != self.decision_order_book.condition_id:
+            raise ValueError("paper execution book must use the decision-book condition")
+        if self.execution_order_book.token_id != self.decision_order_book.token_id:
+            raise ValueError("paper execution book must use the decision-book token")
         bucket_key = self.audit_metadata.get("bucket_key")
         if not isinstance(bucket_key, str) or not bucket_key.strip():
             raise ValueError("paper entry requires a non-blank bucket_key for resolution")
