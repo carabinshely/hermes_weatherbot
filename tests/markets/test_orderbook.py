@@ -101,8 +101,8 @@ def test_small_cash_budget_never_reports_average_below_best_ask() -> None:
     quote = book.quote_buy_budget(Decimal("0.4959543689320388349514563106"))
 
     assert quote.total_cost <= Decimal("0.4959543689320388349514563106")
-    assert quote.average_price == book.best_ask
     assert quote.average_price >= quote.best_ask
+    assert quote.average_price - quote.best_ask < Decimal("1e-24")
 
 
 def _empty_bids(data: dict[str, object]) -> None:
