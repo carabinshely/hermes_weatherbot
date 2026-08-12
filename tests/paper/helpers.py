@@ -23,6 +23,7 @@ from weatherbot.paper import PaperEntryRequest
 
 MARKET = MarketId("paper-weather-market")
 OUTCOME = OutcomeId("paper-yes")
+OTHER_OUTCOME = OutcomeId("paper-no")
 
 
 def scope() -> RiskScope:
@@ -106,5 +107,10 @@ def entry_request(
             daily_loss="20",
             drawdown="50",
         ),
-        audit_metadata={"fixture": "paper", "legacy_float": 1.25},
+        audit_metadata={
+            "fixture": "paper",
+            "legacy_float": 1.25,
+            "bucket_key": "F:85:86",
+            "declared_resolution_source": "https://example.com/resolution-rules",
+        },
     )
