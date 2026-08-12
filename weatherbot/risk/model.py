@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from typing import Self
 
 from weatherbot.domain import LedgerState, Money, PositionStatus, RiskDecisionStatus
 from weatherbot.quoting import QuoteRejectionReason, ValidatedExecutableQuote
-
 
 type RatioInput = Decimal | int | str
 
@@ -29,6 +28,10 @@ def _ratio(value: RatioInput, *, label: str) -> Decimal:
 def _require_nonnegative(value: Money, *, label: str) -> None:
     if value.is_negative:
         raise ValueError(f"{label} must not be negative")
+
+
+def _default_maximum_cash_per_trade() -> Money:
+    return Money.of("2")
 
 
 class BindingCap(StrEnum):
@@ -116,7 +119,7 @@ class SizingPolicy:
     """Fixed policy for the initial bankroll-sizing evaluation."""
 
     fractional_kelly_multiplier: Decimal = Decimal("0.25")
-    maximum_cash_per_trade: Money = Money.of("2")
+    maximum_cash_per_trade: Money = field(default_factory=_default_maximum_cash_per_trade)
     maximum_iterations: int = 8
 
     def __post_init__(self) -> None:
