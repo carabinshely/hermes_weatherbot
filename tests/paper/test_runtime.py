@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tests.paper.helpers import entry_request, paper_book, scope
-from tests.quoting.helpers import NOW
+from tests.quoting.helpers import NOW, cost_policy, freshness_policy
 from weatherbot.domain import Money
 from weatherbot.markets import ConditionId, OutcomeTokenId
 from weatherbot.paper import (
@@ -12,7 +14,9 @@ from weatherbot.paper import (
     PaperTradingService,
     load_open_position_books,
     open_position_book_references,
+    paper_runtime_status,
     paper_scan_decision_id,
+    recover_paper_runtime,
 )
 
 
@@ -85,3 +89,76 @@ def test_restart_reconstructs_open_position_public_book_identity(tmp_path: Path)
 
     assert set(books) == {scope().position_key}
     assert calls == [(str(references[0].condition_id), str(references[0].token_id))]
+
+
+def test_pristine_paper_status_does_not_create_a_ledger(tmp_path: Path) -> None:
+    runtime = PaperRuntimeConfig.from_mapping(
+        {"paper_ledger_path": "paper.sqlite3"},
+        base_dir=tmp_path,
+    )
+    assert not runtime.ledger_path.exists()
+
+    def forbidden_fetch(_condition_id: ConditionId, _token_id: OutcomeTokenId):
+        raise AssertionError("pristine PAPER status should not fetch a book")
+
+    status = paper_runtime_status(
+        runtime=runtime,
+        observed_at=NOW,
+        freshness_policy=freshness_policy(),
+        cost_policy=cost_policy(),
+        fetch_book=forbidden_fetch,
+    )
+
+    assert status.starting_cash == Money.of("100")
+    assert status.cash == Money.of("100")
+    assert status.available_cash == Money.of("100")
+    assert status.equity == Money.of("100")
+    assert status.open_positions == 0
+    assert not runtime.ledger_path.exists()
+
+
+def test_existing_paper_status_uses_query_only_store_and_never_recovers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = PaperRuntimeConfig.from_mapping(
+        {"paper_ledger_path": "paper.sqlite3"},
+        base_dir=tmp_path,
+    )
+    with runtime.open_store() as store:
+        before_events = store.event_count()
+
+    def forbidden_recover(_service: PaperTradingService):
+        raise AssertionError("PAPER status must not invoke recovery")
+
+    monkeypatch.setattr(PaperTradingService, "recover", forbidden_recover)
+
+    def forbidden_fetch(_condition_id: ConditionId, _token_id: OutcomeTokenId):
+        raise AssertionError("empty PAPER status should not fetch a book")
+
+    status = paper_runtime_status(
+        runtime=runtime,
+        observed_at=NOW,
+        freshness_policy=freshness_policy(),
+        cost_policy=cost_policy(),
+        fetch_book=forbidden_fetch,
+    )
+
+    assert status.cash == Money.of("100")
+    with runtime.open_read_only_store() as store:
+        assert store.read_only
+        assert store.event_count() == before_events
+
+
+def test_explicit_paper_recovery_initializes_and_reconciles_runtime(tmp_path: Path) -> None:
+    runtime = PaperRuntimeConfig.from_mapping(
+        {"paper_ledger_path": "paper.sqlite3"},
+        base_dir=tmp_path,
+    )
+
+    recovery = recover_paper_runtime(runtime=runtime)
+
+    assert recovery.is_clean
+    assert runtime.ledger_path.exists()
+    with runtime.open_read_only_store() as store:
+        assert store.load_state().cash == Money.of("100")
