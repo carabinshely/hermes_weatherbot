@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -92,7 +92,7 @@ class PaperEntryRequest:
 @dataclass(frozen=True, slots=True)
 class PaperEntryResult:
     status: PaperEntryStatus
-    sizing: SizingDecision
+    sizing: SizingDecision | None
     risk_decision: PortfolioRiskDecision | None
     execution_plan: PaperExecutionPlan | None
     state: LedgerState
@@ -242,7 +242,7 @@ class PaperTradingService:
         self,
         store: PortfolioRiskEventStore,
         *,
-        clock: callable[[], datetime] = lambda: datetime.now(UTC),
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self._store = store
         self._clock = clock
@@ -257,7 +257,35 @@ class PaperTradingService:
             )
         return metadata.payload
 
+    def _durable_decision_result(self, decision_id: str) -> PaperEntryResult | None:
+        claim = next(
+            (item for item in self._store.list_decision_claims() if item.decision_key == decision_id),
+            None,
+        )
+        if claim is None or claim.status == "claimed":
+            return None
+        if claim.status == "committed":
+            self.recover()
+        state = self._store.load_state()
+        plan: PaperExecutionPlan | None = None
+        if claim.intent_id is not None:
+            payload = self._load_adapter_payload(claim.intent_id)
+            if payload is not None:
+                plan = PaperExecutionPlan.from_metadata(payload)
+        return PaperEntryResult(
+            status=PaperEntryStatus.IDEMPOTENT,
+            sizing=None,
+            risk_decision=None,
+            execution_plan=plan,
+            state=state,
+            appended_events=0,
+        )
+
     def submit_entry(self, request: PaperEntryRequest, *, owner_id: str) -> PaperEntryResult:
+        durable = self._durable_decision_result(request.decision_id)
+        if durable is not None:
+            return durable
+
         evaluated_at = request.evaluated_at.astimezone(UTC)
         state = self._store.load_state()
         capital = RiskCapitalSnapshot.from_ledger(state)
