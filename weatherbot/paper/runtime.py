@@ -82,12 +82,8 @@ class PaperRuntimeConfig:
                 _decimal(config, "paper_max_correlation_exposure", "8"), currency
             ),
             maximum_open_positions=_positive_int(config, "paper_max_open_positions", 10),
-            maximum_daily_loss=Money.of(
-                _decimal(config, "paper_max_daily_loss", "10"), currency
-            ),
-            maximum_drawdown=Money.of(
-                _decimal(config, "paper_max_drawdown", "20"), currency
-            ),
+            maximum_daily_loss=Money.of(_decimal(config, "paper_max_daily_loss", "10"), currency),
+            maximum_drawdown=Money.of(_decimal(config, "paper_max_drawdown", "20"), currency),
             maximum_valuation_age=timedelta(
                 seconds=float(_decimal(config, "max_order_book_age_seconds", "30"))
             ),
