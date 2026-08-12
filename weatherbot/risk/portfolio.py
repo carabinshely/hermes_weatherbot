@@ -259,9 +259,7 @@ def evaluate_portfolio_risk(
     is_duplicate = proposed_scope.position_key in existing_keys
     open_after = open_before if is_duplicate else open_before + 1
 
-    missing_keys = tuple(
-        sorted(f"{key[0]}/{key[1]}" for key in existing_keys if key not in scopes)
-    )
+    missing_keys = tuple(sorted(f"{key[0]}/{key[1]}" for key in existing_keys if key not in scopes))
 
     def scoped_exposure(predicate: Callable[[RiskScope], bool]) -> Money:
         values = [
@@ -277,9 +275,7 @@ def evaluate_portfolio_risk(
     city_date_after = city_date_before + proposed_cash
     correlation_items: list[CorrelationExposure] = []
     for group in proposed_scope.all_correlation_groups:
-        before = scoped_exposure(
-            lambda scope, target=group: target in scope.all_correlation_groups
-        )
+        before = scoped_exposure(lambda scope, target=group: target in scope.all_correlation_groups)
         correlation_items.append(
             CorrelationExposure(
                 group=group,
