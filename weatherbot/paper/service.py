@@ -70,7 +70,9 @@ class PaperEntryRequest:
     cost_policy: CostPolicy
     sizing_policy: SizingPolicy
     portfolio_policy: PortfolioRiskPolicy
-    audit_metadata: Mapping[str, object] = field(default_factory=dict)
+    audit_metadata: Mapping[str, object] = field(
+        default_factory=lambda: cast(Mapping[str, object], {})
+    )
 
     def __post_init__(self) -> None:
         for label, value in (
