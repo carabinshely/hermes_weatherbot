@@ -25,6 +25,7 @@ jobs:
           import urllib.error
           import urllib.parse
           import urllib.request
+          from collections import defaultdict
           from pathlib import Path
 
           city = "atlanta"
@@ -45,11 +46,11 @@ jobs:
                   "snapshot_file_sha": hashlib.sha256(path.read_bytes()).hexdigest(),
               }
 
-          def fetch(run):
+          def fetch_local_daily_maxima(run):
               params = {
                   "latitude": latitude,
                   "longitude": longitude,
-                  "daily": "temperature_2m_max",
+                  "hourly": "temperature_2m",
                   "temperature_unit": "fahrenheit",
                   "timezone": timezone,
                   "models": "ecmwf_ifs025",
@@ -82,6 +83,14 @@ jobs:
                   print("FETCH_ERROR " + json.dumps({"run": run, "error": repr(exc), "url": url}))
                   return {}
               payload = json.loads(raw)
+              hourly = payload.get("hourly", {})
+              times = hourly.get("time", [])
+              values = hourly.get("temperature_2m", [])
+              by_date = defaultdict(list)
+              for timestamp, value in zip(times, values, strict=True):
+                  if value is not None:
+                      by_date[timestamp[:10]].append(value)
+              daily_maxima = {day: max(items) for day, items in by_date.items() if items}
               print(
                   "FETCH "
                   + json.dumps(
@@ -89,24 +98,18 @@ jobs:
                           "run": run,
                           "response_sha256": hashlib.sha256(raw).hexdigest(),
                           "timezone": payload.get("timezone"),
-                          "model": payload.get("model"),
                           "utc_offset_seconds": payload.get("utc_offset_seconds"),
+                          "hourly_units": payload.get("hourly_units"),
+                          "available_dates": sorted(daily_maxima),
                           "url": url,
                       },
                       sort_keys=True,
                   )
               )
-              daily = payload.get("daily", {})
-              return dict(
-                  zip(
-                      daily.get("time", []),
-                      daily.get("temperature_2m_max", []),
-                      strict=True,
-                  )
-              )
+              return daily_maxima
 
           for run in ("2026-04-17T18:00", "2026-04-18T00:00"):
-              archived = fetch(run)
+              archived = fetch_local_daily_maxima(run)
               rows = []
               for target_date in target_dates:
                   value = archived.get(target_date)
@@ -115,7 +118,7 @@ jobs:
                       "run": run,
                       "target_date": target_date,
                       **ref,
-                      "archive_f": value,
+                      "archive_hourly_local_max_f": value,
                       "archive_rounded_f": None if value is None else round(value),
                       "rounded_error_f": (
                           None if value is None else round(value) - ref["ecmwf_rounded_f"]
@@ -126,7 +129,9 @@ jobs:
                   }
                   rows.append(row)
                   print("PARITY " + json.dumps(row, sort_keys=True))
-              available = [row for row in rows if row["archive_f"] is not None]
+              available = [
+                  row for row in rows if row["archive_hourly_local_max_f"] is not None
+              ]
               exact = sum(row["rounded_error_f"] == 0 for row in available)
               errors = [abs(row["raw_error_from_rounded_reference_f"]) for row in available]
               print(
