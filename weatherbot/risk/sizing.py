@@ -83,6 +83,53 @@ def _cash_from_kelly(
     return fractional_kelly, uncapped, target, binding
 
 
+def _slippage_limited_requested_budget(
+    *,
+    order_book: OrderBookSnapshot,
+    cost_policy: CostPolicy,
+) -> Decimal:
+    """Return the largest all-in budget that respects both slippage limits.
+
+    Ask prices are monotone, so the admissible region is a prefix of the book plus at most
+    one partial level. This gives a deterministic cap instead of repeatedly halving a rejected
+    budget and potentially undersizing the trade.
+    """
+    maximum_average_price = order_book.best_ask + cost_policy.maximum_average_slippage
+    maximum_worst_price = order_book.best_ask + cost_policy.maximum_worst_slippage
+    shares = _ZERO
+    book_cost = _ZERO
+
+    for level in order_book.asks:
+        if level.price > maximum_worst_price:
+            break
+
+        if level.price <= maximum_average_price:
+            take = level.size
+        else:
+            average_headroom = maximum_average_price * shares - book_cost
+            if average_headroom <= 0:
+                break
+            take = min(
+                level.size,
+                average_headroom / (level.price - maximum_average_price),
+            )
+
+        if take <= 0:
+            break
+        shares += take
+        book_cost += take * level.price
+        if take < level.size or level.price > maximum_average_price:
+            break
+
+    if shares < order_book.minimum_order_size:
+        return _ZERO
+
+    variable_cost_multiplier = (
+        _ONE + cost_policy.platform_fee_rate + cost_policy.safety_margin_rate
+    )
+    return book_cost * variable_cost_multiplier + cost_policy.transaction_cost
+
+
 def _decision(
     *,
     status: RiskDecisionStatus,
@@ -240,6 +287,22 @@ def size_executable_buy(
         )
         if not evaluation.accepted:
             quote_reason = evaluation.rejection_reason
+            if quote_reason is QuoteRejectionReason.SLIPPAGE_EXCEEDED:
+                slippage_budget = _floor_money(
+                    _slippage_limited_requested_budget(
+                        order_book=order_book,
+                        cost_policy=cost_policy,
+                    ),
+                    currency=capital.cash.currency,
+                )
+                if (
+                    not slippage_budget.is_zero
+                    and slippage_budget.amount < current_budget.amount
+                ):
+                    current_budget = slippage_budget
+                    current_binding = BindingCap.EXECUTABLE_SLIPPAGE
+                    continue
+
             rejection_reason = SizingRejectionReason.QUOTE_REJECTED
             rejection_binding = current_binding
             if quote_reason is QuoteRejectionReason.BELOW_MINIMUM_ORDER:
@@ -247,6 +310,8 @@ def size_executable_buy(
                 rejection_binding = BindingCap.MINIMUM_ORDER
             elif quote_reason is QuoteRejectionReason.INSUFFICIENT_DEPTH:
                 rejection_binding = BindingCap.EXECUTABLE_DEPTH
+            elif quote_reason is QuoteRejectionReason.SLIPPAGE_EXCEEDED:
+                rejection_binding = BindingCap.EXECUTABLE_SLIPPAGE
             return _decision(
                 status=RiskDecisionStatus.REJECTED,
                 capital=capital,
