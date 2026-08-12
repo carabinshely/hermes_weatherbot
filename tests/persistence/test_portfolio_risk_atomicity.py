@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from pathlib import Path
 from threading import Barrier
 
 import pytest
@@ -27,7 +28,7 @@ from weatherbot.persistence import (
 from weatherbot.risk import PortfolioRiskRejectionReason
 
 
-def test_portfolio_risk_store_blocks_unchecked_buy_intent(tmp_path) -> None:
+def test_portfolio_risk_store_blocks_unchecked_buy_intent(tmp_path: Path) -> None:
     database = tmp_path / "risk.sqlite3"
     intent = buy_intent_created()
 
@@ -41,7 +42,7 @@ def test_portfolio_risk_store_blocks_unchecked_buy_intent(tmp_path) -> None:
         assert reopened.load_state().reserved_cash == Money.zero()
 
 
-def test_retry_of_same_approved_risk_decision_is_idempotent(tmp_path) -> None:
+def test_retry_of_same_approved_risk_decision_is_idempotent(tmp_path: Path) -> None:
     database = tmp_path / "risk.sqlite3"
     scope = risk_scope()
     intent = buy_intent_created()
@@ -80,7 +81,7 @@ def test_retry_of_same_approved_risk_decision_is_idempotent(tmp_path) -> None:
         assert store.load_state().reserved_cash == Money.of("4")
 
 
-def test_valid_valuation_is_recorded_even_when_entry_is_rejected(tmp_path) -> None:
+def test_valid_valuation_is_recorded_even_when_entry_is_rejected(tmp_path: Path) -> None:
     database = tmp_path / "risk.sqlite3"
     initial_state = state_for((opened(),))
     valuation = valuation_for(initial_state)
@@ -106,7 +107,7 @@ def test_valid_valuation_is_recorded_even_when_entry_is_rejected(tmp_path) -> No
         assert len(store.load_state().orders) == 0
 
 
-def test_stale_rejected_valuation_is_not_persisted(tmp_path) -> None:
+def test_stale_rejected_valuation_is_not_persisted(tmp_path: Path) -> None:
     database = tmp_path / "risk.sqlite3"
     initial_state = state_for((opened(),))
     stale = valuation_for(initial_state, assembled_at=NOW - timedelta(seconds=31))
@@ -130,7 +131,9 @@ def test_stale_rejected_valuation_is_not_persisted(tmp_path) -> None:
         assert store.event_count() == 1
 
 
-def test_different_concurrent_decisions_cannot_race_past_total_exposure_cap(tmp_path) -> None:
+def test_different_concurrent_decisions_cannot_race_past_total_exposure_cap(
+    tmp_path: Path,
+) -> None:
     database = tmp_path / "risk.sqlite3"
     initial_state = state_for((opened(),))
     valuation = valuation_for(initial_state)
