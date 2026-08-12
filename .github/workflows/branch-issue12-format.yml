@@ -57,29 +57,14 @@ jobs:
 
           test_path = Path("tests/forecasting/test_archive.py")
           test_text = test_path.read_text(encoding="utf-8")
-          old_test = '''    policy = CalibrationForecastSamplingPolicy(
-              run_cycle_hour_utc=18,
-              decision_local_time=time(hour=18, minute=30),
-              min_safe_run_age=timedelta(hours=8),
-          )
-          '''
-          old_test = "\n".join(
-              line[10:] if line.startswith("          ") else line
-              for line in old_test.splitlines()
-          ) + "\n"
-          new_test = '''    policy = CalibrationForecastSamplingPolicy(
-              run_cycle_hour_utc=18,
-              decision_local_time=time(hour=0, minute=15),
-              min_safe_run_age=timedelta(hours=12),
-          )
-          '''
-          new_test = "\n".join(
-              line[10:] if line.startswith("          ") else line
-              for line in new_test.splitlines()
-          ) + "\n"
-          if test_text.count(old_test) != 1:
-              raise SystemExit("expected exactly one archive availability test fixture")
-          test_path.write_text(test_text.replace(old_test, new_test), encoding="utf-8")
+          old_decision = "        decision_local_time=time(hour=18, minute=30),\n"
+          new_decision = "        decision_local_time=time(hour=0, minute=15),\n"
+          old_age = "        min_safe_run_age=timedelta(hours=8),\n"
+          new_age = "        min_safe_run_age=timedelta(hours=12),\n"
+          if test_text.count(old_decision) != 1 or test_text.count(old_age) != 1:
+              raise SystemExit("expected exactly one archive availability fixture")
+          test_text = test_text.replace(old_decision, new_decision).replace(old_age, new_age)
+          test_path.write_text(test_text, encoding="utf-8")
           PY
       - run: uv run ruff format weatherbot/forecasting/archive.py tests/forecasting/test_archive.py
       - run: uv run ruff check weatherbot/forecasting/archive.py tests/forecasting/test_archive.py
