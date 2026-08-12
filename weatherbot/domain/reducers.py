@@ -23,7 +23,9 @@ from weatherbot.domain.events import (
     OrderOutcomeUnknown,
     OrderRejected,
     OrderSubmitted,
+    PortfolioValuationRecorded,
     PositionSettled,
+    RiskScopeRegistered,
     WeatherObservationRecorded,
     fingerprint,
 )
@@ -465,6 +467,45 @@ def _apply_settlement(state: LedgerState, event: PositionSettled) -> LedgerState
     return _replace_position(state, position)
 
 
+def _apply_risk_scope_registered(state: LedgerState, event: RiskScopeRegistered) -> LedgerState:
+    _require_opened(state)
+    if event.scope.market_id == "" or event.scope.outcome_id == "":
+        raise InvariantViolation("risk scope must identify a position")
+    return state
+
+
+def _apply_portfolio_valuation(
+    state: LedgerState,
+    event: PortfolioValuationRecorded,
+) -> LedgerState:
+    _require_opened(state)
+    valuation = event.valuation
+    if valuation.equity.currency != state.currency:
+        raise InvariantViolation("portfolio valuation currency differs from ledger currency")
+
+    open_positions = {
+        key: position
+        for key, position in state.positions.items()
+        if position.status is PositionStatus.OPEN and position.quantity > 0
+    }
+    marks = {mark.position_key: mark for mark in valuation.positions}
+    if set(marks) != set(open_positions):
+        raise InvariantViolation("portfolio valuation does not cover exactly the open positions")
+
+    liquidation_total = Money.zero(state.currency)
+    for key, position in open_positions.items():
+        mark = marks[key]
+        if mark.quantity != position.quantity:
+            raise InvariantViolation("portfolio valuation quantity differs from ledger position")
+        if mark.liquidation_value.currency != state.currency:
+            raise InvariantViolation("position valuation currency differs from ledger currency")
+        liquidation_total += mark.liquidation_value
+
+    if valuation.equity != state.cash + liquidation_total:
+        raise InvariantViolation("portfolio valuation equity does not reconcile to cash plus marks")
+    return state
+
+
 def apply_event(state: LedgerState, event: LedgerEvent) -> LedgerState:
     """Apply one event without mutating the prior state."""
     event_fp = fingerprint(event)
@@ -508,8 +549,12 @@ def apply_event(state: LedgerState, event: LedgerEvent) -> LedgerState:
         next_state = _apply_resolution_evidence(state, event)
     elif isinstance(event, MarketResolved):
         next_state = _apply_resolution(state, event)
-    else:
+    elif isinstance(event, PositionSettled):
         next_state = _apply_settlement(state, event)
+    elif isinstance(event, RiskScopeRegistered):
+        next_state = _apply_risk_scope_registered(state, event)
+    else:
+        next_state = _apply_portfolio_valuation(state, event)
 
     next_state = _record_event(next_state, event, event_fp)
     next_state.assert_invariants()
