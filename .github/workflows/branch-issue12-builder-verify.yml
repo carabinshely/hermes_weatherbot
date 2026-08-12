@@ -1,0 +1,82 @@
+name: Temporary issue 12 builder verification
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - run: uv sync --locked --all-groups
+      - name: Make parity evidence explicit
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("weatherbot/forecasting/calibration_build.py")
+          text = path.read_text(encoding="utf-8")
+          old_constant = '''DEFAULT_PARITY_EVIDENCE = Path(
+              "tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json"
+          )
+          '''
+          old_constant = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in old_constant.splitlines()
+          ) + "\n"
+          if text.count(old_constant) != 1:
+              raise SystemExit("expected one default parity evidence constant")
+          text = text.replace(old_constant, "")
+          old_arg = '''    parser.add_argument(
+              "--parity-evidence",
+              type=Path,
+              default=DEFAULT_PARITY_EVIDENCE,
+          )
+          '''
+          old_arg = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in old_arg.splitlines()
+          ) + "\n"
+          new_arg = '''    parser.add_argument(
+              "--parity-evidence",
+              type=Path,
+              required=True,
+              help="Committed archive-parity evidence JSON used to authorize the capture contract",
+          )
+          '''
+          new_arg = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in new_arg.splitlines()
+          ) + "\n"
+          if text.count(old_arg) != 1:
+              raise SystemExit("expected one parity evidence CLI argument")
+          path.write_text(text.replace(old_arg, new_arg), encoding="utf-8")
+          PY
+      - run: uv run ruff check --fix weatherbot/forecasting/calibration_build.py tests/forecasting/test_calibration_build.py
+      - run: uv run ruff format weatherbot/forecasting/calibration_build.py tests/forecasting/test_calibration_build.py
+      - name: Verify strict typing
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
+      - name: Verify forecasting tests
+        run: PYTHONPATH=. uv run pytest -q tests/forecasting
+      - name: Commit verified builder changes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/forecasting/calibration_build.py tests/forecasting/test_calibration_build.py
+          git commit -m "Verify resumable calibration dataset builder"
+          git push origin HEAD:agent/issue-12-calibrated-uncertainty
