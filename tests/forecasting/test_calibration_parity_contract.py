@@ -51,9 +51,9 @@ def _evidence(
         snapshot_issued_at_utc=as_of,
         valid_from_utc=valid_from,
         valid_until_utc=valid_until,
-        retrieved_at_utc=as_of if capture_method is ForecastCaptureMethod.PRODUCTION else datetime(
-            2026, 8, 12, tzinfo=UTC
-        ),
+        retrieved_at_utc=as_of
+        if capture_method is ForecastCaptureMethod.PRODUCTION
+        else datetime(2026, 8, 12, tzinfo=UTC),
         model_run_initialized_at_utc=as_of - timedelta(hours=6),
     )
     return ForecastCalibrationEvidence(
@@ -109,28 +109,47 @@ def test_parity_accepts_same_forecast_environment_with_distinct_capture_method()
 
 
 @pytest.mark.parametrize(
-    ("field", "replacement", "message"),
+    ("field", "message"),
     (
-        ("latitude", "40.8772", "coordinates"),
-        ("longitude", "-73.9726", "coordinates"),
-        ("market_timezone", "America/Chicago", "timezone"),
-        ("bias_correction", False, "bias correction"),
+        ("latitude", "coordinates"),
+        ("longitude", "coordinates"),
+        ("market_timezone", "timezone"),
+        ("bias_correction", "bias correction"),
     ),
 )
-def test_parity_rejects_environment_mismatch(
-    field: str,
-    replacement: str | bool,
-    message: str,
-) -> None:
+def test_parity_rejects_environment_mismatch(field: str, message: str) -> None:
     reference, candidate = _reference_and_candidate()
-    first = candidate[0]
-    kwargs: dict[str, str | bool] = {field: replacement}
-    mismatched = _evidence(
-        first.forecast.market_date,
-        capture_contract_id=_ARCHIVE_CONTRACT,
-        capture_method=ForecastCaptureMethod.SINGLE_RUN,
-        **kwargs,
-    )
+    market_date = candidate[0].forecast.market_date
+    if field == "latitude":
+        mismatched = _evidence(
+            market_date,
+            capture_contract_id=_ARCHIVE_CONTRACT,
+            capture_method=ForecastCaptureMethod.SINGLE_RUN,
+            latitude="40.8772",
+        )
+    elif field == "longitude":
+        mismatched = _evidence(
+            market_date,
+            capture_contract_id=_ARCHIVE_CONTRACT,
+            capture_method=ForecastCaptureMethod.SINGLE_RUN,
+            longitude="-73.9726",
+        )
+    elif field == "market_timezone":
+        mismatched = _evidence(
+            market_date,
+            capture_contract_id=_ARCHIVE_CONTRACT,
+            capture_method=ForecastCaptureMethod.SINGLE_RUN,
+            market_timezone="America/Chicago",
+        )
+    elif field == "bias_correction":
+        mismatched = _evidence(
+            market_date,
+            capture_contract_id=_ARCHIVE_CONTRACT,
+            capture_method=ForecastCaptureMethod.SINGLE_RUN,
+            bias_correction=False,
+        )
+    else:
+        raise AssertionError(f"unsupported test field: {field}")
     candidate = (mismatched, candidate[1])
 
     with pytest.raises(CalibrationError, match=message):

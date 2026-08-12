@@ -326,6 +326,22 @@ class ArchiveParityReport:
         return _canonical_sha256(self.to_mapping())
 
 
+def _assert_parity_environment_compatible(
+    reference: ForecastCalibrationEvidence,
+    candidate: ForecastCalibrationEvidence,
+) -> None:
+    if reference.climate_region != candidate.climate_region:
+        raise CalibrationError("parity climate region mismatch")
+    if reference.forecast.source is not candidate.forecast.source:
+        raise CalibrationError("parity forecast source mismatch")
+    if reference.forecast.market_timezone != candidate.forecast.market_timezone:
+        raise CalibrationError("parity timezone mismatch")
+    if reference.latitude != candidate.latitude or reference.longitude != candidate.longitude:
+        raise CalibrationError("parity coordinates mismatch")
+    if reference.bias_correction is not candidate.bias_correction:
+        raise CalibrationError("parity bias correction mismatch")
+
+
 def compare_archive_parity(
     reference: Iterable[ForecastCalibrationEvidence],
     candidate: Iterable[ForecastCalibrationEvidence],
@@ -343,12 +359,18 @@ def compare_archive_parity(
     reference_capture_contracts = {item.capture_contract_id for item in reference_items.values()}
     if reference_capture_contracts != reference_contracts:
         raise CalibrationError("parity reference must be direct captures of its source contract")
+    reference_capture_methods = {item.capture_method for item in reference_items.values()}
+    if reference_capture_methods != {ForecastCaptureMethod.PRODUCTION}:
+        raise CalibrationError("parity reference must be a production capture")
     candidate_effective_contracts = {item.source_contract_id for item in candidate_items.values()}
     if candidate_effective_contracts != reference_contracts:
         raise CalibrationError("parity candidate targets a different effective source contract")
     candidate_capture_contracts = {item.capture_contract_id for item in candidate_items.values()}
     if len(candidate_capture_contracts) != 1:
         raise CalibrationError("parity candidate contains multiple capture contracts")
+    candidate_capture_methods = {item.capture_method for item in candidate_items.values()}
+    if ForecastCaptureMethod.PRODUCTION in candidate_capture_methods:
+        raise CalibrationError("parity candidate must use a reconstruction capture method")
 
     reference_contract = next(iter(reference_contracts))
     candidate_contract = next(iter(candidate_capture_contracts))
@@ -358,6 +380,11 @@ def compare_archive_parity(
     identities = sorted(set(reference_items) & set(candidate_items))
     if not identities:
         raise CalibrationError("parity comparison has no overlapping forecast identities")
+    for identity in identities:
+        _assert_parity_environment_compatible(
+            reference_items[identity],
+            candidate_items[identity],
+        )
     errors = [
         float(
             candidate_items[identity].forecast.temperature_f
