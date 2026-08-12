@@ -66,6 +66,12 @@ jobs:
 
           tests = Path("tests/resolution/test_wunderground.py")
           text = tests.read_text(encoding="utf-8")
+          marker = '_TIMEZONE = "America/New_York"\n'
+          text = replace_once(
+              text,
+              marker,
+              marker + "_DEFAULT_POLICY = WeatherUndergroundCoveragePolicy()\n",
+          )
           old_parse = '''def _parse(raw_html: bytes, **kwargs: object):
               parameters = {
                   "source_url": _SOURCE_URL,
@@ -87,7 +93,7 @@ jobs:
               *,
               source_url: str = _SOURCE_URL,
               retrieved_at_utc: datetime = datetime(2026, 7, 20, 12, tzinfo=UTC),
-              coverage_policy: WeatherUndergroundCoveragePolicy = WeatherUndergroundCoveragePolicy(),
+              coverage_policy: WeatherUndergroundCoveragePolicy = _DEFAULT_POLICY,
           ):
               return parse_wunderground_daily_history_html(
                   raw_html,
