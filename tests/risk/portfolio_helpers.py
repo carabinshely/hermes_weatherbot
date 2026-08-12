@@ -64,7 +64,9 @@ def risk_scope(
     )
 
 
-def scope_registered(scope: RiskScope, *, occurred_at: datetime | None = None) -> RiskScopeRegistered:
+def scope_registered(
+    scope: RiskScope, *, occurred_at: datetime | None = None
+) -> RiskScopeRegistered:
     return RiskScopeRegistered(
         event_id=risk_scope_event_id(scope),
         occurred_at=occurred_at or NOW - timedelta(minutes=50),
@@ -200,7 +202,9 @@ def valuation_for(
     values = liquidation_values or {}
     marks: list[PositionValuation] = []
     total = Money.zero(state.currency)
-    for key, position in sorted(state.positions.items(), key=lambda item: (str(item[0][0]), str(item[0][1]))):
+    for key, position in sorted(
+        state.positions.items(), key=lambda item: (str(item[0][0]), str(item[0][1]))
+    ):
         if position.status is not PositionStatus.OPEN or position.quantity <= 0:
             continue
         value = Money.of(values.get(key, str(position.cost_basis.amount)), state.currency)
