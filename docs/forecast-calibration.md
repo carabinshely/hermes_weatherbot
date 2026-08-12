@@ -74,6 +74,61 @@ Official references:
 https://open-meteo.com/en/docs/single-runs-api
 https://open-meteo.com/en/docs/ecmwf-api
 
+### Validated IFS 0.25° Single Runs reconstruction
+
+The repository contains legacy production forecast snapshots from the morning of
+2026-04-18 for New York City, Chicago, Miami, Dallas, Seattle, and Atlanta, with D+0,
+D+1, and D+2 target dates. The historical code commit
+`d05c077294b95be5557d067546dab49ca24863b5` predates those captures and proves that the
+stored ECMWF values were produced from:
+
+```text
+Open-Meteo /v1/forecast
+daily=temperature_2m_max
+models=ecmwf_ifs025
+temperature_unit=fahrenheit
+bias_correction=true
+market-local timezone
+```
+
+The legacy persistence path stored those values only after Python `round()`, so the
+original sub-degree production values and raw API payloads are unavailable. Archive
+parity must therefore state its precision honestly.
+
+For the exact ECMWF run initialized at `2026-04-17T18:00:00Z`, Open-Meteo Single Runs
+cannot directly compute `daily=temperature_2m_max` for U.S. market timezones because the
+run does not begin at local midnight. The validated reconstruction instead requests the
+same model/run/coordinates/timezone/bias-correction as hourly `temperature_2m`, groups the
+returned timestamps by market-local `YYYY-MM-DD`, and takes the maximum for each local
+day.
+
+Against the stored legacy production snapshots this reconstruction produced:
+
+```text
+6 cities × 3 target dates = 18 pairs
+18 / 18 exact matches after the historical whole-degree production rounding
+raw archive maximum vs rounded reference MAE: 0.3056°F
+maximum absolute raw-vs-rounded-reference difference: 0.5°F
+```
+
+The same result holds for both the earliest snapshots at approximately 06:33 UTC and the
+latest snapshots at approximately 07:35 UTC. As a run-identity counterexample, Atlanta's
+`2026-04-18T00:00:00Z` run matches only 1 of the 3 stored target temperatures after
+rounding, while the 18Z run matches all 3.
+
+The normalized evidence, response hashes, reference-file hashes, and counterexample are
+committed as:
+
+```text
+tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json
+```
+
+This evidence validates the Single Runs hourly/local-day-max reconstruction at the
+**precision the legacy production bot actually retained**. It does not prove byte-identical
+API payloads or sub-degree identity. Historical calibration records therefore retain a
+distinct archive capture-contract ID and may enter a production-source dataset only
+through an explicit passing parity gate.
+
 ## Observation target contract
 
 Training truth must match the market's declared resolution measurement as closely as is
