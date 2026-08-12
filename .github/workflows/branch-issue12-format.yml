@@ -21,18 +21,39 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
       - run: uv sync --locked --all-groups
-      - name: Remove stale Ruff suppression
+      - name: Apply bounded archive fixes
         run: |
           python - <<'PY'
           from pathlib import Path
 
           path = Path("weatherbot/forecasting/archive.py")
           text = path.read_text(encoding="utf-8")
-          old = "with urllib.request.urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310"
-          new = "with urllib.request.urlopen(request, timeout=timeout_seconds) as response:"
-          if text.count(old) != 1:
+
+          old_noqa = "with urllib.request.urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310"
+          new_noqa = "with urllib.request.urlopen(request, timeout=timeout_seconds) as response:"
+          if text.count(old_noqa) != 1:
               raise SystemExit("expected exactly one stale S310 suppression")
-          path.write_text(text.replace(old, new), encoding="utf-8")
+          text = text.replace(old_noqa, new_noqa)
+
+          old_decimal = '''def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:
+              if isinstance(value, bool):
+                  raise CalibrationError(f"{label} must be decimal")
+          '''
+          old_decimal = "\n".join(
+              line[14:] if line.startswith("              ") else line
+              for line in old_decimal.splitlines()
+          ) + "\n"
+          new_decimal = '''def _decimal(value: object, *, label: str) -> Decimal:
+              if isinstance(value, bool) or not isinstance(value, (Decimal, int, str, float)):
+                  raise CalibrationError(f"{label} must be decimal")
+          '''
+          new_decimal = "\n".join(
+              line[14:] if line.startswith("              ") else line
+              for line in new_decimal.splitlines()
+          ) + "\n"
+          if text.count(old_decimal) != 1:
+              raise SystemExit("expected exactly one archive _decimal signature")
+          path.write_text(text.replace(old_decimal, new_decimal), encoding="utf-8")
           PY
       - run: uv run ruff format weatherbot/forecasting/archive.py tests/forecasting/test_archive.py
       - run: uv run ruff check weatherbot/forecasting/archive.py tests/forecasting/test_archive.py
