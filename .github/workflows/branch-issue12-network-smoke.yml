@@ -1,0 +1,50 @@
+name: Temporary issue 12 network smoke
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - run: uv sync --locked --all-groups
+      - name: Fetch one frozen NYC target date
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_build \
+            --start-date 2026-06-08 \
+            --end-date 2026-06-08 \
+            --city nyc \
+            --cache-dir /tmp/issue12-calibration-smoke/cache \
+            --records-out /tmp/issue12-calibration-smoke/records-online.jsonl \
+            --manifest-out /tmp/issue12-calibration-smoke/manifest-online.json \
+            --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
+            --request-delay-seconds 0.25
+      - name: Replay the same dataset offline
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_build \
+            --start-date 2026-06-08 \
+            --end-date 2026-06-08 \
+            --city nyc \
+            --cache-dir /tmp/issue12-calibration-smoke/cache \
+            --records-out /tmp/issue12-calibration-smoke/records-offline.jsonl \
+            --manifest-out /tmp/issue12-calibration-smoke/manifest-offline.json \
+            --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
+            --offline
+          cmp /tmp/issue12-calibration-smoke/records-online.jsonl /tmp/issue12-calibration-smoke/records-offline.jsonl
+          cmp /tmp/issue12-calibration-smoke/manifest-online.json /tmp/issue12-calibration-smoke/manifest-offline.json
+          cat /tmp/issue12-calibration-smoke/manifest-online.json
