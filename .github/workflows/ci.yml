@@ -111,7 +111,7 @@ jobs:
       - name: Measure focused paper coverage
         if: matrix.python-version == '3.12'
         run: >
-          uv run pytest -q tests/paper
+          PYTHONPATH=. uv run pytest -q tests/paper
           --cov=weatherbot.paper
           --cov-report=term-missing
 
