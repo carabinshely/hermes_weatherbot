@@ -6,11 +6,11 @@ from decimal import Decimal
 import pytest
 
 from weatherbot.forecasting.calibration import (
+    CalibratedTemperatureModel,
     CalibrationArtifact,
     CalibrationDiagnostics,
     CalibrationGroup,
     CalibrationGroupKey,
-    CalibratedTemperatureModel,
     EmpiricalResidualDistribution,
     GroupLevel,
 )

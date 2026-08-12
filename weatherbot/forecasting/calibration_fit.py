@@ -10,13 +10,13 @@ from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
 from weatherbot.forecasting.calibration import (
+    CalibratedTemperatureModel,
     CalibrationArtifact,
     CalibrationDiagnostics,
     CalibrationError,
     CalibrationGroup,
     CalibrationGroupKey,
     CalibrationSample,
-    CalibratedTemperatureModel,
     EmpiricalResidualDistribution,
     GroupLevel,
     NormalResidualDistribution,
@@ -116,11 +116,11 @@ def _empirical_crps(distribution: EmpiricalResidualDistribution, observed: Decim
     values = distribution.residuals_f
     observed_float = float(observed)
     first = sum(abs(float(value) - observed_float) for value in values) / len(values)
-    pairwise_sum = 0.0
-    for left in values:
-        for right in values:
-            pairwise_sum += abs(float(left - right))
-    second = pairwise_sum / (2.0 * len(values) * len(values))
+    n = len(values)
+    unordered_pair_sum = sum(
+        (2 * index - n + 1) * float(value) for index, value in enumerate(values)
+    )
+    second = unordered_pair_sum / (n * n)
     return first - second
 
 

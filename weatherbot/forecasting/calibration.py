@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from bisect import bisect_right
+from bisect import bisect_left
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -278,7 +278,7 @@ class EmpiricalResidualDistribution:
 
     def cdf(self, residual_f: Decimal) -> float:
         residual = _decimal(residual_f, label="residual")
-        return bisect_right(self.residuals_f, residual) / len(self.residuals_f)
+        return bisect_left(self.residuals_f, residual) / len(self.residuals_f)
 
     def to_mapping(self) -> Mapping[str, object]:
         return {

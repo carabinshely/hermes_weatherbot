@@ -1,13 +1,13 @@
 """Forecast, observation, and calibrated probability contracts."""
 
 from weatherbot.forecasting.calibration import (
+    CalibratedTemperatureModel,
     CalibrationArtifact,
     CalibrationDiagnostics,
     CalibrationError,
     CalibrationGroup,
     CalibrationGroupKey,
     CalibrationSample,
-    CalibratedTemperatureModel,
     DistributionKind,
     EmpiricalResidualDistribution,
     GroupLevel,
@@ -31,13 +31,13 @@ from weatherbot.forecasting.providers import (
 )
 
 __all__ = [
+    "CalibratedTemperatureModel",
     "CalibrationArtifact",
     "CalibrationDiagnostics",
     "CalibrationError",
     "CalibrationGroup",
     "CalibrationGroupKey",
     "CalibrationSample",
-    "CalibratedTemperatureModel",
     "DailyHighForecast",
     "DistributionKind",
     "EmpiricalResidualDistribution",
