@@ -35,7 +35,12 @@ class RiskScope:
         event_id = _text(self.event_id, label="event_id")
         city_key = _text(self.city_key, label="city_key").casefold()
         normalized_groups = tuple(
-            sorted({_text(group, label="correlation group").casefold() for group in self.correlation_groups})
+            sorted(
+                {
+                    _text(group, label="correlation group").casefold()
+                    for group in self.correlation_groups
+                }
+            )
         )
         object.__setattr__(self, "event_id", event_id)
         object.__setattr__(self, "city_key", city_key)
