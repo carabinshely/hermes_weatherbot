@@ -211,7 +211,7 @@ def evaluate_executable_buy(
             "approved budget does not cover the fixed transaction-cost reserve",
             checks,
         )
-    book_budget_limit = remaining_after_fixed_cost / variable_cost_multiplier
+    book_budget_limit = (remaining_after_fixed_cost / variable_cost_multiplier).next_minus()
     available_notional = sum(
         (level.price * level.size for level in order_book.asks),
         start=Decimal("0"),

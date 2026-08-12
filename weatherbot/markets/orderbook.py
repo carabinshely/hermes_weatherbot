@@ -184,11 +184,12 @@ class OrderBookSnapshot:
                 f"insufficient ask depth: requested {requested}, available {available}"
             )
         assert worst_price is not None
+        average_price = max(cost / requested, self.best_ask)
         return ExecutableQuote(
             token_id=self.token_id,
             shares=requested,
             total_cost=cost,
-            average_price=cost / requested,
+            average_price=average_price,
             worst_price=worst_price,
             best_bid=self.best_bid,
             best_ask=self.best_ask,
@@ -239,11 +240,12 @@ class OrderBookSnapshot:
         if cost > requested_budget:
             raise OrderBookError("executable quote exceeds approved cash budget")
 
+        average_price = max(cost / shares, self.best_ask)
         return ExecutableQuote(
             token_id=self.token_id,
             shares=shares,
             total_cost=cost,
-            average_price=cost / shares,
+            average_price=average_price,
             worst_price=worst_price,
             best_bid=self.best_bid,
             best_ask=self.best_ask,
