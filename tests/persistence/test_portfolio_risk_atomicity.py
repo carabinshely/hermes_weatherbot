@@ -19,7 +19,10 @@ from tests.risk.portfolio_helpers import (
     valuation_for,
 )
 from weatherbot.domain import Money, RiskDecisionStatus
-from weatherbot.persistence import PortfolioRiskEventStore
+from weatherbot.persistence import (
+    PortfolioRiskEventStore,
+    RiskCheckedCommitResult,
+)
 from weatherbot.risk import PortfolioRiskRejectionReason
 
 
@@ -94,7 +97,7 @@ def test_different_concurrent_decisions_cannot_race_past_total_exposure_cap(tmp_
     with PortfolioRiskEventStore(database) as store:
         store.append(opened())
 
-    def attempt(index: int):
+    def attempt(index: int) -> RiskCheckedCommitResult:
         with PortfolioRiskEventStore(database) as store:
             barrier.wait()
             return store.commit_risk_checked_order_intent(
