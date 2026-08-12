@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,7 @@ import requests
 
 from tests.paper.helpers import entry_request, paper_book, scope
 from tests.quoting.helpers import NOW
-from weatherbot.domain import LedgerEvent, Money, OrderState
+from weatherbot.domain import LedgerEvent, Money, OrderState, OutcomeId
 from weatherbot.paper import (
     PaperEntryStatus,
     PaperExecutionStatus,
@@ -16,6 +17,14 @@ from weatherbot.paper import (
     initialize_paper_store,
 )
 from weatherbot.persistence import AppendResult, PortfolioRiskEventStore
+
+
+def test_entry_request_rejects_scope_for_another_clob_token() -> None:
+    request = entry_request()
+    mismatched_scope = replace(request.scope, outcome_id=OutcomeId("999999999999999999"))
+
+    with pytest.raises(ValueError, match="selected decision-book token"):
+        replace(request, scope=mismatched_scope)
 
 
 def test_service_executes_audited_entry_and_same_decision_is_idempotent(tmp_path: Path) -> None:
