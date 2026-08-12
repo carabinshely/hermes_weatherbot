@@ -51,7 +51,7 @@ def test_persisted_ecmwf_archive_parity_matches_legacy_signal_precision() -> Non
     assert summary["max_abs_vs_rounded_reference_f"] <= 0.5
 
     # Keep the small evidence file itself stable and auditable in review output.
-    assert hashlib.sha256(raw).hexdigest() == "dd508a0097ac4d587f4873def2b75f99dcc411aa066031bdcca4d5d9857b3c51"
+    assert hashlib.sha256(raw).hexdigest() == "4932e56c94a6794383f488f2e36597ba98985125ab153631792402bbb2144e10"
 
 
 def test_persisted_00z_counterexample_identifies_18z_as_the_matching_run() -> None:
