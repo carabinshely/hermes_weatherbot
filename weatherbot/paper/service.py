@@ -14,7 +14,6 @@ from weatherbot.domain import (
     EventId,
     LedgerState,
     MarketId,
-    Money,
     OrderCancelled,
     OrderIntent,
     OrderIntentCreated,
