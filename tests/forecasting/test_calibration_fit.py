@@ -85,7 +85,8 @@ def test_fit_uses_only_pre_cutoff_samples_and_evaluates_untouched_holdout() -> N
 
 
 def test_distribution_selection_diagnostics_are_training_only_and_reproducible() -> None:
-    kwargs = dict(
+    first = fit_calibration_artifact(
+        training_and_holdout(),
         model_version="repeatable-v1",
         created_at_utc=datetime(2026, 8, 12, tzinfo=UTC),
         forecast_contract_id="forecast-v1",
@@ -97,9 +98,19 @@ def test_distribution_selection_diagnostics_are_training_only_and_reproducible()
         dataset_sha256="d" * 64,
         min_sample_count=30,
     )
-
-    first = fit_calibration_artifact(training_and_holdout(), **kwargs)
-    second = fit_calibration_artifact(tuple(reversed(training_and_holdout())), **kwargs)
+    second = fit_calibration_artifact(
+        tuple(reversed(training_and_holdout())),
+        model_version="repeatable-v1",
+        created_at_utc=datetime(2026, 8, 12, tzinfo=UTC),
+        forecast_contract_id="forecast-v1",
+        observation_contract_id="observation-v1",
+        training_start=date(2025, 6, 1),
+        training_end=date(2025, 7, 30),
+        validation_start=date(2026, 6, 1),
+        validation_end=date(2026, 6, 18),
+        dataset_sha256="d" * 64,
+        min_sample_count=30,
+    )
 
     assert first.artifact.artifact_sha256 == second.artifact.artifact_sha256
     assert first.validation == second.validation

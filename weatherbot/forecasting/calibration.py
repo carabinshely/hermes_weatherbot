@@ -157,8 +157,7 @@ class CalibrationSample:
             raise CalibrationError("sample city must not be blank")
         if not region:
             raise CalibrationError("sample climate region must not be blank")
-        if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
-            raise CalibrationError("sample lead_days must be an integer")
+        _integer(self.lead_days, label="sample lead_days")
         if not 0 <= self.lead_days <= 7:
             raise CalibrationError("sample lead_days must be between 0 and 7")
         forecast = _decimal(self.forecast_temperature_f, label="forecast temperature")
@@ -310,8 +309,7 @@ class CalibrationGroupKey:
         if city == "" or region == "":
             raise CalibrationError("calibration group location must not be blank")
         if self.lead_days is not None:
-            if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
-                raise CalibrationError("calibration group lead_days must be an integer")
+            _integer(self.lead_days, label="calibration group lead_days")
             if not 0 <= self.lead_days <= 7:
                 raise CalibrationError("calibration group lead_days must be between 0 and 7")
 
@@ -388,8 +386,7 @@ class CalibrationGroup:
     diagnostics: CalibrationDiagnostics
 
     def __post_init__(self) -> None:
-        if isinstance(self.sample_count, bool) or not isinstance(self.sample_count, int):
-            raise CalibrationError("group sample_count must be an integer")
+        _integer(self.sample_count, label="group sample_count")
         if self.sample_count <= 0:
             raise CalibrationError("group sample_count must be positive")
 
@@ -443,8 +440,7 @@ class CalibrationArtifact:
         if self.validation_start > self.validation_end:
             raise CalibrationError("validation interval is reversed")
         dataset_hash = _sha256(self.dataset_sha256, label="dataset hash")
-        if isinstance(self.min_sample_count, bool) or not isinstance(self.min_sample_count, int):
-            raise CalibrationError("min_sample_count must be an integer")
+        _integer(self.min_sample_count, label="min_sample_count")
         if self.min_sample_count < 2:
             raise CalibrationError("min_sample_count must be at least two")
         if not self.groups:
@@ -527,7 +523,8 @@ class CalibratedTemperatureModel:
         region_key = climate_region.strip().lower()
         if not city_key or not region_key:
             raise CalibrationError("city and climate_region are required for calibration")
-        if isinstance(lead_days, bool) or not isinstance(lead_days, int) or not 0 <= lead_days <= 7:
+        _integer(lead_days, label="lead_days")
+        if not 0 <= lead_days <= 7:
             raise CalibrationError("lead_days must be an integer between 0 and 7")
         forecast = _decimal(forecast_temperature_f, label="forecast temperature")
         season = Season.for_date(market_date)

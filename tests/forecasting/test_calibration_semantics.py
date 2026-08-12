@@ -14,7 +14,7 @@ from weatherbot.forecasting.calibration import (
     EmpiricalResidualDistribution,
     GroupLevel,
 )
-from weatherbot.forecasting.calibration_fit import _empirical_crps
+from weatherbot.forecasting.calibration_fit import empirical_crps
 from weatherbot.forecasting.model import ForecastSource
 from weatherbot.markets import TemperatureBucket, TemperatureUnit
 
@@ -72,7 +72,7 @@ def test_empirical_atoms_on_half_degree_boundary_belong_to_upper_bucket() -> Non
     assert upper == pytest.approx(2 / 3)
 
 
-def test_fast_empirical_crps_matches_direct_pairwise_definition() -> None:
+def test_fastempirical_crps_matches_direct_pairwise_definition() -> None:
     distribution = EmpiricalResidualDistribution(
         (Decimal("-2"), Decimal("-1"), Decimal("1"), Decimal("4"))
     )
@@ -82,4 +82,4 @@ def test_fast_empirical_crps_matches_direct_pairwise_definition() -> None:
     pairwise = sum(abs(float(left - right)) for left in values for right in values)
     direct = first - pairwise / (2 * len(values) * len(values))
 
-    assert _empirical_crps(distribution, observed) == pytest.approx(direct)
+    assert empirical_crps(distribution, observed) == pytest.approx(direct)

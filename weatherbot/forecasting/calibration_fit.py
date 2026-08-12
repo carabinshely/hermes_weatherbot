@@ -112,7 +112,7 @@ def _normal_crps(distribution: NormalResidualDistribution, observed: Decimal) ->
     return sigma * (z * (2.0 * cdf - 1.0) + 2.0 * phi - 1.0 / math.sqrt(math.pi))
 
 
-def _empirical_crps(distribution: EmpiricalResidualDistribution, observed: Decimal) -> float:
+def empirical_crps(distribution: EmpiricalResidualDistribution, observed: Decimal) -> float:
     values = distribution.residuals_f
     observed_float = float(observed)
     first = sum(abs(float(value) - observed_float) for value in values) / len(values)
@@ -130,7 +130,7 @@ def _mean_crps(distribution: ResidualDistribution, observed: Sequence[Decimal]) 
     if isinstance(distribution, NormalResidualDistribution):
         scores = [_normal_crps(distribution, value) for value in observed]
     elif isinstance(distribution, EmpiricalResidualDistribution):
-        scores = [_empirical_crps(distribution, value) for value in observed]
+        scores = [empirical_crps(distribution, value) for value in observed]
     else:
         raise CalibrationError("unsupported distribution during selection")
     return sum(scores) / len(scores)
