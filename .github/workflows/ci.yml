@@ -85,10 +85,7 @@ jobs:
           grep -F 'live mode requires optional dependencies' <<<"$output"
 
       - name: Check formatting
-        run: |
-          uv run ruff format weatherbot/risk/portfolio.py
-          git diff -- weatherbot/risk/portfolio.py
-          exit 1
+        run: uv run ruff format --check execution_modes.py runtime_security.py weatherbot tests
 
       - name: Lint maintained code
         run: uv run ruff check execution_modes.py runtime_security.py weatherbot tests
