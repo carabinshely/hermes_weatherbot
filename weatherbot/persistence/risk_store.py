@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 
 from weatherbot.domain import (
     EventId,
     OrderIntentCreated,
     PortfolioValuation,
     PortfolioValuationRecorded,
+    RiskDecisionStatus,
     RiskScope,
     RiskScopeRegistered,
     Side,
@@ -23,7 +24,7 @@ from weatherbot.persistence.errors import (
     CorruptLedgerError,
     DuplicateIntentError,
 )
-from weatherbot.persistence.store import AppendResult, SQLiteEventStore, _require_text, _utc_now
+from weatherbot.persistence.store import AppendResult, SQLiteEventStore
 from weatherbot.risk import (
     PortfolioRiskDecision,
     PortfolioRiskPolicy,
@@ -40,6 +41,17 @@ class RiskCheckedCommitResult:
     committed: bool
 
 
+def _require_text(value: str, *, label: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{label} must not be blank")
+    return normalized
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat()
+
+
 def _valuation_event_id(decision_key: str, valuation: PortfolioValuation) -> EventId:
     material = f"{decision_key}\n{fingerprint(valuation)}"
     return EventId(f"portfolio_valuation_{sha256_text(material)}")
@@ -48,7 +60,25 @@ def _valuation_event_id(decision_key: str, valuation: PortfolioValuation) -> Eve
 class PortfolioRiskEventStore(SQLiteEventStore):
     """SQLite event store that serializes portfolio risk with BUY intent creation."""
 
-    def _current_append_result_locked(self, *, duplicate_event_id: str | None = None) -> AppendResult:
+    def commit_order_intent(
+        self,
+        event: OrderIntentCreated,
+        *,
+        owner_id: str,
+        metadata: Mapping[str, object] | None = None,
+    ) -> AppendResult:
+        """Require the portfolio-risk transaction for new BUY entries."""
+        if event.intent.side is Side.BUY:
+            raise ValueError(
+                "BUY intents require commit_risk_checked_order_intent on PortfolioRiskEventStore"
+            )
+        return super().commit_order_intent(event, owner_id=owner_id, metadata=metadata)
+
+    def _current_append_result_locked(
+        self,
+        *,
+        duplicate_event_id: str | None = None,
+    ) -> AppendResult:
         _, state, last_sequence, tail_hash = self._load_locked()
         return AppendResult(
             appended_sequences=(),
@@ -77,8 +107,7 @@ class PortfolioRiskEventStore(SQLiteEventStore):
 
         owner_id = _require_text(owner_id, label="owner_id")
         decision_key = _require_text(event.intent.decision_id, label="decision_id")
-        base_metadata_json, base_metadata_hash = encode_metadata(metadata)
-        del base_metadata_json
+        _, base_metadata_hash = encode_metadata(metadata)
         now = _utc_now()
 
         with self._lock, self._transaction():
@@ -123,8 +152,8 @@ class PortfolioRiskEventStore(SQLiteEventStore):
                     raise ConcurrentDecisionError(
                         f"decision {decision_key!r} is {claim.status} by owner {claim.owner_id!r}"
                     )
-                stored_metadata = str(row["metadata_hash"])
-                if stored_metadata != base_metadata_hash:
+                _, stored_metadata_hash = encode_metadata(claim.metadata)
+                if stored_metadata_hash != base_metadata_hash:
                     raise ConcurrentDecisionError(
                         f"decision {decision_key!r} metadata changed between claim and risk commit"
                     )
@@ -143,7 +172,7 @@ class PortfolioRiskEventStore(SQLiteEventStore):
             committed_metadata.update(decision.metadata())
             metadata_json, metadata_hash = encode_metadata(committed_metadata)
 
-            if not decision.status.value == "approved":
+            if decision.status is RiskDecisionStatus.REJECTED:
                 if row is None:
                     self._connection.execute(
                         """
