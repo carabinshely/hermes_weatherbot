@@ -22,18 +22,30 @@ from tests.risk.portfolio_helpers import (
     valuation_for,
     valuation_recorded,
 )
-from weatherbot.domain import Money, PortfolioValuation, PositionValuation, RiskDecisionStatus
-from weatherbot.risk import PortfolioRiskRejectionReason, evaluate_portfolio_risk
+from weatherbot.domain import (
+    LedgerEvent,
+    Money,
+    PortfolioValuation,
+    PositionValuation,
+    RiskDecisionStatus,
+    RiskScope,
+)
+from weatherbot.risk import (
+    PortfolioRiskDecision,
+    PortfolioRiskPolicy,
+    PortfolioRiskRejectionReason,
+    evaluate_portfolio_risk,
+)
 
 
 def evaluate(
     *,
-    events,
-    proposed_scope=None,
+    events: tuple[LedgerEvent, ...],
+    proposed_scope: RiskScope | None = None,
     proposed_cash: str = "4",
-    selected_policy=None,
-    valuation=None,
-):
+    selected_policy: PortfolioRiskPolicy | None = None,
+    valuation: PortfolioValuation | None = None,
+) -> PortfolioRiskDecision:
     state = state_for(events)
     return evaluate_portfolio_risk(
         state=state,
@@ -48,7 +60,7 @@ def evaluate(
 
 
 def test_baseline_portfolio_risk_approves_and_is_auditable() -> None:
-    events = (opened(),)
+    events: tuple[LedgerEvent, ...] = (opened(),)
 
     decision = evaluate(events=events)
 
@@ -65,7 +77,7 @@ def test_baseline_portfolio_risk_approves_and_is_auditable() -> None:
 def test_duplicate_active_buy_intent_is_rejected() -> None:
     scope = risk_scope()
     intent = buy_intent_created()
-    events = (opened(), scope_registered(scope), intent)
+    events: tuple[LedgerEvent, ...] = (opened(), scope_registered(scope), intent)
 
     decision = evaluate(events=events, proposed_scope=scope)
 
@@ -197,7 +209,7 @@ def test_existing_exposure_without_durable_scope_fails_closed() -> None:
         limit_price="0.50",
         fee_reserve="0.10",
     )
-    events = (
+    events: tuple[LedgerEvent, ...] = (
         opened(),
         intent,
         submitted(intent),
@@ -211,7 +223,7 @@ def test_existing_exposure_without_durable_scope_fails_closed() -> None:
 
 
 def test_stale_portfolio_valuation_fails_closed() -> None:
-    events = (opened(),)
+    events: tuple[LedgerEvent, ...] = (opened(),)
     state = state_for(events)
     stale = valuation_for(state, assembled_at=NOW - timedelta(seconds=31))
 
@@ -223,7 +235,6 @@ def test_stale_portfolio_valuation_fails_closed() -> None:
 def test_valuation_quantity_mismatch_fails_closed() -> None:
     events = filled_position_events()
     state = state_for(events)
-    position = state.positions[(MARKET_A, YES_A)]
     wrong_mark = PositionValuation(
         market_id=MARKET_A,
         outcome_id=YES_A,
@@ -248,7 +259,7 @@ def test_valuation_quantity_mismatch_fails_closed() -> None:
 def test_daily_loss_combines_today_realized_and_current_unrealized_pnl() -> None:
     base = filled_position_events()
     sell = sell_intent_created()
-    events = (
+    events: tuple[LedgerEvent, ...] = (
         *base,
         sell,
         submitted(sell, suffix="sell"),
@@ -281,7 +292,7 @@ def test_drawdown_uses_durable_historical_valuation_high_water_mark() -> None:
         liquidation_values={(MARKET_A, YES_A): "14.10"},
         assembled_at=NOW - timedelta(minutes=5),
     )
-    events = (*base, valuation_recorded(high, suffix="high-water"))
+    events: tuple[LedgerEvent, ...] = (*base, valuation_recorded(high, suffix="high-water"))
     current_state = state_for(events)
     current = valuation_for(
         current_state,
