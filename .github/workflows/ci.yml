@@ -124,7 +124,7 @@ jobs:
           from importlib.util import find_spec
 
           required = ("eth_account", "polymarket", "web3")
-          missing = [name for name in required if find_spec(name) is not None]
+          missing = [name for name in required if find_spec(name) is None]
           if missing:
               raise SystemExit(f"live profile is missing: {missing}")
 
