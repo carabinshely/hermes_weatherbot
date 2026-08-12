@@ -223,9 +223,7 @@ class SizingDecision:
             ),
             "sizing_fractional_kelly": format(self.fractional_kelly, "f"),
             "sizing_uncapped_kelly_cash": format(self.uncapped_kelly_cash.amount, "f"),
-            "sizing_maximum_cash_per_trade": format(
-                self.policy.maximum_cash_per_trade.amount, "f"
-            ),
+            "sizing_maximum_cash_per_trade": format(self.policy.maximum_cash_per_trade.amount, "f"),
             "sizing_target_cash": format(self.target_cash.amount, "f"),
             "sizing_binding_cap": None if self.binding_cap is None else self.binding_cap.value,
             "sizing_quote_fingerprint": self.quote_fingerprint,
