@@ -56,8 +56,16 @@ class RiskScope:
 
     @property
     def all_correlation_groups(self) -> tuple[str, ...]:
-        """Same-date exposure is always correlated; callers add weather-system groups."""
-        return tuple(sorted({f"date:{self.market_date.isoformat()}", *self.correlation_groups}))
+        """Same-event/date exposure is always correlated; callers add extra groups."""
+        return tuple(
+            sorted(
+                {
+                    f"date:{self.market_date.isoformat()}",
+                    f"event:{self.event_id.casefold()}",
+                    *self.correlation_groups,
+                }
+            )
+        )
 
 
 def risk_scope_event_id(scope: RiskScope) -> EventId:
