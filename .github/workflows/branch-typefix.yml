@@ -80,8 +80,8 @@ jobs:
 
           semantics = Path("tests/forecasting/test_calibration_semantics.py")
           text = semantics.read_text(encoding="utf-8")
-          if text.count("_empirical_crps") != 2:
-              raise SystemExit("expected exactly two private empirical CRPS references")
+          if text.count("_empirical_crps") != 1:
+              raise SystemExit("expected exactly one private empirical CRPS reference")
           semantics.write_text(text.replace("_empirical_crps", "empirical_crps"), encoding="utf-8")
 
           fit_test = Path("tests/forecasting/test_calibration_fit.py")
