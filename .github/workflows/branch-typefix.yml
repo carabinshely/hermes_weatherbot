@@ -1,0 +1,141 @@
+name: Temporary issue 12 type fixes
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - run: uv sync --locked --all-groups
+      - name: Apply bounded type fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          calibration = Path("weatherbot/forecasting/calibration.py")
+          text = calibration.read_text(encoding="utf-8")
+          replacements = {
+              '''        if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
+                  raise CalibrationError("sample lead_days must be an integer")
+              '''.replace("              ", ""): '''        _integer(self.lead_days, label="sample lead_days")
+              '''.replace("              ", ""),
+              '''            if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
+                      raise CalibrationError("calibration group lead_days must be an integer")
+              '''.replace("              ", ""): '''            _integer(self.lead_days, label="calibration group lead_days")
+              '''.replace("              ", ""),
+              '''        if isinstance(self.sample_count, bool) or not isinstance(self.sample_count, int):
+                  raise CalibrationError("group sample_count must be an integer")
+              '''.replace("              ", ""): '''        _integer(self.sample_count, label="group sample_count")
+              '''.replace("              ", ""),
+              '''        if isinstance(self.min_sample_count, bool) or not isinstance(self.min_sample_count, int):
+                  raise CalibrationError("min_sample_count must be an integer")
+              '''.replace("              ", ""): '''        _integer(self.min_sample_count, label="min_sample_count")
+              '''.replace("              ", ""),
+              '''        if isinstance(lead_days, bool) or not isinstance(lead_days, int) or not 0 <= lead_days <= 7:
+                  raise CalibrationError("lead_days must be an integer between 0 and 7")
+              '''.replace("              ", ""): '''        _integer(lead_days, label="lead_days")
+              if not 0 <= lead_days <= 7:
+                  raise CalibrationError("lead_days must be an integer between 0 and 7")
+              '''.replace("              ", ""),
+          }
+          for old, new in replacements.items():
+              assert text.count(old) == 1, old
+              text = text.replace(old, new)
+          calibration.write_text(text, encoding="utf-8")
+
+          fit = Path("weatherbot/forecasting/calibration_fit.py")
+          text = fit.read_text(encoding="utf-8")
+          assert text.count("def _empirical_crps(") == 1
+          assert text.count("_empirical_crps(distribution, value)") == 1
+          text = text.replace("def _empirical_crps(", "def empirical_crps(")
+          text = text.replace("_empirical_crps(distribution, value)", "empirical_crps(distribution, value)")
+          fit.write_text(text, encoding="utf-8")
+
+          semantics = Path("tests/forecasting/test_calibration_semantics.py")
+          text = semantics.read_text(encoding="utf-8")
+          assert text.count("_empirical_crps") == 2
+          text = text.replace("_empirical_crps", "empirical_crps")
+          semantics.write_text(text, encoding="utf-8")
+
+          fit_test = Path("tests/forecasting/test_calibration_fit.py")
+          text = fit_test.read_text(encoding="utf-8")
+          old = "from decimal import Decimal\n"
+          new = "from decimal import Decimal\nfrom typing import TypedDict\n"
+          assert text.count(old) == 1
+          text = text.replace(old, new)
+          marker = "_SOURCE = ForecastSource.OPEN_METEO_ECMWF_IFS025\n\n\n"
+          typed_dict = '''_SOURCE = ForecastSource.OPEN_METEO_ECMWF_IFS025
+
+
+          class _FitKwargs(TypedDict):
+              model_version: str
+              created_at_utc: datetime
+              forecast_contract_id: str
+              observation_contract_id: str
+              training_start: date
+              training_end: date
+              validation_start: date
+              validation_end: date
+              dataset_sha256: str
+              min_sample_count: int
+
+
+          '''.replace("          ", "")
+          assert text.count(marker) == 1
+          text = text.replace(marker, typed_dict)
+          assert text.count("    kwargs = dict(\n") == 1
+          text = text.replace("    kwargs = dict(\n", "    kwargs: _FitKwargs = {\n")
+          assert text.count("        min_sample_count=30,\n    )\n\n    first =") == 1
+          text = text.replace(
+              "        min_sample_count=30,\n    )\n\n    first =",
+              '        "min_sample_count": 30,\n    }\n\n    first =',
+          )
+          # Convert the remaining keyword-style entries in this one dictionary to keys.
+          for key in (
+              "model_version",
+              "created_at_utc",
+              "forecast_contract_id",
+              "observation_contract_id",
+              "training_start",
+              "training_end",
+              "validation_start",
+              "validation_end",
+              "dataset_sha256",
+          ):
+              old = f"        {key}="
+              new = f'        "{key}": '
+              assert text.count(old) >= 1
+              # Only the reproducibility test dictionary is between its declaration and first use.
+              prefix, rest = text.split("    kwargs: _FitKwargs = {\n", 1)
+              block, suffix = rest.split("\n    first =", 1)
+              assert block.count(old) == 1
+              block = block.replace(old, new)
+              text = prefix + "    kwargs: _FitKwargs = {\n" + block + "\n    first =" + suffix
+          fit_test.write_text(text, encoding="utf-8")
+          PY
+      - run: uv run ruff check --fix weatherbot/forecasting/calibration.py weatherbot/forecasting/calibration_fit.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py
+      - run: uv run ruff format weatherbot/forecasting/calibration.py weatherbot/forecasting/calibration_fit.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py
+      - name: Commit type fixes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/forecasting/calibration.py weatherbot/forecasting/calibration_fit.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py
+          git commit -m "Fix issue 12 calibration typing"
+          git push origin HEAD:agent/issue-12-calibrated-uncertainty
