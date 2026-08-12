@@ -14,6 +14,7 @@ from weatherbot.quoting import (
     FreshnessPolicy,
     MarketEventSnapshot,
     QuoteRejectionReason,
+    ValidatedExecutableQuote,
     evaluate_executable_buy,
 )
 from weatherbot.risk.model import (
@@ -23,7 +24,6 @@ from weatherbot.risk.model import (
     SizingPolicy,
     SizingRejectionReason,
 )
-
 
 type RatioInput = Decimal | int | str
 
@@ -97,7 +97,7 @@ def _decision(
     binding_cap: BindingCap | None = None,
     iterations: int = 0,
     final_all_in_price: Decimal | None = None,
-    quote=None,
+    quote: ValidatedExecutableQuote | None = None,
     rejection_reason: SizingRejectionReason | None = None,
     quote_rejection_reason: QuoteRejectionReason | None = None,
     detail: str | None = None,
