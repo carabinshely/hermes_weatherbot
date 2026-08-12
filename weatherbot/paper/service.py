@@ -199,9 +199,7 @@ def _market_metadata(event: MarketEventSnapshot) -> dict[str, object]:
         "event_id": event.event_id,
         "retrieved_at": event.retrieved_at_utc.isoformat(),
         "source_updated_at": (
-            None
-            if event.source_updated_at_utc is None
-            else event.source_updated_at_utc.isoformat()
+            None if event.source_updated_at_utc is None else event.source_updated_at_utc.isoformat()
         ),
     }
 
@@ -280,7 +278,11 @@ class PaperTradingService:
 
     def _durable_decision_result(self, decision_id: str) -> PaperEntryResult | None:
         claim = next(
-            (item for item in self._store.list_decision_claims() if item.decision_key == decision_id),
+            (
+                item
+                for item in self._store.list_decision_claims()
+                if item.decision_key == decision_id
+            ),
             None,
         )
         if claim is None or claim.status == "claimed":

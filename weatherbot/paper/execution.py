@@ -97,9 +97,7 @@ def _buy_levels(
     available_for_gross = intent.cash_reservation.amount - policy.transaction_cost
     if available_for_gross <= 0:
         return ()
-    maximum_gross = (
-        available_for_gross / (_ONE + policy.platform_fee_rate) - _QUANTITY_QUANTUM
-    )
+    maximum_gross = available_for_gross / (_ONE + policy.platform_fee_rate) - _QUANTITY_QUANTUM
     if maximum_gross <= 0:
         return ()
 
@@ -325,7 +323,9 @@ class PaperExecutionAdapter:
             self._plan_recorder(intent.intent_id, plan.metadata())
         return plan
 
-    def events_for_plan(self, intent: OrderIntent, plan: PaperExecutionPlan) -> tuple[LedgerEvent, ...]:
+    def events_for_plan(
+        self, intent: OrderIntent, plan: PaperExecutionPlan
+    ) -> tuple[LedgerEvent, ...]:
         if plan.intent_id != intent.intent_id:
             raise ValueError("paper execution plan does not match the order intent")
         submitted = OrderSubmitted(

@@ -36,7 +36,11 @@ def test_service_executes_audited_entry_and_same_decision_is_idempotent(tmp_path
         assert position.quantity > 0
         assert position.cost_basis.amount > 0
 
-        claim = next(item for item in store.list_decision_claims() if item.decision_key == request.decision_id)
+        claim = next(
+            item
+            for item in store.list_decision_claims()
+            if item.decision_key == request.decision_id
+        )
         assert claim.metadata["paper_mode"] is True
         assert claim.metadata["model_version"] == "fixture-model-1"
         assert claim.metadata["quote_age_seconds"] == "5.0"
@@ -46,7 +50,9 @@ def test_service_executes_audited_entry_and_same_decision_is_idempotent(tmp_path
         assert isinstance(claim.metadata["decision_order_book"], dict)
         assert isinstance(claim.metadata["weather_snapshot"], dict)
 
-        adapter = store.get_adapter_metadata(first.state.orders[next(iter(first.state.orders))].intent.intent_id)
+        adapter = store.get_adapter_metadata(
+            first.state.orders[next(iter(first.state.orders))].intent.intent_id
+        )
         assert adapter is not None
         assert adapter.backend_name == "paper"
         assert "paper_execution_plan" in adapter.payload

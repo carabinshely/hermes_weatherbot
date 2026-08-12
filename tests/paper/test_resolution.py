@@ -49,9 +49,7 @@ class StaticPaperResolutionSource:
         evidence_status = (
             ResolutionEvidenceStatus.VOID if is_void else ResolutionEvidenceStatus.VERIFIED
         )
-        payload_hash = hashlib.sha256(
-            f"paper-resolution:{self.yes}:{self.no}".encode()
-        ).hexdigest()
+        payload_hash = hashlib.sha256(f"paper-resolution:{self.yes}:{self.no}".encode()).hexdigest()
         evidence = MarketResolutionEvidence(
             market_id=MARKET,
             condition_id=str(CONDITION),
@@ -124,9 +122,7 @@ def test_paper_position_win_loss_void_settles_exactly_once_across_restart(
         expected_gross = position_before.quantity * payout
         assert settled.status is PositionStatus.SETTLED
         assert settled.quantity == 0
-        assert settled.realized_pnl == Money.of(
-            expected_gross - position_before.cost_basis.amount
-        )
+        assert settled.realized_pnl == Money.of(expected_gross - position_before.cost_basis.amount)
         assert after.cash == before.cash + Money.of(expected_gross)
         count_after_resolution = store.event_count()
         assert count_after_resolution == count_before_resolution + 3

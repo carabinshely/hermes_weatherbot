@@ -226,9 +226,7 @@ class PaperExecutionPlan:
                 label="paper filled_quantity",
             ),
             average_price=(
-                None
-                if average_raw is None
-                else _decimal(average_raw, label="paper average_price")
+                None if average_raw is None else _decimal(average_raw, label="paper average_price")
             ),
             worst_price=(
                 None if worst_raw is None else _decimal(worst_raw, label="paper worst_price")

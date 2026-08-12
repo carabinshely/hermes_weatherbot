@@ -71,7 +71,9 @@ def build_paper_valuation(
     observed_at = observed_at.astimezone(UTC)
     state.assert_invariants()
     marks: list[PositionValuation] = []
-    for key, position in sorted(state.positions.items(), key=lambda item: (str(item[0][0]), str(item[0][1]))):
+    for key, position in sorted(
+        state.positions.items(), key=lambda item: (str(item[0][0]), str(item[0][1]))
+    ):
         if position.status is not PositionStatus.OPEN or position.quantity <= 0:
             continue
         try:
