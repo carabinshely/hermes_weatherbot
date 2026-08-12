@@ -10,6 +10,7 @@ from weatherbot.domain import (
     EventId,
     LedgerEvent,
     OrderIntentCreated,
+    OrderIntentId,
     PortfolioValuation,
     PortfolioValuationRecorded,
     RiskDecisionStatus,
@@ -90,6 +91,40 @@ class PortfolioRiskEventStore(SQLiteEventStore):
             chain_hash=tail_hash,
         )
 
+    def _set_adapter_metadata_locked(
+        self,
+        intent_id: OrderIntentId,
+        *,
+        backend_name: str,
+        payload: Mapping[str, object],
+    ) -> None:
+        backend_name = _require_text(backend_name, label="backend_name")
+        payload_json, payload_hash = encode_metadata(payload)
+        intent_text = str(intent_id)
+        existing = self._adapter_row_locked(intent_text)
+        if existing is None:
+            now = _utc_now()
+            self._connection.execute(
+                """
+                INSERT INTO adapter_metadata(
+                    intent_id, backend_name, payload_json, payload_hash, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (intent_text, backend_name, payload_json, payload_hash, now, now),
+            )
+            return
+        adapter = self._adapter_from_row(existing)
+        if adapter.backend_name != backend_name:
+            raise ConcurrentDecisionError(
+                f"intent {intent_text} is already assigned to backend {adapter.backend_name!r}"
+            )
+        _, existing_hash = encode_metadata(adapter.payload)
+        if existing_hash != payload_hash:
+            raise ConcurrentDecisionError(
+                f"intent {intent_text} adapter metadata changed across an idempotent retry"
+            )
+
     def commit_risk_checked_order_intent(
         self,
         event: OrderIntentCreated,
@@ -100,12 +135,16 @@ class PortfolioRiskEventStore(SQLiteEventStore):
         evaluated_at: datetime,
         owner_id: str,
         metadata: Mapping[str, object] | None = None,
+        adapter_backend_name: str | None = None,
+        adapter_payload: Mapping[str, object] | None = None,
     ) -> RiskCheckedCommitResult:
         """Re-evaluate current durable risk state and append only if it still permits the BUY."""
         if event.intent.side is not Side.BUY:
             raise ValueError("portfolio risk checked intent commit is only for BUY entries")
         if scope.position_key != (event.intent.market_id, event.intent.outcome_id):
             raise ValueError("risk scope does not match order-intent position key")
+        if (adapter_backend_name is None) != (adapter_payload is None):
+            raise ValueError("adapter backend name and payload must be supplied together")
 
         owner_id = _require_text(owner_id, label="owner_id")
         decision_key = _require_text(event.intent.decision_id, label="decision_id")
@@ -132,6 +171,12 @@ class PortfolioRiskEventStore(SQLiteEventStore):
                     if prior_event.intent != event.intent:
                         raise DuplicateIntentError(
                             f"order intent {event.intent.intent_id} was reused with different data"
+                        )
+                    if adapter_backend_name is not None and adapter_payload is not None:
+                        self._set_adapter_metadata_locked(
+                            event.intent.intent_id,
+                            backend_name=adapter_backend_name,
+                            payload=adapter_payload,
                         )
                     return RiskCheckedCommitResult(
                         decision=None,
@@ -279,6 +324,12 @@ class PortfolioRiskEventStore(SQLiteEventStore):
                 events_to_append,
                 allow_intent_created=True,
             )
+            if adapter_backend_name is not None and adapter_payload is not None:
+                self._set_adapter_metadata_locked(
+                    event.intent.intent_id,
+                    backend_name=adapter_backend_name,
+                    payload=adapter_payload,
+                )
             return RiskCheckedCommitResult(
                 decision=decision,
                 append_result=appended,
