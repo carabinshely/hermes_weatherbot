@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 from weatherbot.domain import (
     EventId,
+    LedgerEvent,
     OrderIntentCreated,
     PortfolioValuation,
     PortfolioValuationRecorded,
@@ -261,13 +262,21 @@ class PortfolioRiskEventStore(SQLiteEventStore):
                     ),
                 )
 
-            scope_event = RiskScopeRegistered(
-                event_id=risk_scope_event_id(scope),
-                occurred_at=evaluated_at,
-                scope=scope,
+            scope_registered = any(
+                isinstance(prior, RiskScopeRegistered)
+                and prior.scope.position_key == scope.position_key
+                for prior in events
             )
+            events_to_append: tuple[LedgerEvent, ...] = (valuation_event, event)
+            if not scope_registered:
+                scope_event = RiskScopeRegistered(
+                    event_id=risk_scope_event_id(scope),
+                    occurred_at=evaluated_at,
+                    scope=scope,
+                )
+                events_to_append = (scope_event, valuation_event, event)
             appended = self._append_events_locked(
-                (scope_event, valuation_event, event),
+                events_to_append,
                 allow_intent_created=True,
             )
             return RiskCheckedCommitResult(
