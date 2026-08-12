@@ -552,9 +552,7 @@ def _portfolio_valuation(value: object) -> PortfolioValuation:
     return PortfolioValuation(
         positions=tuple(marks),
         equity=_money(data["equity"], label="portfolio_valuation.equity"),
-        assembled_at=_datetime(
-            data["assembled_at"], label="portfolio_valuation.assembled_at"
-        ),
+        assembled_at=_datetime(data["assembled_at"], label="portfolio_valuation.assembled_at"),
         source=_text(data["source"], label="portfolio_valuation.source"),
     )
 
