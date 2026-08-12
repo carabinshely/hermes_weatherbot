@@ -109,10 +109,10 @@ def _slippage_limited_requested_budget(
             average_headroom = maximum_average_price * shares - book_cost
             if average_headroom <= 0:
                 break
-            take = min(
-                level.size,
-                average_headroom / (level.price - maximum_average_price),
-            )
+            maximum_take = (
+                average_headroom / (level.price - maximum_average_price)
+            ).next_minus()
+            take = min(level.size, maximum_take)
 
         if take <= 0:
             break
@@ -124,9 +124,7 @@ def _slippage_limited_requested_budget(
     if shares < order_book.minimum_order_size:
         return _ZERO
 
-    variable_cost_multiplier = (
-        _ONE + cost_policy.platform_fee_rate + cost_policy.safety_margin_rate
-    )
+    variable_cost_multiplier = _ONE + cost_policy.platform_fee_rate + cost_policy.safety_margin_rate
     return book_cost * variable_cost_multiplier + cost_policy.transaction_cost
 
 
@@ -295,10 +293,7 @@ def size_executable_buy(
                     ),
                     currency=capital.cash.currency,
                 )
-                if (
-                    not slippage_budget.is_zero
-                    and slippage_budget.amount < current_budget.amount
-                ):
+                if not slippage_budget.is_zero and slippage_budget.amount < current_budget.amount:
                     current_budget = slippage_budget
                     current_binding = BindingCap.EXECUTABLE_SLIPPAGE
                     continue
