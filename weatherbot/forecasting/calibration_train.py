@@ -38,7 +38,7 @@ def train_calibration_dataset(
     if not model_version:
         raise CalibrationError("model_version must not be blank")
     created = _aware_utc(created_at_utc, label="artifact creation time")
-    if isinstance(min_sample_count, bool) or not isinstance(min_sample_count, int):
+    if isinstance(min_sample_count, bool):
         raise CalibrationError("min_sample_count must be an integer")
     if min_sample_count < 2:
         raise CalibrationError("min_sample_count must be at least two")
@@ -65,7 +65,7 @@ def train_calibration_dataset(
         min_sample_count=min_sample_count,
     )
     metrics = fit.validation
-    report = {
+    report: dict[str, object] = {
         "schema_version": _REPORT_SCHEMA_VERSION,
         "model_version": fit.artifact.model_version,
         "artifact_sha256": fit.artifact.artifact_sha256,
@@ -192,12 +192,14 @@ def main(argv: list[str] | None = None) -> int:
                 "artifact_sha256": output.fit.artifact.artifact_sha256,
                 "fitted_group_count": len(output.fit.artifact.groups),
                 "validation_sample_count": output.fit.validation.sample_count,
-                "calibrated_better_mean_log_score": output.report["baseline_comparison"][
-                    "calibrated_better_mean_log_score"
-                ],
-                "calibrated_better_mean_ranked_probability_score": output.report[
-                    "baseline_comparison"
-                ]["calibrated_better_mean_ranked_probability_score"],
+                "calibrated_better_mean_log_score": (
+                    output.fit.validation.mean_log_score
+                    < output.fit.validation.baseline_mean_log_score
+                ),
+                "calibrated_better_mean_ranked_probability_score": (
+                    output.fit.validation.mean_ranked_probability_score
+                    < output.fit.validation.baseline_mean_ranked_probability_score
+                ),
             },
             sort_keys=True,
         )

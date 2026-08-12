@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import cast
 
-from weatherbot.forecasting.calibration import CalibrationError, CalibrationSample, Season
+from weatherbot.forecasting.calibration import CalibrationError, CalibrationSample
 from weatherbot.forecasting.calibration_data import (
     CalibrationDataset,
     CalibrationDatasetManifest,
@@ -248,9 +247,7 @@ def _validate_dataset_manifest_alignment(dataset: CalibrationDataset) -> None:
     observation_contracts = {record.observation_contract_id for record in records}
     if observation_contracts != {manifest.observation_contract_id}:
         raise CalibrationError("dataset observation contracts differ from manifest")
-    capture_contracts = tuple(
-        sorted({record.forecast_capture_contract_id for record in records})
-    )
+    capture_contracts = tuple(sorted({record.forecast_capture_contract_id for record in records}))
     if capture_contracts != manifest.capture_contract_ids:
         raise CalibrationError("dataset capture contracts differ from manifest")
 
@@ -326,9 +323,7 @@ def _date(value: object, *, label: str) -> date:
 
 def _sha256(value: object, *, label: str) -> str:
     text = _text(value, label=label).lower()
-    if len(text) != 64 or any(
-        character not in "0123456789abcdef" for character in text
-    ):
+    if len(text) != 64 or any(character not in "0123456789abcdef" for character in text):
         raise CalibrationError(f"{label} must be a SHA-256 digest")
     return text
 

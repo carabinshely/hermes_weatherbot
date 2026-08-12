@@ -118,7 +118,10 @@ def test_dataset_loader_round_trips_canonical_dataset(tmp_path: Path) -> None:
 def test_dataset_loader_rejects_record_tampering(tmp_path: Path) -> None:
     records_path, manifest_path, _ = _write_dataset(tmp_path)
     text = records_path.read_text(encoding="utf-8")
-    records_path.write_text(text.replace('"forecast_temperature_f":"70"', '"forecast_temperature_f":"99"', 1), encoding="utf-8")
+    records_path.write_text(
+        text.replace('"forecast_temperature_f":"70"', '"forecast_temperature_f":"99"', 1),
+        encoding="utf-8",
+    )
 
     with pytest.raises(CalibrationError, match="checksum mismatch"):
         load_calibration_dataset(records_path, manifest_path)
@@ -136,19 +139,26 @@ def test_dataset_loader_rejects_manifest_tampering(tmp_path: Path) -> None:
 
 def test_training_is_deterministic_for_fixed_inputs(tmp_path: Path) -> None:
     records_path, manifest_path, _ = _write_dataset(tmp_path)
-    kwargs = {
-        "records_path": records_path,
-        "manifest_path": manifest_path,
-        "model_version": "test-calibration-v1",
-        "created_at_utc": datetime(2026, 8, 12, 13, tzinfo=UTC),
-        "training_end": date(2026, 6, 10),
-        "validation_start": date(2026, 6, 11),
-        "validation_end": date(2026, 6, 14),
-        "min_sample_count": 5,
-    }
-
-    first = train_calibration_dataset(**kwargs)
-    second = train_calibration_dataset(**kwargs)
+    first = train_calibration_dataset(
+        records_path=records_path,
+        manifest_path=manifest_path,
+        model_version="test-calibration-v1",
+        created_at_utc=datetime(2026, 8, 12, 13, tzinfo=UTC),
+        training_end=date(2026, 6, 10),
+        validation_start=date(2026, 6, 11),
+        validation_end=date(2026, 6, 14),
+        min_sample_count=5,
+    )
+    second = train_calibration_dataset(
+        records_path=records_path,
+        manifest_path=manifest_path,
+        model_version="test-calibration-v1",
+        created_at_utc=datetime(2026, 8, 12, 13, tzinfo=UTC),
+        training_end=date(2026, 6, 10),
+        validation_start=date(2026, 6, 11),
+        validation_end=date(2026, 6, 14),
+        min_sample_count=5,
+    )
 
     assert first.fit.artifact.artifact_sha256 == second.fit.artifact.artifact_sha256
     assert first.fit.validation == second.fit.validation
