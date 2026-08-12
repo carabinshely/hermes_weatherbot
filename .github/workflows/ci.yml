@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          ref: agent/issue-27-paper-money
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -41,6 +43,110 @@ jobs:
 
       - name: Install minimal runtime and development tools
         run: uv sync --locked --all-groups
+
+      - name: Patch PAPER runtime into bot v3
+        if: matrix.python-version == '3.12' && github.actor != 'github-actions[bot]'
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("bot_v3.py")
+          text = path.read_text()
+
+          old = '''from weatherbot.forecasting import (\n    WeatherInputError,\n    WeatherInputSnapshot,\n    parse_aviation_weather_metar,\n    parse_open_meteo_daily_highs,\n)\nfrom weatherbot.quoting import (\n'''
+          new = '''from weatherbot.forecasting import (\n    WeatherInputError,\n    WeatherInputSnapshot,\n    parse_aviation_weather_metar,\n    parse_open_meteo_daily_highs,\n)\nfrom weatherbot.domain import MarketId, OutcomeId, RiskScope\nfrom weatherbot.paper import (\n    PaperEntryStatus,\n    PaperRuntimeConfig,\n    paper_runtime_status,\n    paper_scan_decision_id,\n    reset_paper_runtime,\n    submit_scanner_candidate,\n)\nfrom weatherbot.quoting import (\n'''
+          if old not in text:
+              raise SystemExit("forecast import marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''from weatherbot.markets import (\n    BinaryOutcome,\n    GammaMarketError,\n'''
+          new = '''from weatherbot.markets import (\n    BinaryOutcome,\n    ConditionId,\n    GammaMarketError,\n'''
+          if old not in text:
+              raise SystemExit("markets import marker not found")
+          text = text.replace(old, new, 1)
+          old = '''    OrderBookError,\n    TemperatureBucket,\n'''
+          new = '''    OrderBookError,\n    OutcomeTokenId,\n    TemperatureBucket,\n'''
+          if old not in text:
+              raise SystemExit("markets token import marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''LEDGER_PATH = (\n    _ledger_config_path if _ledger_config_path.is_absolute() else BOT_DIR / _ledger_config_path\n)\n\n# --- CLOB ---\n'''
+          new = '''LEDGER_PATH = (\n    _ledger_config_path if _ledger_config_path.is_absolute() else BOT_DIR / _ledger_config_path\n)\nPAPER_RUNTIME = PaperRuntimeConfig.from_mapping(_cfg, base_dir=BOT_DIR)\n\n# --- CLOB ---\n'''
+          if old not in text:
+              raise SystemExit("ledger config marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''def _fetch_selected_order_book(selection):\n    """Fetch the selected token book; point-in-time freshness is checked centrally."""\n    response = requests.get(\n        f"{CLOB_HOST}/book",\n        params={"token_id": str(selection.token_id)},\n        timeout=(3, 6),\n    )\n    response.raise_for_status()\n    payload = response.json()\n    if not isinstance(payload, dict):\n        raise OrderBookError("CLOB order-book response must be an object")\n    return parse_order_book(\n        payload,\n        expected_condition_id=selection.condition_id,\n        expected_token_id=selection.token_id,\n    )\n'''
+          new = '''def _fetch_token_order_book(\n    condition_id: ConditionId, token_id: OutcomeTokenId\n):\n    """Fetch one public CLOB token book; no wallet or authenticated write client is used."""\n    response = requests.get(\n        f"{CLOB_HOST}/book",\n        params={"token_id": str(token_id)},\n        timeout=(3, 6),\n    )\n    response.raise_for_status()\n    payload = response.json()\n    if not isinstance(payload, dict):\n        raise OrderBookError("CLOB order-book response must be an object")\n    return parse_order_book(\n        payload,\n        expected_condition_id=condition_id,\n        expected_token_id=token_id,\n    )\n\n\ndef _fetch_selected_order_book(selection):\n    """Fetch the selected token book; point-in-time freshness is checked centrally."""\n    return _fetch_token_order_book(selection.condition_id, selection.token_id)\n'''
+          if old not in text:
+              raise SystemExit("order-book helper marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''    success: bool,\n    mode: ExecutionMode,\n    reason: str = "",\n):\n'''
+          new = '''    success: bool,\n    mode: ExecutionMode,\n    reason: str = "",\n    status_label: str | None = None,\n):\n'''
+          if old not in text:
+              raise SystemExit("telegram signature marker not found")
+          text = text.replace(old, new, 1)
+          old = '''            f"✅ <b>ORDER FILLED</b>"\n'''
+          new = '''            f"✅ <b>{status_label or 'ORDER FILLED'}</b>"\n'''
+          if old not in text:
+              raise SystemExit("telegram status marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''            sigma = get_sigma(city_slug)\n            probability = target_bucket.probability(forecast_temp, sigma)\n            preliminary_kelly = get_adjusted_kelly(\n'''
+          new = '''            sigma = get_sigma(city_slug)\n            probability = target_bucket.probability(forecast_temp, sigma)\n\n            if context.mode is ExecutionMode.PAPER:\n                paper_candidates += 1\n                evaluated_at = datetime.now(timezone.utc)\n                paper_scope = RiskScope(\n                    market_id=MarketId(str(selection.market_id)),\n                    outcome_id=OutcomeId(str(selection.token_id)),\n                    event_id=event_snapshot.event_id,\n                    city_key=city_slug,\n                    market_date=weathersnap.forecast.market_date,\n                )\n                model_version = "bot-v3-normal-cdf-sigma-v1"\n                decision_id = paper_scan_decision_id(\n                    model_version=model_version,\n                    scope=paper_scope,\n                    weather=weathersnap,\n                    event=event_snapshot,\n                    decision_book=book,\n                )\n                try:\n                    paper_result = submit_scanner_candidate(\n                        runtime=PAPER_RUNTIME,\n                        strategy_id="bot-v3-weather",\n                        decision_id=decision_id,\n                        model_version=model_version,\n                        probability=Decimal(str(probability)),\n                        scope=paper_scope,\n                        weather=weathersnap,\n                        event=event_snapshot,\n                        decision_book=book,\n                        condition_id=selection.condition_id,\n                        token_id=selection.token_id,\n                        evaluated_at=evaluated_at,\n                        freshness_policy=_quote_freshness_policy(),\n                        cost_policy=_quote_cost_policy(),\n                        fetch_book=_fetch_token_order_book,\n                        audit_metadata={\n                            "city": city_slug,\n                            "city_name": loc["name"],\n                            "horizon": horizon,\n                            "bucket_key": target_bucket.key,\n                            "bucket_label": target_bucket.label,\n                            "forecast_temperature_f": weathersnap.signal_temperature_f,\n                            "forecast_source": best_source,\n                            "sigma_f": Decimal(str(sigma)),\n                            "volume": volume,\n                            "question": market.question,\n                            "declared_resolution_source": market.resolution_source,\n                            "event_end_date": end_date,\n                        },\n                        owner_id=f"paper-scanner:{city_slug}:{market_date}",\n                    )\n                except (OrderBookError, requests.RequestException, ValueError) as exc:\n                    message = f"{loc['name']} {horizon}: PAPER execution failed: {exc}"\n                    errors.append(message)\n                    warn(f"  {message}")\n                    continue\n\n                plan = paper_result.execution_plan\n                if paper_result.status in {\n                    PaperEntryStatus.FILLED,\n                    PaperEntryStatus.PARTIAL_FILL,\n                }:\n                    assert plan is not None\n                    assert plan.average_price is not None\n                    new_trades += 1\n                    city_found_signal = True\n                    paper_cost = float((plan.gross_value + plan.fee).amount)\n                    paper_price = float(plan.average_price)\n                    paper_ev = 0.0\n                    paper_kelly = 0.0\n                    if paper_result.sizing is not None and paper_result.sizing.quote is not None:\n                        paper_ev = float(paper_result.sizing.quote.expected_return)\n                        paper_kelly = float(paper_result.sizing.fractional_kelly)\n                    top_signals.append(\n                        {\n                            "city": loc["name"],\n                            "horizon": horizon,\n                            "bucket": target_bucket.label,\n                            "ev": paper_ev,\n                            "price": paper_price,\n                            "true_prob": probability,\n                        }\n                    )\n                    status_label = (\n                        "PAPER FILLED"\n                        if paper_result.status is PaperEntryStatus.FILLED\n                        else "PAPER PARTIAL FILL"\n                    )\n                    info(\n                        f"  [PAPER] {status_label} | {plan.filled_quantity}/"\n                        f"{plan.requested_quantity} @ ${paper_price:.3f} | "\n                        f"simulated all-in ${paper_cost:.2f}"\n                    )\n                    tg_signal(\n                        city=loc["name"],\n                        horizon=horizon,\n                        date=market_date,\n                        bucket_label=target_bucket.label,\n                        forecast_temp=forecast_temp,\n                        entry_price=paper_price,\n                        cost=paper_cost,\n                        ev=paper_ev,\n                        kelly=paper_kelly,\n                        success=True,\n                        mode=context.mode,\n                        status_label=status_label,\n                    )\n                elif paper_result.status is PaperEntryStatus.IDEMPOTENT:\n                    info("  [PAPER] durable decision already processed; no duplicate intent/fill")\n                else:\n                    reason = paper_result.status.value\n                    if paper_result.risk_decision is not None:\n                        rejection = paper_result.risk_decision.rejection_reason\n                        reason = rejection.value if rejection is not None else reason\n                    elif paper_result.sizing is not None and paper_result.sizing.rejection_reason is not None:\n                        reason = paper_result.sizing.rejection_reason.value\n                    elif plan is not None:\n                        reason = plan.reason\n                    info(f"  [PAPER] rejected: {reason}")\n                    tg_signal(\n                        city=loc["name"],\n                        horizon=horizon,\n                        date=market_date,\n                        bucket_label=target_bucket.label,\n                        forecast_temp=forecast_temp,\n                        entry_price=float(book.best_ask),\n                        cost=0.0,\n                        ev=0.0,\n                        kelly=0.0,\n                        success=False,\n                        mode=context.mode,\n                        reason=reason,\n                    )\n                continue\n\n            preliminary_kelly = get_adjusted_kelly(\n'''
+          if old not in text:
+              raise SystemExit("paper scanner insertion marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''            if context.mode is ExecutionMode.PAPER:\n                paper_candidates += 1\n                info("  [PAPER] candidate only; simulated fills are implemented in #27")\n                continue\n\n            require_live(context, operation="place order")\n'''
+          new = '''            require_live(context, operation="place order")\n'''
+          if old not in text:
+              raise SystemExit("legacy paper candidate branch not found")
+          text = text.replace(old, new, 1)
+
+          old = '''def show_status(context: ExecutionContext):\n    """Show status without crossing the selected mode boundary."""\n    if context.mode is not ExecutionMode.LIVE:\n        print(f"\\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")\n        print("=" * 60)\n        print("  Wallet access: disabled")\n        if context.mode is ExecutionMode.PAPER:\n            print("  Paper ledger:  pending implementation in #27")\n        print(f"{'=' * 60}\\n")\n        return\n'''
+          new = '''def show_status(context: ExecutionContext):\n    """Show status without crossing the selected mode boundary."""\n    if context.mode is not ExecutionMode.LIVE:\n        print(f"\\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")\n        print("=" * 60)\n        print("  Wallet access: disabled")\n        if context.mode is ExecutionMode.PAPER:\n            status = paper_runtime_status(\n                runtime=PAPER_RUNTIME,\n                observed_at=datetime.now(timezone.utc),\n                freshness_policy=_quote_freshness_policy(),\n                cost_policy=_quote_cost_policy(),\n                fetch_book=_fetch_token_order_book,\n            )\n            print(f"  Paper ledger:      {PAPER_RUNTIME.ledger_path}")\n            print(f"  Starting cash:     ${status.starting_cash.amount}")\n            print(f"  Cash:              ${status.cash.amount}")\n            print(f"  Reserved cash:     ${status.reserved_cash.amount}")\n            print(f"  Available cash:    ${status.available_cash.amount}")\n            print(f"  Market value:      ${status.market_value.amount}")\n            print(f"  Realized P/L:      ${status.realized_pnl.amount}")\n            print(f"  Unrealized P/L:    ${status.unrealized_pnl.amount}")\n            print(f"  Fees:              ${status.fees.amount}")\n            print(f"  Exposure:          ${status.exposure.amount}")\n            print(f"  Equity:            ${status.equity.amount}")\n            print(f"  Drawdown:          ${status.drawdown.amount}")\n            print(f"  Open positions:    {status.open_positions}")\n        print(f"{'=' * 60}\\n")\n        return\n'''
+          if old not in text:
+              raise SystemExit("status marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''def run_resolution_monitor_cycle():\n    """Resolve durable-ledger positions without wallet or trading-client access."""\n    report = resolve_ledger_positions(LEDGER_PATH)\n    if report.checked == 0:\n        print(f"  Resolution: no pending ledger positions ({LEDGER_PATH})")\n'''
+          new = '''def run_resolution_monitor_cycle(ledger_path=LEDGER_PATH):\n    """Resolve durable-ledger positions without wallet or trading-client access."""\n    report = resolve_ledger_positions(ledger_path)\n    if report.checked == 0:\n        print(f"  Resolution: no pending ledger positions ({ledger_path})")\n'''
+          if old not in text:
+              raise SystemExit("resolution function marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''                run_resolution_monitor_cycle()\n            except Exception as exc:\n'''
+          new = '''                ledger_path = (\n                    PAPER_RUNTIME.ledger_path\n                    if context.mode is ExecutionMode.PAPER\n                    else LEDGER_PATH\n                )\n                run_resolution_monitor_cycle(ledger_path)\n            except Exception as exc:\n'''
+          if old not in text:
+              raise SystemExit("loop resolution marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''        choices=("scan", "run", "status", "resolve", "cancel"),\n'''
+          new = '''        choices=("scan", "run", "status", "resolve", "cancel", "paper-reset"),\n'''
+          if old not in text:
+              raise SystemExit("parser choices marker not found")
+          text = text.replace(old, new, 1)
+          old = '''    parser.add_argument("--market", help="market identifier for cancellation")\n    return parser\n'''
+          new = '''    parser.add_argument("--market", help="market identifier for cancellation")\n    parser.add_argument(\n        "--confirm-paper-reset",\n        action="store_true",\n        help="required to archive and reset PAPER history",\n    )\n    return parser\n'''
+          if old not in text:
+              raise SystemExit("parser args marker not found")
+          text = text.replace(old, new, 1)
+
+          old = '''    elif args.command == "resolve":\n        run_resolution_monitor_cycle()\n    elif args.command == "cancel":\n'''
+          new = '''    elif args.command == "resolve":\n        ledger_path = (\n            PAPER_RUNTIME.ledger_path\n            if context.mode is ExecutionMode.PAPER\n            else LEDGER_PATH\n        )\n        run_resolution_monitor_cycle(ledger_path)\n    elif args.command == "paper-reset":\n        if context.mode is not ExecutionMode.PAPER:\n            print("ERROR: paper-reset requires --mode paper", file=sys.stderr)\n            return 2\n        if not args.confirm_paper_reset:\n            print(\n                "ERROR: paper-reset requires --confirm-paper-reset; history is archived first",\n                file=sys.stderr,\n            )\n            return 2\n        archive = reset_paper_runtime(\n            runtime=PAPER_RUNTIME,\n            reset_at=datetime.now(timezone.utc),\n        )\n        print(f"[PAPER] archived prior ledger to {archive}")\n        print(f"[PAPER] reset ledger: {PAPER_RUNTIME.ledger_path}")\n    elif args.command == "cancel":\n'''
+          if old not in text:
+              raise SystemExit("main resolve marker not found")
+          text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add bot_v3.py
+          git commit -m 'Wire durable paper runtime into bot v3'
+          git push origin HEAD:agent/issue-27-paper-money
 
       - name: Verify live packages are absent from minimal profile
         run: |
