@@ -81,7 +81,11 @@ class RiskCapitalSnapshot:
             _require_nonnegative(amount, label=label)
         if self.available_cash != self.cash - self.reserved_cash:
             raise ValueError("available_cash must equal cash - reserved_cash")
-        if isinstance(self.open_position_count, bool) or self.open_position_count < 0:
+        if (
+            isinstance(self.open_position_count, bool)
+            or not isinstance(self.open_position_count, int)
+            or self.open_position_count < 0
+        ):
             raise ValueError("open_position_count must be a non-negative integer")
         if self.open_position_count == 0 and not self.open_position_cost_basis.is_zero:
             raise ValueError("zero open positions cannot have positive open cost basis")
@@ -121,7 +125,9 @@ class SizingPolicy:
             label="fractional Kelly multiplier",
         )
         if multiplier <= 0 or multiplier > 1:
-            raise ValueError("fractional Kelly multiplier must be greater than zero and at most one")
+            raise ValueError(
+                "fractional Kelly multiplier must be greater than zero and at most one"
+            )
         if self.maximum_cash_per_trade.amount <= 0:
             raise ValueError("maximum_cash_per_trade must be positive")
         if isinstance(self.maximum_iterations, bool) or self.maximum_iterations <= 0:
