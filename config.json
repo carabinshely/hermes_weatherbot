@@ -19,5 +19,16 @@
   "platform_fee_reserve_rate": 0.01,
   "transaction_cost_reserve": 0.01,
   "execution_safety_margin_rate": 0.02,
-  "depth_policy": "reject"
+  "depth_policy": "reject",
+  "paper_starting_cash": 100.0,
+  "paper_ledger_path": "state/paper-ledger.sqlite3",
+  "paper_archive_directory": "state/paper-archive",
+  "paper_max_total_exposure": 20.0,
+  "paper_max_event_exposure": 6.0,
+  "paper_max_city_date_exposure": 6.0,
+  "paper_max_correlation_exposure": 8.0,
+  "paper_max_open_positions": 10,
+  "paper_max_daily_loss": 10.0,
+  "paper_max_drawdown": 20.0,
+  "paper_loss_timezone": "UTC"
 }
