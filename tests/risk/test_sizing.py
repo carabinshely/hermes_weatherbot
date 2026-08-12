@@ -74,7 +74,7 @@ def test_reserved_cash_reduces_bankroll_without_double_counting_open_exposure() 
     assert reserved.target_cash == equivalent_cash.target_cash
 
 
-def test_risk_capital_from_ledger_records_open_cost_basis_without_subtracting_it_again() -> None:
+def test_ledger_snapshot_records_open_cost_basis_without_double_subtracting() -> None:
     market_id = MarketId("weather-market")
     outcome_id = OutcomeId("yes")
     position = Position(
@@ -240,7 +240,8 @@ def test_approved_size_obeys_cash_cap_and_quote_invariants() -> None:
     assert decision.target_cash.amount <= decision.quote.requested_budget
     assert decision.target_cash.amount.as_tuple().exponent == -6
     assert decision.quote_fingerprint == decision.quote.fingerprint
-    assert decision.metadata()["sizing_target_cash"] == format(decision.target_cash.amount, "f")
+    metadata = decision.metadata()
+    assert metadata["sizing_target_cash"] == format(decision.target_cash.amount, "f")
 
 
 def test_policy_rejects_non_conservative_or_non_positive_limits() -> None:
