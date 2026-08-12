@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -24,8 +24,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
-        with:
-          ref: agent/issue-27-paper-money
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -43,33 +41,6 @@ jobs:
 
       - name: Install minimal runtime and development tools
         run: uv sync --locked --all-groups
-
-      - name: Patch PAPER startup recovery into bot v3
-        if: matrix.python-version == '3.12' && github.actor != 'github-actions[bot]'
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("bot_v3.py")
-          text = path.read_text(encoding="utf-8")
-
-          old = '''    paper_runtime_status,\n    paper_scan_decision_id,\n    reset_paper_runtime,\n'''
-          new = '''    paper_runtime_status,\n    paper_scan_decision_id,\n    recover_paper_runtime,\n    reset_paper_runtime,\n'''
-          if old not in text:
-              raise SystemExit("PAPER import marker not found")
-          text = text.replace(old, new, 1)
-
-          old = '''def scan_and_trade(context: ExecutionContext):\n    """Scan markets with explicit token, quote, bucket, and local-date contracts."""\n    now = datetime.now(timezone.utc)\n'''
-          new = '''def scan_and_trade(context: ExecutionContext):\n    """Scan markets with explicit token, quote, bucket, and local-date contracts."""\n    if context.mode is ExecutionMode.PAPER:\n        recover_paper_runtime(runtime=PAPER_RUNTIME)\n    now = datetime.now(timezone.utc)\n'''
-          if old not in text:
-              raise SystemExit("scan startup marker not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          PY
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add bot_v3.py
-          git commit -m 'Recover PAPER runtime before every scan'
-          git push origin HEAD:agent/issue-27-paper-money
 
       - name: Verify live packages are absent from minimal profile
         run: |
