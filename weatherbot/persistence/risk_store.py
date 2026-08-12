@@ -214,7 +214,10 @@ class PortfolioRiskEventStore(SQLiteEventStore):
                 append_result = (
                     self._current_append_result_locked()
                     if decision.rejection_reason in invalid_valuation_reasons
-                    else self._append_events_locked((valuation_event,))
+                    else self._append_events_locked(
+                        (valuation_event,),
+                        allow_intent_created=False,
+                    )
                 )
                 return RiskCheckedCommitResult(
                     decision=decision,
