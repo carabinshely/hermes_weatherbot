@@ -44,10 +44,13 @@ class WeatherUndergroundCoveragePolicy:
     earliest_allowed_last_local_time: time = time(hour=22)
 
     def __post_init__(self) -> None:
-        if isinstance(self.min_observations, bool) or not isinstance(self.min_observations, int):
+        if isinstance(self.min_observations, bool):
             raise WeatherUndergroundHistoryError("min_observations must be an integer")
         if self.min_observations < 2:
             raise WeatherUndergroundHistoryError("min_observations must be at least two")
+
+
+_DEFAULT_COVERAGE_POLICY = WeatherUndergroundCoveragePolicy()
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,7 +85,9 @@ class WeatherUndergroundDailyHistoryCapture:
             ("raw_page_sha256", self.raw_page_sha256),
             ("normalized_payload_sha256", self.normalized_payload_sha256),
         ):
-            if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            if len(digest) != 64 or any(
+                character not in "0123456789abcdef" for character in digest
+            ):
                 raise WeatherUndergroundHistoryError(f"{label} must be a SHA-256 digest")
         if self.evidence.payload_hash != self.normalized_payload_sha256:
             raise WeatherUndergroundHistoryError(
@@ -129,9 +134,13 @@ def _require_wunderground_history_url(value: str, *, label: str) -> str:
     normalized = value.strip()
     parsed = urlparse(normalized)
     if parsed.scheme != "https" or parsed.hostname not in _ALLOWED_HOSTS:
-        raise WeatherUndergroundHistoryError(f"{label} must use the public Weather Underground HTTPS host")
+        raise WeatherUndergroundHistoryError(
+            f"{label} must use the public Weather Underground HTTPS host"
+        )
     if "/history/daily/" not in parsed.path:
-        raise WeatherUndergroundHistoryError(f"{label} must be a Weather Underground daily-history URL")
+        raise WeatherUndergroundHistoryError(
+            f"{label} must be a Weather Underground daily-history URL"
+        )
     return normalized
 
 
@@ -140,7 +149,9 @@ def _parse_page_date(value: str) -> date:
         year_text, month_text, day_text = value.split("-")
         return date(int(year_text), int(month_text), int(day_text))
     except (TypeError, ValueError) as exc:
-        raise WeatherUndergroundHistoryError(f"invalid Weather Underground page date: {value!r}") from exc
+        raise WeatherUndergroundHistoryError(
+            f"invalid Weather Underground page date: {value!r}"
+        ) from exc
 
 
 def _number(value: object, *, label: str) -> Decimal:
@@ -170,7 +181,9 @@ def _extract_airport_body(
 ) -> Mapping[str, str]:
     station = station_id.strip().upper()
     matches = [
-        attrs for attrs in parser.airport_bodies if attrs.get("data-icao-code", "").upper() == station
+        attrs
+        for attrs in parser.airport_bodies
+        if attrs.get("data-icao-code", "").upper() == station
     ]
     if len(matches) != 1:
         raise WeatherUndergroundHistoryError(
@@ -178,7 +191,9 @@ def _extract_airport_body(
         )
     attrs = matches[0]
     if attrs.get("data-mode", "").lower() != "daily":
-        raise WeatherUndergroundHistoryError("Weather Underground page is not in daily-history mode")
+        raise WeatherUndergroundHistoryError(
+            "Weather Underground page is not in daily-history mode"
+        )
     page_timezone = attrs.get("data-time-zone", "")
     if page_timezone != market_timezone:
         raise WeatherUndergroundHistoryError(
@@ -191,7 +206,9 @@ def _extract_airport_body(
         )
     location_id = attrs.get("data-location-id", "")
     if not location_id.upper().startswith(f"{station}:"):
-        raise WeatherUndergroundHistoryError("Weather Underground location ID disagrees with station ID")
+        raise WeatherUndergroundHistoryError(
+            "Weather Underground location ID disagrees with station ID"
+        )
     return attrs
 
 
@@ -199,7 +216,7 @@ def _observation_json_candidate(value: object) -> Sequence[Mapping[str, object]]
     if not isinstance(value, list) or not value:
         return None
     rows: list[Mapping[str, object]] = []
-    for item in value:
+    for item in cast(list[object], value):
         if not isinstance(item, Mapping):
             return None
         row = cast(Mapping[str, object], item)
@@ -249,7 +266,9 @@ def _normalize_observations(
                 "Weather Underground observation series contains a timestamp outside the requested local day"
             )
         if timestamp_utc in seen_timestamps:
-            raise WeatherUndergroundHistoryError("duplicate Weather Underground observation timestamp")
+            raise WeatherUndergroundHistoryError(
+                "duplicate Weather Underground observation timestamp"
+            )
         seen_timestamps.add(timestamp_utc)
         observations.append(
             WeatherUndergroundObservation(
@@ -317,7 +336,7 @@ def parse_wunderground_daily_history_html(
     station_id: str,
     market_date: date,
     market_timezone: str,
-    coverage_policy: WeatherUndergroundCoveragePolicy = WeatherUndergroundCoveragePolicy(),
+    coverage_policy: WeatherUndergroundCoveragePolicy = _DEFAULT_COVERAGE_POLICY,
 ) -> WeatherUndergroundDailyHistoryCapture:
     """Parse one canonical public Weather Underground daily-history page."""
 
@@ -327,7 +346,9 @@ def parse_wunderground_daily_history_html(
     retrieved = retrieved_at_utc.astimezone(UTC)
     timezone = ZoneInfo(market_timezone)
     if market_date >= retrieved.astimezone(timezone).date():
-        raise WeatherUndergroundHistoryError("daily history is not final until the market-local day has ended")
+        raise WeatherUndergroundHistoryError(
+            "daily history is not final until the market-local day has ended"
+        )
     try:
         text = raw_html.decode("utf-8")
     except UnicodeDecodeError as exc:
@@ -407,7 +428,7 @@ def fetch_wunderground_daily_history(
     market_date: date,
     market_timezone: str,
     timeout_seconds: float = 30.0,
-    coverage_policy: WeatherUndergroundCoveragePolicy = WeatherUndergroundCoveragePolicy(),
+    coverage_policy: WeatherUndergroundCoveragePolicy = _DEFAULT_COVERAGE_POLICY,
 ) -> WeatherUndergroundDailyHistoryCapture:
     """Fetch and parse one public Weather Underground daily-history page."""
 
@@ -426,7 +447,7 @@ def fetch_wunderground_daily_history(
         },
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw_html = response.read()
             final_url = response.geturl()
     except OSError as exc:

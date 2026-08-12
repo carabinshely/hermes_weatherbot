@@ -14,11 +14,10 @@ from weatherbot.resolution.wunderground import (
     parse_wunderground_daily_history_html,
 )
 
-_SOURCE_URL = (
-    "https://www.wunderground.com/history/daily/us/ny/new-york-city/KLGA/date/2026-7-18"
-)
+_SOURCE_URL = "https://www.wunderground.com/history/daily/us/ny/new-york-city/KLGA/date/2026-7-18"
 _MARKET_DATE = date(2026, 7, 18)
 _TIMEZONE = "America/New_York"
+_DEFAULT_POLICY = WeatherUndergroundCoveragePolicy()
 
 
 def _observations(
@@ -84,17 +83,23 @@ def _html(
     """.encode()
 
 
-def _parse(raw_html: bytes, **kwargs: object):
-    parameters = {
-        "source_url": _SOURCE_URL,
-        "retrieved_at_utc": datetime(2026, 7, 20, 12, tzinfo=UTC),
-        "market_id": MarketId("wu-klga-2026-07-18"),
-        "station_id": "KLGA",
-        "market_date": _MARKET_DATE,
-        "market_timezone": _TIMEZONE,
-    }
-    parameters.update(kwargs)
-    return parse_wunderground_daily_history_html(raw_html, **parameters)
+def _parse(
+    raw_html: bytes,
+    *,
+    source_url: str = _SOURCE_URL,
+    retrieved_at_utc: datetime = datetime(2026, 7, 20, 12, tzinfo=UTC),
+    coverage_policy: WeatherUndergroundCoveragePolicy = _DEFAULT_POLICY,
+):
+    return parse_wunderground_daily_history_html(
+        raw_html,
+        source_url=source_url,
+        retrieved_at_utc=retrieved_at_utc,
+        market_id=MarketId("wu-klga-2026-07-18"),
+        station_id="KLGA",
+        market_date=_MARKET_DATE,
+        market_timezone=_TIMEZONE,
+        coverage_policy=coverage_policy,
+    )
 
 
 def test_public_history_page_becomes_final_authoritative_evidence() -> None:
@@ -122,20 +127,19 @@ def test_normalized_weather_hash_ignores_unrelated_page_churn() -> None:
     assert first.evidence.source_revision == second.evidence.source_revision
 
 
-@pytest.mark.parametrize(
-    ("html_kwargs", "message"),
-    (
-        ({"station": "KJFK"}, "station KLGA"),
-        ({"market_date_text": "2026-7-17"}, "market date mismatch"),
-        ({"timezone": "America/Chicago"}, "timezone mismatch"),
-    ),
-)
-def test_source_identity_mismatch_fails_closed(
-    html_kwargs: dict[str, str],
-    message: str,
-) -> None:
-    with pytest.raises(WeatherUndergroundHistoryError, match=message):
-        _parse(_html(_observations(), **html_kwargs))
+def test_station_identity_mismatch_fails_closed() -> None:
+    with pytest.raises(WeatherUndergroundHistoryError, match="station KLGA"):
+        _parse(_html(_observations(), station="KJFK"))
+
+
+def test_market_date_identity_mismatch_fails_closed() -> None:
+    with pytest.raises(WeatherUndergroundHistoryError, match="market date mismatch"):
+        _parse(_html(_observations(), market_date_text="2026-7-17"))
+
+
+def test_timezone_identity_mismatch_fails_closed() -> None:
+    with pytest.raises(WeatherUndergroundHistoryError, match="timezone mismatch"):
+        _parse(_html(_observations(), timezone="America/Chicago"))
 
 
 def test_current_market_day_is_not_treated_as_final_history() -> None:
