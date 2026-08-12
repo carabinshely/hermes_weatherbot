@@ -17,6 +17,7 @@ from execution_modes import (
     resolve_execution_context,
     run_live_operation,
 )
+from weatherbot.paper import PaperRuntimeConfig
 
 
 @pytest.mark.parametrize("value", [None, "", "disabled", "automatic", 1])
@@ -85,13 +86,12 @@ def test_non_live_gate_never_calls_live_callback(mode: ExecutionMode) -> None:
         require_live(context, operation="test live call")
 
 
-@pytest.mark.parametrize("mode", ["research", "paper"])
-def test_non_live_status_runs_without_wallet_credentials(mode: str) -> None:
+def test_research_status_runs_without_wallet_credentials() -> None:
     environment = os.environ.copy()
     environment.pop("PK", None)
     environment.pop("WALLET", None)
     completed = subprocess.run(
-        [sys.executable, "bot_v3.py", "status", "--mode", mode],
+        [sys.executable, "bot_v3.py", "status", "--mode", "research"],
         cwd=Path.cwd(),
         env=environment,
         check=False,
@@ -100,18 +100,44 @@ def test_non_live_status_runs_without_wallet_credentials(mode: str) -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stderr
-    assert f"Execution mode: {mode.upper()}" in completed.stdout
+    assert "Execution mode: RESEARCH" in completed.stdout
     assert "Wallet access: disabled" in completed.stdout
-    if mode == "paper":
-        assert "Paper ledger:" in completed.stdout
-        assert "Starting cash:" in completed.stdout
-        assert "Available cash:" in completed.stdout
-        assert "Market value:" in completed.stdout
-        assert "Realized P/L:" in completed.stdout
-        assert "Unrealized P/L:" in completed.stdout
-        assert "Fees:" in completed.stdout
-        assert "Exposure:" in completed.stdout
-        assert "Drawdown:" in completed.stdout
+
+
+def test_paper_status_uses_isolated_ledger_without_wallet_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import bot_v3
+
+    environment_runtime = PaperRuntimeConfig.from_mapping(
+        {
+            "paper_ledger_path": str(tmp_path / "paper.sqlite3"),
+            "paper_archive_directory": str(tmp_path / "archive"),
+        },
+        base_dir=tmp_path,
+    )
+    monkeypatch.setattr(bot_v3, "PAPER_RUNTIME", environment_runtime)
+    monkeypatch.delenv("PK", raising=False)
+    monkeypatch.delenv("WALLET", raising=False)
+
+    bot_v3.show_status(
+        ExecutionContext(mode=ExecutionMode.PAPER, configured_mode=ExecutionMode.PAPER)
+    )
+    output = capsys.readouterr().out
+
+    assert "Wallet access: disabled" in output
+    assert "Paper ledger:" in output
+    assert str(environment_runtime.ledger_path) in output
+    assert "Starting cash:" in output
+    assert "Available cash:" in output
+    assert "Market value:" in output
+    assert "Realized P/L:" in output
+    assert "Unrealized P/L:" in output
+    assert "Fees:" in output
+    assert "Exposure:" in output
+    assert "Drawdown:" in output
 
 
 def test_default_status_is_research_and_wallet_free() -> None:
