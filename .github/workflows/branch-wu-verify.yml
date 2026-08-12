@@ -21,6 +21,33 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
       - run: uv sync --locked --all-groups
+      - name: Apply bounded default-policy fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path("weatherbot/resolution/wunderground.py")
+          text = path.read_text(encoding="utf-8")
+          marker = "\n\n@dataclass(frozen=True, slots=True)\nclass WeatherUndergroundObservation:\n"
+          replacement = (
+              "\n\n_DEFAULT_COVERAGE_POLICY = WeatherUndergroundCoveragePolicy()"
+              "\n\n\n@dataclass(frozen=True, slots=True)\nclass WeatherUndergroundObservation:\n"
+          )
+          if text.count(marker) != 1:
+              raise SystemExit("coverage-policy insertion point is ambiguous")
+          text = text.replace(marker, replacement)
+          default = (
+              "coverage_policy: WeatherUndergroundCoveragePolicy = "
+              "WeatherUndergroundCoveragePolicy(),"
+          )
+          if text.count(default) != 2:
+              raise SystemExit("expected two coverage-policy defaults")
+          text = text.replace(
+              default,
+              "coverage_policy: WeatherUndergroundCoveragePolicy = _DEFAULT_COVERAGE_POLICY,",
+          )
+          path.write_text(text, encoding="utf-8")
+          PY
       - run: uv run ruff check --fix weatherbot/resolution/wunderground.py tests/resolution/test_wunderground.py
       - run: uv run ruff format weatherbot/resolution/wunderground.py tests/resolution/test_wunderground.py
       - name: Verify strict typing before commit
