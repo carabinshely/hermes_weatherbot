@@ -34,101 +34,79 @@ jobs:
 
           module = Path("weatherbot/forecasting/calibration_data.py")
           text = module.read_text(encoding="utf-8")
-          marker = '''def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:
-              if isinstance(value, bool):
-                  raise CalibrationError(f"{label} must be decimal")
-          '''
-          marker = "\n".join(line[14:] if line.startswith("              ") else line for line in marker.splitlines()) + "\n"
-          replacement = '''def _integer(value: object, *, label: str) -> int:
-              if isinstance(value, bool) or not isinstance(value, int):
-                  raise CalibrationError(f"{label} must be an integer")
-              return value
-
-
-          def _boolean(value: object, *, label: str) -> bool:
-              if not isinstance(value, bool):
-                  raise CalibrationError(f"{label} must be boolean")
-              return value
-
-
-          def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:
-              if isinstance(value, bool):
-                  raise CalibrationError(f"{label} must be decimal")
-          '''
-          replacement = "\n".join(line[10:] if line.startswith("          ") else line for line in replacement.splitlines()) + "\n"
-          text = replace_once(text, marker, replacement)
           text = replace_once(
               text,
-              '''        if isinstance(self.bias_correction, bool) is False:
-                  raise CalibrationError("bias_correction must be boolean")
-          '''.replace("          ", ""),
-              '''        bias_correction = _boolean(self.bias_correction, label="bias_correction")
-          '''.replace("          ", ""),
+              "def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:\n",
+              "def _integer(value: object, *, label: str) -> int:\n"
+              "    if isinstance(value, bool) or not isinstance(value, int):\n"
+              "        raise CalibrationError(f\"{label} must be an integer\")\n"
+              "    return value\n\n\n"
+              "def _boolean(value: object, *, label: str) -> bool:\n"
+              "    if not isinstance(value, bool):\n"
+              "        raise CalibrationError(f\"{label} must be boolean\")\n"
+              "    return value\n\n\n"
+              "def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:\n",
           )
           text = replace_once(
               text,
-              '''        if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
-                  raise CalibrationError("forecast lead_days must be an integer")
-          '''.replace("          ", ""),
-              '''        _integer(self.lead_days, label="forecast lead_days")
-          '''.replace("          ", ""),
+              "        if isinstance(self.bias_correction, bool) is False:\n"
+              "            raise CalibrationError(\"bias_correction must be boolean\")\n",
+              "        bias_correction = _boolean(self.bias_correction, label=\"bias_correction\")\n",
           )
           text = replace_once(
               text,
-              '        object.__setattr__(self, "payload_sha256", payload_hash)\n',
-              '        object.__setattr__(self, "bias_correction", bias_correction)\n'
-              '        object.__setattr__(self, "payload_sha256", payload_hash)\n',
+              "        if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):\n"
+              "            raise CalibrationError(\"forecast lead_days must be an integer\")\n",
+              "        _integer(self.lead_days, label=\"forecast lead_days\")\n",
           )
           text = replace_once(
               text,
-              '''        if isinstance(self.min_pairs, bool) or not isinstance(self.min_pairs, int):
-                  raise CalibrationError("parity min_pairs must be an integer")
-          '''.replace("          ", ""),
-              '''        _integer(self.min_pairs, label="parity min_pairs")
-          '''.replace("          ", ""),
-          )
-          old = '''        for label, value in (
-              ("reference_count", self.reference_count),
-              ("candidate_count", self.candidate_count),
-              ("matched_count", self.matched_count),
-          ):
-              if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-                  raise CalibrationError(f"parity {label} must be a non-negative integer")
-          '''
-          old = "\n".join(line[10:] if line.startswith("          ") else line for line in old.splitlines()) + "\n"
-          new = '''        for label, value in (
-              ("reference_count", self.reference_count),
-              ("candidate_count", self.candidate_count),
-              ("matched_count", self.matched_count),
-          ):
-              _integer(value, label=f"parity {label}")
-              if value < 0:
-                  raise CalibrationError(f"parity {label} must be non-negative")
-          '''
-          new = "\n".join(line[10:] if line.startswith("          ") else line for line in new.splitlines()) + "\n"
-          text = replace_once(text, old, new)
-          text = replace_once(
-              text,
-              '''        if isinstance(self.forecast_bias_correction, bool) is False:
-                  raise CalibrationError("dataset forecast_bias_correction must be boolean")
-          '''.replace("          ", ""),
-              '''        bias_correction = _boolean(
-              self.forecast_bias_correction,
-              label="dataset forecast_bias_correction",
-          )
-          '''.replace("          ", ""),
+              "        object.__setattr__(self, \"payload_sha256\", payload_hash)\n",
+              "        object.__setattr__(self, \"bias_correction\", bias_correction)\n"
+              "        object.__setattr__(self, \"payload_sha256\", payload_hash)\n",
           )
           text = replace_once(
               text,
-              '''        object.__setattr__(
-              self,
-              "forecast_provenance_sha256",
-          '''.replace("          ", ""),
-              '''        object.__setattr__(self, "forecast_bias_correction", bias_correction)
-          object.__setattr__(
-              self,
-              "forecast_provenance_sha256",
-          '''.replace("          ", ""),
+              "        if isinstance(self.min_pairs, bool) or not isinstance(self.min_pairs, int):\n"
+              "            raise CalibrationError(\"parity min_pairs must be an integer\")\n",
+              "        _integer(self.min_pairs, label=\"parity min_pairs\")\n",
+          )
+          text = replace_once(
+              text,
+              "        for label, value in (\n"
+              "            (\"reference_count\", self.reference_count),\n"
+              "            (\"candidate_count\", self.candidate_count),\n"
+              "            (\"matched_count\", self.matched_count),\n"
+              "        ):\n"
+              "            if isinstance(value, bool) or not isinstance(value, int) or value < 0:\n"
+              "                raise CalibrationError(f\"parity {label} must be a non-negative integer\")\n",
+              "        for label, value in (\n"
+              "            (\"reference_count\", self.reference_count),\n"
+              "            (\"candidate_count\", self.candidate_count),\n"
+              "            (\"matched_count\", self.matched_count),\n"
+              "        ):\n"
+              "            _integer(value, label=f\"parity {label}\")\n"
+              "            if value < 0:\n"
+              "                raise CalibrationError(f\"parity {label} must be non-negative\")\n",
+          )
+          text = replace_once(
+              text,
+              "        if isinstance(self.forecast_bias_correction, bool) is False:\n"
+              "            raise CalibrationError(\"dataset forecast_bias_correction must be boolean\")\n",
+              "        bias_correction = _boolean(\n"
+              "            self.forecast_bias_correction,\n"
+              "            label=\"dataset forecast_bias_correction\",\n"
+              "        )\n",
+          )
+          text = replace_once(
+              text,
+              "        object.__setattr__(\n"
+              "            self,\n"
+              "            \"forecast_provenance_sha256\",\n",
+              "        object.__setattr__(self, \"forecast_bias_correction\", bias_correction)\n"
+              "        object.__setattr__(\n"
+              "            self,\n"
+              "            \"forecast_provenance_sha256\",\n",
           )
           module.write_text(text, encoding="utf-8")
 
@@ -151,8 +129,8 @@ jobs:
           )
           text = replace_once(
               text,
-              '            payload_character=chr(ord("e") + index),\n',
-              '            payload_character=("1", "2", "3", "4")[index],\n',
+              "            payload_character=chr(ord(\"e\") + index),\n",
+              "            payload_character=(\"1\", \"2\", \"3\", \"4\")[index],\n",
           )
           text = replace_once(
               text,
