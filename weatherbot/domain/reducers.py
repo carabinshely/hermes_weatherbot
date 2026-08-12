@@ -552,10 +552,8 @@ def apply_event(state: LedgerState, event: LedgerEvent) -> LedgerState:
         next_state = _apply_settlement(state, event)
     elif isinstance(event, RiskScopeRegistered):
         next_state = _apply_risk_scope_registered(state, event)
-    elif isinstance(event, PortfolioValuationRecorded):
-        next_state = _apply_portfolio_valuation(state, event)
     else:
-        raise TypeError(f"unsupported ledger event type: {type(event).__name__}")
+        next_state = _apply_portfolio_valuation(state, event)
 
     next_state = _record_event(next_state, event, event_fp)
     next_state.assert_invariants()
