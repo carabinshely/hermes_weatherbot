@@ -7,7 +7,7 @@ def test_bot_monitor_invokes_real_resolution_cycle() -> None:
     source = Path("bot_v3.py").read_text(encoding="utf-8")
     assert "resolve_ledger_positions" in source
     assert "run_resolution_monitor_cycle" in source
-    assert 'choices=("scan", "run", "status", "resolve", "cancel")' in source
+    assert 'choices=("scan", "run", "status", "resolve", "cancel", "paper-reset")' in source
     assert 'elif args.command == "resolve":' in source
 
 
