@@ -169,13 +169,24 @@ def test_paper_reset_requires_explicit_confirmation_before_history_mutation() ->
 
 def test_paper_scanner_bypasses_legacy_kelly_times_max_bet_path() -> None:
     source = Path("bot_v3.py").read_text(encoding="utf-8")
-    scanner = source[source.index("def scan_weather_markets") :]
+    scanner = source[source.index("def scan_and_trade") :]
     paper_branch = scanner.index("if context.mode is ExecutionMode.PAPER:")
     legacy_sizing = scanner.index("preliminary_kelly = get_adjusted_kelly")
+    paper_continue = scanner.index("\n                continue", paper_branch)
+    paper_block = scanner[paper_branch:paper_continue]
 
     assert paper_branch < legacy_sizing
     assert "candidate only; simulated fills are implemented in #27" not in scanner
     assert "submit_scanner_candidate(" in scanner[:legacy_sizing]
+    for live_write_symbol in (
+        "place_buy_order",
+        "get_clob_client",
+        "ensure_approvals",
+        "cancel_market_orders",
+        "PK",
+        "WALLET",
+    ):
+        assert live_write_symbol not in paper_block
 
 
 def test_paper_resolution_and_status_select_dedicated_ledger() -> None:
