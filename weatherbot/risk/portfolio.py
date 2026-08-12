@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, time
+from decimal import Decimal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from weatherbot.domain import (
@@ -26,6 +28,8 @@ from weatherbot.risk.portfolio_model import (
     PortfolioRiskPolicy,
     PortfolioRiskRejectionReason,
 )
+
+_ZERO = Decimal("0")
 
 
 def _risk_scopes(events: tuple[LedgerEvent, ...]) -> dict[PositionKey, RiskScope]:
@@ -156,10 +160,7 @@ def _high_water_mark(
     for event in events:
         if isinstance(event, AccountOpened) and initial_cash is None:
             initial_cash = event.initial_cash
-        elif (
-            isinstance(event, PortfolioValuationRecorded)
-            and event.occurred_at <= evaluated_at
-        ):
+        elif isinstance(event, PortfolioValuationRecorded) and event.occurred_at <= evaluated_at:
             prior_equities.append(event.valuation.equity)
     if initial_cash is None:
         raise ValueError("opened ledger has no AccountOpened event")
@@ -244,11 +245,6 @@ def evaluate_portfolio_risk(
         raise ValueError("proposed cash must be positive")
     if proposed_cash.currency != state.currency or policy.currency != state.currency:
         raise ValueError("portfolio risk inputs use a different currency from the ledger")
-    if proposed_scope.position_key != (
-        proposed_scope.market_id,
-        proposed_scope.outcome_id,
-    ):
-        raise ValueError("proposed scope has inconsistent position identity")
 
     scopes = _risk_scopes(events)
     registered_scope = scopes.get(proposed_scope.position_key)
@@ -267,11 +263,9 @@ def evaluate_portfolio_risk(
         sorted(f"{key[0]}/{key[1]}" for key in existing_keys if key not in scopes)
     )
 
-    def scoped_exposure(predicate) -> Money:
+    def scoped_exposure(predicate: Callable[[RiskScope], bool]) -> Money:
         values = [
-            amount
-            for key, amount in exposure.items()
-            if key in scopes and predicate(scopes[key])
+            amount for key, amount in exposure.items() if key in scopes and predicate(scopes[key])
         ]
         return _sum_money(values, currency=state.currency)
 
@@ -281,18 +275,19 @@ def evaluate_portfolio_risk(
         lambda scope: scope.city_date_key == proposed_scope.city_date_key
     )
     city_date_after = city_date_before + proposed_cash
-    correlation = tuple(
-        CorrelationExposure(
-            group=group,
-            before=(
-                before := scoped_exposure(
-                    lambda scope, target=group: target in scope.all_correlation_groups
-                )
-            ),
-            after=before + proposed_cash,
+    correlation_items: list[CorrelationExposure] = []
+    for group in proposed_scope.all_correlation_groups:
+        before = scoped_exposure(
+            lambda scope, target=group: target in scope.all_correlation_groups
         )
-        for group in proposed_scope.all_correlation_groups
-    )
+        correlation_items.append(
+            CorrelationExposure(
+                group=group,
+                before=before,
+                after=before + proposed_cash,
+            )
+        )
+    correlation = tuple(correlation_items)
 
     valuation_error = _validate_valuation(
         state,
@@ -319,8 +314,8 @@ def evaluate_portfolio_risk(
         current_equity = state.cash
         high_water = current_equity
     daily_pnl = realized_today + unrealized
-    daily_loss = Money.of(max(0, -daily_pnl.amount), state.currency)
-    drawdown = Money.of(max(0, high_water.amount - current_equity.amount), state.currency)
+    daily_loss = Money.of(max(_ZERO, -daily_pnl.amount), state.currency)
+    drawdown = Money.of(max(_ZERO, high_water.amount - current_equity.amount), state.currency)
 
     common = dict(
         proposed_scope=proposed_scope,
