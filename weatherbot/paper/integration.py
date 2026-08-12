@@ -7,13 +7,14 @@ from collections.abc import Mapping
 from datetime import datetime
 from decimal import Decimal
 
-from weatherbot.domain import PositionKey, RiskScope, fingerprint
+from weatherbot.domain import Money, PositionKey, RiskScope, fingerprint
 from weatherbot.forecasting import WeatherInputSnapshot
 from weatherbot.markets import ConditionId, OrderBookSnapshot, OutcomeTokenId
 from weatherbot.paper.ledger import archive_and_reset_paper_ledger
 from weatherbot.paper.model import PaperStatus
 from weatherbot.paper.runtime import PaperBookFetcher, PaperRuntimeConfig, load_open_position_books
 from weatherbot.paper.service import PaperEntryRequest, PaperEntryResult, PaperTradingService
+from weatherbot.persistence import StartupRecovery
 from weatherbot.quoting import CostPolicy, FreshnessPolicy, MarketEventSnapshot
 
 
@@ -39,6 +40,12 @@ def paper_scan_decision_id(
         )
     ).encode()
     return f"paper_scan_{hashlib.sha256(material).hexdigest()}"
+
+
+def recover_paper_runtime(*, runtime: PaperRuntimeConfig) -> StartupRecovery:
+    """Reconcile durable PAPER orders before any new scanner work starts."""
+    with runtime.open_store() as store:
+        return PaperTradingService(store).recover()
 
 
 def submit_scanner_candidate(
@@ -88,6 +95,25 @@ def submit_scanner_candidate(
         return service.submit_entry(request, owner_id=owner_id)
 
 
+def _pristine_status(runtime: PaperRuntimeConfig) -> PaperStatus:
+    zero = Money.zero(runtime.starting_cash.currency)
+    return PaperStatus(
+        starting_cash=runtime.starting_cash,
+        cash=runtime.starting_cash,
+        reserved_cash=zero,
+        available_cash=runtime.starting_cash,
+        market_value=zero,
+        realized_pnl=zero,
+        unrealized_pnl=zero,
+        fees=zero,
+        exposure=zero,
+        equity=runtime.starting_cash,
+        high_water_mark=runtime.starting_cash,
+        drawdown=zero,
+        open_positions=0,
+    )
+
+
 def paper_runtime_status(
     *,
     runtime: PaperRuntimeConfig,
@@ -96,11 +122,12 @@ def paper_runtime_status(
     cost_policy: CostPolicy,
     fetch_book: PaperBookFetcher,
 ) -> PaperStatus:
-    with runtime.open_store() as store:
-        service = PaperTradingService(store)
-        service.recover()
+    """Report PAPER state without creating, migrating, recovering, or appending ledger data."""
+    if not runtime.ledger_path.exists():
+        return _pristine_status(runtime)
+    with runtime.open_read_only_store() as store:
         books: Mapping[PositionKey, OrderBookSnapshot] = load_open_position_books(store, fetch_book)
-        return service.status(
+        return PaperTradingService(store).status(
             books,
             cost_policy=cost_policy,
             observed_at=observed_at,
