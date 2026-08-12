@@ -165,6 +165,27 @@ def test_depth_reject_fails_closed() -> None:
     assert decision.target_cash.is_zero
 
 
+def test_slippage_rejection_converges_to_largest_slippage_safe_budget() -> None:
+    decision = size(
+        risk_capital=capital(cash="100"),
+        probability="0.90",
+        sizing_policy=policy(maximum_cash="100"),
+        first_ask="0.40",
+        second_ask="0.60",
+        first_size="3",
+        second_size="1000",
+    )
+
+    assert decision.status is RiskDecisionStatus.APPROVED
+    assert decision.binding_cap is BindingCap.EXECUTABLE_SLIPPAGE
+    assert decision.iterations >= 2
+    assert decision.target_cash == Money.of("1.246")
+    assert decision.quote is not None
+    assert decision.quote.quote.worst_price == Decimal("0.40")
+    assert decision.quote.average_slippage <= decision.quote.cost_policy.maximum_average_slippage
+    assert decision.quote.worst_slippage <= decision.quote.cost_policy.maximum_worst_slippage
+
+
 def test_fees_can_erase_seed_edge_and_force_zero_size() -> None:
     decision = size(
         probability="0.405",
