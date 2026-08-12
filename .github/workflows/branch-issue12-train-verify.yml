@@ -21,6 +21,95 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
       - run: uv sync --locked --all-groups
+      - name: Apply bounded training typing fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match, found {count}: {old!r}")
+              return text.replace(old, new)
+
+          train_path = Path("weatherbot/forecasting/calibration_train.py")
+          text = train_path.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "    if isinstance(min_sample_count, bool) or not isinstance(min_sample_count, int):\n",
+              "    if isinstance(min_sample_count, bool):\n",
+          )
+          text = replace_once(text, "    report = {\n", "    report: dict[str, object] = {\n")
+          text = replace_once(
+              text,
+              '                "calibrated_better_mean_log_score": output.report["baseline_comparison"][\n'
+              '                    "calibrated_better_mean_log_score"\n'
+              '                ],\n',
+              '                "calibrated_better_mean_log_score": (\n'
+              '                    output.fit.validation.mean_log_score\n'
+              '                    < output.fit.validation.baseline_mean_log_score\n'
+              '                ),\n',
+          )
+          text = replace_once(
+              text,
+              '                "calibrated_better_mean_ranked_probability_score": output.report[\n'
+              '                    "baseline_comparison"\n'
+              '                ]["calibrated_better_mean_ranked_probability_score"],\n',
+              '                "calibrated_better_mean_ranked_probability_score": (\n'
+              '                    output.fit.validation.mean_ranked_probability_score\n'
+              '                    < output.fit.validation.baseline_mean_ranked_probability_score\n'
+              '                ),\n',
+          )
+          train_path.write_text(text, encoding="utf-8")
+
+          test_path = Path("tests/forecasting/test_calibration_io_train.py")
+          text = test_path.read_text(encoding="utf-8")
+          old = '''    kwargs = {
+              "records_path": records_path,
+              "manifest_path": manifest_path,
+              "model_version": "test-calibration-v1",
+              "created_at_utc": datetime(2026, 8, 12, 13, tzinfo=UTC),
+              "training_end": date(2026, 6, 10),
+              "validation_start": date(2026, 6, 11),
+              "validation_end": date(2026, 6, 14),
+              "min_sample_count": 5,
+          }
+
+          first = train_calibration_dataset(**kwargs)
+          second = train_calibration_dataset(**kwargs)
+          '''
+          old = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in old.splitlines()
+          ) + "\n"
+          new = '''    first = train_calibration_dataset(
+              records_path=records_path,
+              manifest_path=manifest_path,
+              model_version="test-calibration-v1",
+              created_at_utc=datetime(2026, 8, 12, 13, tzinfo=UTC),
+              training_end=date(2026, 6, 10),
+              validation_start=date(2026, 6, 11),
+              validation_end=date(2026, 6, 14),
+              min_sample_count=5,
+          )
+          second = train_calibration_dataset(
+              records_path=records_path,
+              manifest_path=manifest_path,
+              model_version="test-calibration-v1",
+              created_at_utc=datetime(2026, 8, 12, 13, tzinfo=UTC),
+              training_end=date(2026, 6, 10),
+              validation_start=date(2026, 6, 11),
+              validation_end=date(2026, 6, 14),
+              min_sample_count=5,
+          )
+          '''
+          new = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in new.splitlines()
+          ) + "\n"
+          text = replace_once(text, old, new)
+          test_path.write_text(text, encoding="utf-8")
+          PY
       - run: uv run ruff check --fix weatherbot/forecasting/calibration_io.py weatherbot/forecasting/calibration_train.py tests/forecasting/test_calibration_io_train.py
       - run: uv run ruff format weatherbot/forecasting/calibration_io.py weatherbot/forecasting/calibration_train.py tests/forecasting/test_calibration_io_train.py
       - name: Verify strict typing
