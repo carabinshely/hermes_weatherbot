@@ -120,9 +120,7 @@ class OpenMeteoSingleRunCapture:
         if self.decision_time_utc.tzinfo is None or self.decision_time_utc.utcoffset() is None:
             raise CalibrationError("calibration decision time must be timezone-aware")
         digest = self.raw_payload_sha256.lower()
-        if len(digest) != 64 or any(
-            character not in "0123456789abcdef" for character in digest
-        ):
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
             raise CalibrationError("single-run payload hash must be SHA-256")
         if not self.forecasts:
             raise CalibrationError("single-run capture must contain forecasts")
@@ -139,8 +137,8 @@ class OpenMeteoSingleRunCapture:
         object.__setattr__(self, "raw_payload_sha256", digest)
 
 
-def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:
-    if isinstance(value, bool):
+def _decimal(value: object, *, label: str) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, (Decimal, int, str, float)):
         raise CalibrationError(f"{label} must be decimal")
     try:
         result = value if isinstance(value, Decimal) else Decimal(str(value))
@@ -239,7 +237,9 @@ def _validate_source_url(
         keep_blank_values=True,
     )
     if query != expected:
-        raise CalibrationError("single-run source URL parameters differ from the calibration contract")
+        raise CalibrationError(
+            "single-run source URL parameters differ from the calibration contract"
+        )
 
 
 def _parse_local_hour(value: object) -> tuple[date, str]:
@@ -295,7 +295,9 @@ def parse_single_run_daily_highs(
         raise CalibrationError("Open-Meteo single-run response is not valid JSON") from exc
     payload = _mapping(decoded, label="Open-Meteo single-run payload")
     if payload.get("timezone") != location.market_timezone:
-        raise CalibrationError("Open-Meteo single-run timezone differs from the calibration contract")
+        raise CalibrationError(
+            "Open-Meteo single-run timezone differs from the calibration contract"
+        )
     units = _mapping(payload.get("hourly_units"), label="Open-Meteo hourly units")
     if units.get("temperature_2m") not in {"°F", "°Fahrenheit", "F"}:
         raise CalibrationError("Open-Meteo single-run temperature unit is not Fahrenheit")
@@ -400,7 +402,7 @@ def fetch_single_run_daily_highs(
         headers={"User-Agent": "hermes-weatherbot-calibration/1"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             raw_payload = response.read()
             final_url = response.geturl()
     except OSError as exc:

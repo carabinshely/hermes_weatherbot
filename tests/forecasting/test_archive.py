@@ -105,12 +105,10 @@ def test_single_run_normalizes_three_local_calendar_horizons() -> None:
     ]
     assert all(item.forecast_as_of_utc == capture.decision_time_utc for item in capture.forecasts)
     assert all(
-        item.source_contract_id == PRODUCTION_FORECAST_CONTRACT_ID
-        for item in capture.forecasts
+        item.source_contract_id == PRODUCTION_FORECAST_CONTRACT_ID for item in capture.forecasts
     )
     assert all(
-        item.capture_contract_id == SINGLE_RUN_CAPTURE_CONTRACT_ID
-        for item in capture.forecasts
+        item.capture_contract_id == SINGLE_RUN_CAPTURE_CONTRACT_ID for item in capture.forecasts
     )
     assert all(item.bias_correction for item in capture.forecasts)
     assert all(item.payload_sha256 == capture.raw_payload_sha256 for item in capture.forecasts)
@@ -148,8 +146,8 @@ def test_single_run_rejects_incomplete_target_day() -> None:
 def test_sampling_policy_rejects_decision_too_close_to_run() -> None:
     policy = CalibrationForecastSamplingPolicy(
         run_cycle_hour_utc=18,
-        decision_local_time=time(hour=18, minute=30),
-        min_safe_run_age=timedelta(hours=8),
+        decision_local_time=time(hour=0, minute=15),
+        min_safe_run_age=timedelta(hours=12),
     )
 
     with pytest.raises(CalibrationError, match="too close"):
