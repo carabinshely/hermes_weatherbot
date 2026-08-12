@@ -26,110 +26,121 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          def replace_once(text: str, old: str, new: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match, found {count}: {old!r}")
+              return text.replace(old, new)
+
           calibration = Path("weatherbot/forecasting/calibration.py")
           text = calibration.read_text(encoding="utf-8")
-          replacements = {
-              '''        if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
-                  raise CalibrationError("sample lead_days must be an integer")
-              '''.replace("              ", ""): '''        _integer(self.lead_days, label="sample lead_days")
-              '''.replace("              ", ""),
-              '''            if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
-                      raise CalibrationError("calibration group lead_days must be an integer")
-              '''.replace("              ", ""): '''            _integer(self.lead_days, label="calibration group lead_days")
-              '''.replace("              ", ""),
-              '''        if isinstance(self.sample_count, bool) or not isinstance(self.sample_count, int):
-                  raise CalibrationError("group sample_count must be an integer")
-              '''.replace("              ", ""): '''        _integer(self.sample_count, label="group sample_count")
-              '''.replace("              ", ""),
-              '''        if isinstance(self.min_sample_count, bool) or not isinstance(self.min_sample_count, int):
-                  raise CalibrationError("min_sample_count must be an integer")
-              '''.replace("              ", ""): '''        _integer(self.min_sample_count, label="min_sample_count")
-              '''.replace("              ", ""),
-              '''        if isinstance(lead_days, bool) or not isinstance(lead_days, int) or not 0 <= lead_days <= 7:
-                  raise CalibrationError("lead_days must be an integer between 0 and 7")
-              '''.replace("              ", ""): '''        _integer(lead_days, label="lead_days")
-              if not 0 <= lead_days <= 7:
-                  raise CalibrationError("lead_days must be an integer between 0 and 7")
-              '''.replace("              ", ""),
-          }
-          for old, new in replacements.items():
-              assert text.count(old) == 1, old
-              text = text.replace(old, new)
+          text = replace_once(
+              text,
+              "        if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):\n"
+              "            raise CalibrationError(\"sample lead_days must be an integer\")\n",
+              "        _integer(self.lead_days, label=\"sample lead_days\")\n",
+          )
+          text = replace_once(
+              text,
+              "            if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):\n"
+              "                raise CalibrationError(\"calibration group lead_days must be an integer\")\n",
+              "            _integer(self.lead_days, label=\"calibration group lead_days\")\n",
+          )
+          text = replace_once(
+              text,
+              "        if isinstance(self.sample_count, bool) or not isinstance(self.sample_count, int):\n"
+              "            raise CalibrationError(\"group sample_count must be an integer\")\n",
+              "        _integer(self.sample_count, label=\"group sample_count\")\n",
+          )
+          text = replace_once(
+              text,
+              "        if isinstance(self.min_sample_count, bool) or not isinstance(self.min_sample_count, int):\n"
+              "            raise CalibrationError(\"min_sample_count must be an integer\")\n",
+              "        _integer(self.min_sample_count, label=\"min_sample_count\")\n",
+          )
+          text = replace_once(
+              text,
+              "        if isinstance(lead_days, bool) or not isinstance(lead_days, int) or not 0 <= lead_days <= 7:\n"
+              "            raise CalibrationError(\"lead_days must be an integer between 0 and 7\")\n",
+              "        _integer(lead_days, label=\"lead_days\")\n"
+              "        if not 0 <= lead_days <= 7:\n"
+              "            raise CalibrationError(\"lead_days must be an integer between 0 and 7\")\n",
+          )
           calibration.write_text(text, encoding="utf-8")
 
           fit = Path("weatherbot/forecasting/calibration_fit.py")
           text = fit.read_text(encoding="utf-8")
-          assert text.count("def _empirical_crps(") == 1
-          assert text.count("_empirical_crps(distribution, value)") == 1
-          text = text.replace("def _empirical_crps(", "def empirical_crps(")
-          text = text.replace("_empirical_crps(distribution, value)", "empirical_crps(distribution, value)")
+          text = replace_once(text, "def _empirical_crps(", "def empirical_crps(")
+          text = replace_once(
+              text,
+              "_empirical_crps(distribution, value)",
+              "empirical_crps(distribution, value)",
+          )
           fit.write_text(text, encoding="utf-8")
 
           semantics = Path("tests/forecasting/test_calibration_semantics.py")
           text = semantics.read_text(encoding="utf-8")
-          assert text.count("_empirical_crps") == 2
-          text = text.replace("_empirical_crps", "empirical_crps")
-          semantics.write_text(text, encoding="utf-8")
+          if text.count("_empirical_crps") != 2:
+              raise SystemExit("expected exactly two private empirical CRPS references")
+          semantics.write_text(text.replace("_empirical_crps", "empirical_crps"), encoding="utf-8")
 
           fit_test = Path("tests/forecasting/test_calibration_fit.py")
           text = fit_test.read_text(encoding="utf-8")
-          old = "from decimal import Decimal\n"
-          new = "from decimal import Decimal\nfrom typing import TypedDict\n"
-          assert text.count(old) == 1
-          text = text.replace(old, new)
-          marker = "_SOURCE = ForecastSource.OPEN_METEO_ECMWF_IFS025\n\n\n"
-          typed_dict = '''_SOURCE = ForecastSource.OPEN_METEO_ECMWF_IFS025
-
-
-          class _FitKwargs(TypedDict):
-              model_version: str
-              created_at_utc: datetime
-              forecast_contract_id: str
-              observation_contract_id: str
-              training_start: date
-              training_end: date
-              validation_start: date
-              validation_end: date
-              dataset_sha256: str
-              min_sample_count: int
-
-
-          '''.replace("          ", "")
-          assert text.count(marker) == 1
-          text = text.replace(marker, typed_dict)
-          assert text.count("    kwargs = dict(\n") == 1
-          text = text.replace("    kwargs = dict(\n", "    kwargs: _FitKwargs = {\n")
-          assert text.count("        min_sample_count=30,\n    )\n\n    first =") == 1
-          text = text.replace(
-              "        min_sample_count=30,\n    )\n\n    first =",
-              '        "min_sample_count": 30,\n    }\n\n    first =',
+          start_marker = (
+              "def test_distribution_selection_diagnostics_are_training_only_and_reproducible() -> None:\n"
           )
-          # Convert the remaining keyword-style entries in this one dictionary to keys.
-          for key in (
-              "model_version",
-              "created_at_utc",
-              "forecast_contract_id",
-              "observation_contract_id",
-              "training_start",
-              "training_end",
-              "validation_start",
-              "validation_end",
-              "dataset_sha256",
-          ):
-              old = f"        {key}="
-              new = f'        "{key}": '
-              assert text.count(old) >= 1
-              # Only the reproducibility test dictionary is between its declaration and first use.
-              prefix, rest = text.split("    kwargs: _FitKwargs = {\n", 1)
-              block, suffix = rest.split("\n    first =", 1)
-              assert block.count(old) == 1
-              block = block.replace(old, new)
-              text = prefix + "    kwargs: _FitKwargs = {\n" + block + "\n    first =" + suffix
-          fit_test.write_text(text, encoding="utf-8")
+          end_marker = "\n\ndef test_duplicate_sample_identity_is_rejected_instead_of_double_counted() -> None:\n"
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '''def test_distribution_selection_diagnostics_are_training_only_and_reproducible() -> None:
+              first = fit_calibration_artifact(
+                  training_and_holdout(),
+                  model_version="repeatable-v1",
+                  created_at_utc=datetime(2026, 8, 12, tzinfo=UTC),
+                  forecast_contract_id="forecast-v1",
+                  observation_contract_id="observation-v1",
+                  training_start=date(2025, 6, 1),
+                  training_end=date(2025, 7, 30),
+                  validation_start=date(2026, 6, 1),
+                  validation_end=date(2026, 6, 18),
+                  dataset_sha256="d" * 64,
+                  min_sample_count=30,
+              )
+              second = fit_calibration_artifact(
+                  tuple(reversed(training_and_holdout())),
+                  model_version="repeatable-v1",
+                  created_at_utc=datetime(2026, 8, 12, tzinfo=UTC),
+                  forecast_contract_id="forecast-v1",
+                  observation_contract_id="observation-v1",
+                  training_start=date(2025, 6, 1),
+                  training_end=date(2025, 7, 30),
+                  validation_start=date(2026, 6, 1),
+                  validation_end=date(2026, 6, 18),
+                  dataset_sha256="d" * 64,
+                  min_sample_count=30,
+              )
+
+              assert first.artifact.artifact_sha256 == second.artifact.artifact_sha256
+              assert first.validation == second.validation
+              assert all(group.diagnostics.normality_p_value >= 0 for group in first.artifact.groups)
+              assert all(
+                  group.diagnostics.empirical_selection_crps is not None
+                  for group in first.artifact.groups
+              )
+          '''
+          replacement = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in replacement.splitlines()
+          ) + "\n"
+          fit_test.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
           PY
       - run: uv run ruff check --fix weatherbot/forecasting/calibration.py weatherbot/forecasting/calibration_fit.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py
       - run: uv run ruff format weatherbot/forecasting/calibration.py weatherbot/forecasting/calibration_fit.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py
-      - name: Commit type fixes
+      - name: Verify type fixes before commit
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
+      - name: Verify calibration tests before commit
+        run: uv run pytest -q tests/forecasting/test_calibration.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py
+      - name: Commit verified type fixes
         run: |
           if git diff --quiet; then
             exit 0
