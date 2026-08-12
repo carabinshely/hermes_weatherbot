@@ -20,11 +20,12 @@ from pathlib import Path
 from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from weatherbot.domain import MarketId
+from weatherbot.domain import MarketId, WeatherObservationEvidence
 from weatherbot.forecasting.archive import (
     PRODUCTION_FORECAST_CONTRACT_ID,
     SINGLE_RUN_CAPTURE_CONTRACT_ID,
     CalibrationLocation,
+    OpenMeteoSingleRunCapture,
     calibration_run_for_market_day,
     parse_single_run_daily_highs,
     single_run_url,
@@ -34,6 +35,7 @@ from weatherbot.forecasting.calibration_data import (
     ArchiveParityPolicy,
     ArchiveParityReport,
     CalibrationDataset,
+    ForecastCalibrationEvidence,
     build_calibration_dataset,
     write_calibration_dataset,
 )
@@ -41,9 +43,6 @@ from weatherbot.resolution.wunderground import parse_wunderground_daily_history_
 
 OBSERVATION_CONTRACT_ID = (
     "polymarket:wunderground:airport-daily-high:whole-degree-f:finalized-history:v1"
-)
-DEFAULT_PARITY_EVIDENCE = Path(
-    "tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json"
 )
 DEFAULT_PARITY_POLICY = ArchiveParityPolicy(
     min_pairs=18,
@@ -55,6 +54,18 @@ _DEFAULT_TIMEOUT_SECONDS = 30.0
 _DEFAULT_REQUEST_DELAY_SECONDS = 0.5
 _DEFAULT_HORIZONS = (0, 1, 2)
 _CACHE_SCHEMA_VERSION = 1
+
+
+def _decimal(value: object, *, label: str) -> Decimal:
+    if isinstance(value, bool) or not isinstance(value, (Decimal, int, str, float)):
+        raise CalibrationError(f"{label} must be decimal")
+    try:
+        result = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise CalibrationError(f"{label} must be decimal") from exc
+    if not result.is_finite():
+        raise CalibrationError(f"{label} must be finite")
+    return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,7 +96,9 @@ class CalibrationMarketSpec:
         except ZoneInfoNotFoundError as exc:
             raise CalibrationError(f"invalid market timezone: {self.market_timezone!r}") from exc
         if not source.startswith("https://www.wunderground.com/history/daily/"):
-            raise CalibrationError("resolution source must be a Weather Underground daily-history URL")
+            raise CalibrationError(
+                "resolution source must be a Weather Underground daily-history URL"
+            )
         if not source.upper().endswith(f"/{station}"):
             raise CalibrationError("resolution source station differs from station_id")
         object.__setattr__(self, "city", city)
@@ -129,9 +142,7 @@ DEFAULT_MARKETS: tuple[CalibrationMarketSpec, ...] = (
         longitude=Decimal("-87.9073"),
         market_timezone="America/Chicago",
         station_id="KORD",
-        resolution_source_url=(
-            "https://www.wunderground.com/history/daily/us/il/chicago/KORD"
-        ),
+        resolution_source_url=("https://www.wunderground.com/history/daily/us/il/chicago/KORD"),
     ),
     CalibrationMarketSpec(
         city="miami",
@@ -140,9 +151,7 @@ DEFAULT_MARKETS: tuple[CalibrationMarketSpec, ...] = (
         longitude=Decimal("-80.2870"),
         market_timezone="America/New_York",
         station_id="KMIA",
-        resolution_source_url=(
-            "https://www.wunderground.com/history/daily/us/fl/miami/KMIA"
-        ),
+        resolution_source_url=("https://www.wunderground.com/history/daily/us/fl/miami/KMIA"),
     ),
     CalibrationMarketSpec(
         city="dallas",
@@ -151,9 +160,7 @@ DEFAULT_MARKETS: tuple[CalibrationMarketSpec, ...] = (
         longitude=Decimal("-96.8518"),
         market_timezone="America/Chicago",
         station_id="KDAL",
-        resolution_source_url=(
-            "https://www.wunderground.com/history/daily/us/tx/dallas/KDAL"
-        ),
+        resolution_source_url=("https://www.wunderground.com/history/daily/us/tx/dallas/KDAL"),
     ),
     CalibrationMarketSpec(
         city="seattle",
@@ -162,9 +169,7 @@ DEFAULT_MARKETS: tuple[CalibrationMarketSpec, ...] = (
         longitude=Decimal("-122.3088"),
         market_timezone="America/Los_Angeles",
         station_id="KSEA",
-        resolution_source_url=(
-            "https://www.wunderground.com/history/daily/us/wa/seatac/KSEA"
-        ),
+        resolution_source_url=("https://www.wunderground.com/history/daily/us/wa/seatac/KSEA"),
     ),
     CalibrationMarketSpec(
         city="atlanta",
@@ -173,9 +178,7 @@ DEFAULT_MARKETS: tuple[CalibrationMarketSpec, ...] = (
         longitude=Decimal("-84.4277"),
         market_timezone="America/New_York",
         station_id="KATL",
-        resolution_source_url=(
-            "https://www.wunderground.com/history/daily/us/ga/atlanta/KATL"
-        ),
+        resolution_source_url=("https://www.wunderground.com/history/daily/us/ga/atlanta/KATL"),
     ),
 )
 
@@ -266,7 +269,10 @@ class ImmutableHttpCache:
             raise CalibrationError("cache requested URL differs from the current request contract")
         final_url = _text(metadata.get("final_url"), label="cache final URL")
         retrieved = _timestamp(metadata.get("retrieved_at_utc"), label="cache retrieval time")
-        digest = _sha256(_text(metadata.get("payload_sha256"), label="cache payload hash"), label="cache payload hash")
+        digest = _sha256(
+            _text(metadata.get("payload_sha256"), label="cache payload hash"),
+            label="cache payload hash",
+        )
         return CachedHttpCapture(
             requested_url=cached_requested,
             final_url=final_url,
@@ -290,7 +296,9 @@ class ImmutableHttpCache:
                 payload = response.read()
                 final_url = response.geturl()
         except OSError as exc:
-            raise CalibrationError(f"historical data request failed for {requested_url}: {exc}") from exc
+            raise CalibrationError(
+                f"historical data request failed for {requested_url}: {exc}"
+            ) from exc
         finally:
             self._last_network_request_at = time_module.monotonic()
         retrieved = datetime.now(UTC)
@@ -375,11 +383,11 @@ def parity_report_from_evidence(
         rounded_error = _number(row.get("rounded_error_f"), label="parity rounded error")
         if rounded_error != 0:
             raise CalibrationError("archive parity evidence contains a rounded mismatch")
-        raw_error = float(_number(row.get("raw_error_from_rounded_reference_f"), label="parity raw error"))
-        errors.append(raw_error)
-        identities.append(
-            f"{city}|{reference_contract}|{target_date.isoformat()}|D+{lead_days}"
+        raw_error = float(
+            _number(row.get("raw_error_from_rounded_reference_f"), label="parity raw error")
         )
+        errors.append(raw_error)
+        identities.append(f"{city}|{reference_contract}|{target_date.isoformat()}|D+{lead_days}")
     if len(identities) != len(set(identities)):
         raise CalibrationError("archive parity evidence contains duplicate identities")
     summary = evidence.get("summary")
@@ -409,7 +417,9 @@ def parity_report_from_evidence(
     if not math.isclose(mae, reported_mae, rel_tol=0, abs_tol=1e-12):
         raise CalibrationError("archive parity MAE differs from committed evidence summary")
     if not math.isclose(max_abs, reported_max, rel_tol=0, abs_tol=1e-12):
-        raise CalibrationError("archive parity maximum error differs from committed evidence summary")
+        raise CalibrationError(
+            "archive parity maximum error differs from committed evidence summary"
+        )
     identity_sha = hashlib.sha256("\n".join(sorted(identities)).encode()).hexdigest()
     return ArchiveParityReport(
         reference_contract_id=reference_contract,
@@ -446,7 +456,7 @@ def collect_calibration_dataset(
         raise CalibrationError("issue #12 v1 dataset requires D+0, D+1, and D+2 horizons")
     now = datetime.now(UTC) if now_utc is None else _aware_utc(now_utc, label="build time")
     target_dates = _date_range(start_date, end_date)
-    pairs = []
+    pairs: list[tuple[ForecastCalibrationEvidence, WeatherObservationEvidence]] = []
 
     for market in markets:
         local_today = now.astimezone(ZoneInfo(market.market_timezone)).date()
@@ -455,7 +465,7 @@ def collect_calibration_dataset(
                 f"dataset end date {end_date} is too recent for finalized {market.city} history"
             )
 
-        observations = {}
+        observations: dict[date, WeatherObservationEvidence] = {}
         for target_date in target_dates:
             history_url = market.history_url(target_date)
             capture = cache.get(
@@ -477,9 +487,13 @@ def collect_calibration_dataset(
             observations[target_date] = parsed.evidence
 
         decision_days = sorted(
-            {target_date - timedelta(days=horizon) for target_date in target_dates for horizon in horizons}
+            {
+                target_date - timedelta(days=horizon)
+                for target_date in target_dates
+                for horizon in horizons
+            }
         )
-        forecast_captures = {}
+        forecast_captures: dict[date, OpenMeteoSingleRunCapture] = {}
         for decision_day in decision_days:
             run = calibration_run_for_market_day(decision_day)
             forecast_url = single_run_url(
@@ -537,18 +551,6 @@ def _wunderground_headers() -> dict[str, str]:
     }
 
 
-def _decimal(value: object, *, label: str) -> Decimal:
-    if isinstance(value, bool) or not isinstance(value, (Decimal, int, str, float)):
-        raise CalibrationError(f"{label} must be decimal")
-    try:
-        result = value if isinstance(value, Decimal) else Decimal(str(value))
-    except (InvalidOperation, ValueError) as exc:
-        raise CalibrationError(f"{label} must be decimal") from exc
-    if not result.is_finite():
-        raise CalibrationError(f"{label} must be finite")
-    return result
-
-
 def _number(value: object, *, label: str) -> Decimal:
     return _decimal(value, label=label)
 
@@ -601,7 +603,10 @@ def _safe_component(value: str, *, label: str) -> str:
     normalized = value.strip().replace("\\", "/")
     if not normalized or normalized.startswith("/") or ".." in normalized.split("/"):
         raise CalibrationError(f"{label} is not a safe relative cache component")
-    if any(character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/." for character in normalized):
+    if any(
+        character not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-/."
+        for character in normalized
+    ):
         raise CalibrationError(f"{label} contains unsupported characters")
     return normalized
 
@@ -638,7 +643,9 @@ def _selected_markets(names: list[str] | None) -> tuple[CalibrationMarketSpec, .
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build a reproducible forecast-calibration dataset")
+    parser = argparse.ArgumentParser(
+        description="Build a reproducible forecast-calibration dataset"
+    )
     parser.add_argument("--start-date", required=True, type=date.fromisoformat)
     parser.add_argument("--end-date", required=True, type=date.fromisoformat)
     parser.add_argument("--cache-dir", type=Path, default=Path("data/calibration/cache"))
@@ -655,7 +662,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--parity-evidence",
         type=Path,
-        default=DEFAULT_PARITY_EVIDENCE,
+        required=True,
+        help="Committed archive-parity evidence JSON used to authorize the capture contract",
     )
     parser.add_argument("--city", action="append", dest="cities")
     parser.add_argument("--offline", action="store_true")

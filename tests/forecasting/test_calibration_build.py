@@ -20,9 +20,7 @@ from weatherbot.forecasting.calibration_build import (
     parity_report_from_evidence,
 )
 
-_PARITY_EVIDENCE = Path(
-    "tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json"
-)
+_PARITY_EVIDENCE = Path("tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json")
 
 
 def _write_cache_entry(
