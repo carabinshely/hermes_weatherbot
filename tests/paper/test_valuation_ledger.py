@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -74,7 +75,7 @@ def test_unavailable_bid_depth_marks_unexecutable_remainder_at_zero(tmp_path: Pa
 
         mark = valuation.positions[0]
         assert mark.quantity == entry.state.positions[scope().position_key].quantity
-        assert mark.liquidation_value < Money.of("0.67")
+        assert mark.liquidation_value.amount < Decimal("0.67")
         assert valuation.equity == entry.state.cash + mark.liquidation_value
 
 
