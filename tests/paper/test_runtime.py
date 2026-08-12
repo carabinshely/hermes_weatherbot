@@ -5,12 +5,14 @@ from pathlib import Path
 from tests.paper.helpers import entry_request, paper_book, scope
 from tests.quoting.helpers import NOW
 from weatherbot.domain import Money
+from weatherbot.markets import ConditionId, OutcomeTokenId
 from weatherbot.paper import (
     PaperEntryStatus,
     PaperRuntimeConfig,
     PaperTradingService,
     load_open_position_books,
     open_position_book_references,
+    paper_scan_decision_id,
 )
 
 
@@ -23,6 +25,36 @@ def test_runtime_config_uses_separate_durable_paper_ledger_and_fixed_limits(tmp_
     assert config.sizing_policy.maximum_cash_per_trade == Money.of("2")
     assert config.portfolio_policy.maximum_total_exposure == Money.of("20")
     assert config.portfolio_policy.maximum_open_positions == 10
+
+
+def test_scanner_decision_id_is_stable_for_same_snapshot_and_changes_with_book() -> None:
+    request = entry_request()
+    first = paper_scan_decision_id(
+        model_version=request.model_version,
+        scope=request.scope,
+        weather=request.weather,
+        event=request.event,
+        decision_book=request.decision_order_book,
+    )
+    second = paper_scan_decision_id(
+        model_version=request.model_version,
+        scope=request.scope,
+        weather=request.weather,
+        event=request.event,
+        decision_book=request.decision_order_book,
+    )
+    changed_book = paper_book(book_hash="changed-decision-book")
+    changed = paper_scan_decision_id(
+        model_version=request.model_version,
+        scope=request.scope,
+        weather=request.weather,
+        event=request.event,
+        decision_book=changed_book,
+    )
+
+    assert first == second
+    assert first.startswith("paper_scan_")
+    assert changed != first
 
 
 def test_restart_reconstructs_open_position_public_book_identity(tmp_path: Path) -> None:
@@ -45,7 +77,7 @@ def test_restart_reconstructs_open_position_public_book_identity(tmp_path: Path)
         assert reference.position_key == scope().position_key
         assert str(reference.token_id) == str(scope().outcome_id)
 
-        def fetch(condition_id, token_id):
+        def fetch(condition_id: ConditionId, token_id: OutcomeTokenId):
             calls.append((str(condition_id), str(token_id)))
             return paper_book(book_hash="runtime-restarted-book")
 
