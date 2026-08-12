@@ -15,7 +15,6 @@ from tests.paper.test_resolution import StaticPaperResolutionSource
 from tests.quoting.helpers import NOW
 from weatherbot.domain import Money
 from weatherbot.paper import PaperEntryStatus, PaperTradingService, initialize_paper_store
-from weatherbot.persistence.codec import event_type_name
 from weatherbot.resolution import ResolutionWorker, StoredDecisionContextProvider
 
 
@@ -45,7 +44,7 @@ def _state_summary(state) -> dict[str, object]:
 
 
 def _events(store) -> list[str]:
-    return [event_type_name(event) for event in store.load_events()]
+    return [event.__class__.__name__ for event in store.load_events()]
 
 
 def _settled_scenario(root: Path, label: str, yes: str, no: str) -> dict[str, object]:
