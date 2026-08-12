@@ -64,6 +64,30 @@ jobs:
               "        forecast_captures = {}\n",
               "        forecast_captures: dict[date, OpenMeteoSingleRunCapture] = {}\n",
           )
+          decimal_block = '''def _decimal(value: object, *, label: str) -> Decimal:
+              if isinstance(value, bool) or not isinstance(value, (Decimal, int, str, float)):
+                  raise CalibrationError(f"{label} must be decimal")
+              try:
+                  result = value if isinstance(value, Decimal) else Decimal(str(value))
+              except (InvalidOperation, ValueError) as exc:
+                  raise CalibrationError(f"{label} must be decimal") from exc
+              if not result.is_finite():
+                  raise CalibrationError(f"{label} must be finite")
+              return result
+
+
+          '''
+          decimal_block = "\n".join(
+              line[14:] if line.startswith("              ") else line
+              for line in decimal_block.splitlines()
+          ) + "\n"
+          text = replace_once(text, decimal_block, "")
+          registry_marker = "_CACHE_SCHEMA_VERSION = 1\n\n\n@dataclass(frozen=True, slots=True)\nclass CalibrationMarketSpec:"
+          text = replace_once(
+              text,
+              registry_marker,
+              "_CACHE_SCHEMA_VERSION = 1\n\n\n" + decimal_block + "@dataclass(frozen=True, slots=True)\nclass CalibrationMarketSpec:",
+          )
           old_constant = (
               'DEFAULT_PARITY_EVIDENCE = Path(\n'
               '    "tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json"\n'
