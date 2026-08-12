@@ -1,6 +1,11 @@
 """Paper-money execution, valuation, recovery, and reporting."""
 
 from weatherbot.paper.execution import PaperExecutionAdapter, build_paper_execution_plan
+from weatherbot.paper.integration import (
+    paper_runtime_status,
+    reset_paper_runtime,
+    submit_scanner_candidate,
+)
 from weatherbot.paper.ledger import archive_and_reset_paper_ledger, initialize_paper_store
 from weatherbot.paper.model import (
     PaperExecutionPlan,
@@ -40,5 +45,8 @@ __all__ = [
     "initialize_paper_store",
     "load_open_position_books",
     "open_position_book_references",
+    "paper_runtime_status",
     "paper_status",
+    "reset_paper_runtime",
+    "submit_scanner_candidate",
 ]
