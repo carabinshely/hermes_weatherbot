@@ -1,0 +1,206 @@
+name: Temporary issue 12 parity hardening
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - run: uv sync --locked --all-groups
+      - name: Apply bounded parity hardening
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match, found {count}: {old!r}")
+              return text.replace(old, new)
+
+          module = Path("weatherbot/forecasting/calibration_data.py")
+          text = module.read_text(encoding="utf-8")
+          marker = "\ndef compare_archive_parity(\n"
+          helper = '''
+          def _assert_parity_environment_compatible(
+              reference: ForecastCalibrationEvidence,
+              candidate: ForecastCalibrationEvidence,
+          ) -> None:
+              if reference.climate_region != candidate.climate_region:
+                  raise CalibrationError("parity climate region mismatch")
+              if reference.forecast.source is not candidate.forecast.source:
+                  raise CalibrationError("parity forecast source mismatch")
+              if reference.forecast.market_timezone != candidate.forecast.market_timezone:
+                  raise CalibrationError("parity timezone mismatch")
+              if reference.latitude != candidate.latitude or reference.longitude != candidate.longitude:
+                  raise CalibrationError("parity coordinates mismatch")
+              if reference.bias_correction is not candidate.bias_correction:
+                  raise CalibrationError("parity bias correction mismatch")
+
+
+          def compare_archive_parity(
+          '''
+          helper = "\n".join(
+              line[10:] if line.startswith("          ") else line for line in helper.splitlines()
+          )
+          text = replace_once(text, marker, "\n" + helper)
+
+          old = '''    reference_capture_contracts = {item.capture_contract_id for item in reference_items.values()}
+              if reference_capture_contracts != reference_contracts:
+                  raise CalibrationError("parity reference must be direct captures of its source contract")
+              candidate_effective_contracts = {item.source_contract_id for item in candidate_items.values()}
+          '''
+          old = "\n".join(
+              line[14:] if line.startswith("              ") else line for line in old.splitlines()
+          ) + "\n"
+          new = '''    reference_capture_contracts = {item.capture_contract_id for item in reference_items.values()}
+              if reference_capture_contracts != reference_contracts:
+                  raise CalibrationError("parity reference must be direct captures of its source contract")
+              reference_capture_methods = {item.capture_method for item in reference_items.values()}
+              if reference_capture_methods != {ForecastCaptureMethod.PRODUCTION}:
+                  raise CalibrationError("parity reference must be a production capture")
+              candidate_effective_contracts = {item.source_contract_id for item in candidate_items.values()}
+          '''
+          new = "\n".join(
+              line[14:] if line.startswith("              ") else line for line in new.splitlines()
+          ) + "\n"
+          text = replace_once(text, old, new)
+
+          old = '''    candidate_capture_contracts = {item.capture_contract_id for item in candidate_items.values()}
+              if len(candidate_capture_contracts) != 1:
+                  raise CalibrationError("parity candidate contains multiple capture contracts")
+          '''
+          old = "\n".join(
+              line[14:] if line.startswith("              ") else line for line in old.splitlines()
+          ) + "\n"
+          new = '''    candidate_capture_contracts = {item.capture_contract_id for item in candidate_items.values()}
+              if len(candidate_capture_contracts) != 1:
+                  raise CalibrationError("parity candidate contains multiple capture contracts")
+              candidate_capture_methods = {item.capture_method for item in candidate_items.values()}
+              if ForecastCaptureMethod.PRODUCTION in candidate_capture_methods:
+                  raise CalibrationError("parity candidate must use a reconstruction capture method")
+          '''
+          new = "\n".join(
+              line[14:] if line.startswith("              ") else line for line in new.splitlines()
+          ) + "\n"
+          text = replace_once(text, old, new)
+
+          old = '''    identities = sorted(set(reference_items) & set(candidate_items))
+              if not identities:
+                  raise CalibrationError("parity comparison has no overlapping forecast identities")
+              errors = [
+          '''
+          old = "\n".join(
+              line[14:] if line.startswith("              ") else line for line in old.splitlines()
+          ) + "\n"
+          new = '''    identities = sorted(set(reference_items) & set(candidate_items))
+              if not identities:
+                  raise CalibrationError("parity comparison has no overlapping forecast identities")
+              for identity in identities:
+                  _assert_parity_environment_compatible(
+                      reference_items[identity],
+                      candidate_items[identity],
+                  )
+              errors = [
+          '''
+          new = "\n".join(
+              line[14:] if line.startswith("              ") else line for line in new.splitlines()
+          ) + "\n"
+          text = replace_once(text, old, new)
+          module.write_text(text, encoding="utf-8")
+
+          tests = Path("tests/forecasting/test_calibration_parity_contract.py")
+          text = tests.read_text(encoding="utf-8")
+          start_marker = "@pytest.mark.parametrize(\n"
+          end_marker = "\n\ndef test_parity_reference_must_be_a_direct_production_capture() -> None:\n"
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '''@pytest.mark.parametrize(
+              ("field", "message"),
+              (
+                  ("latitude", "coordinates"),
+                  ("longitude", "coordinates"),
+                  ("market_timezone", "timezone"),
+                  ("bias_correction", "bias correction"),
+              ),
+          )
+          def test_parity_rejects_environment_mismatch(field: str, message: str) -> None:
+              reference, candidate = _reference_and_candidate()
+              market_date = candidate[0].forecast.market_date
+              if field == "latitude":
+                  mismatched = _evidence(
+                      market_date,
+                      capture_contract_id=_ARCHIVE_CONTRACT,
+                      capture_method=ForecastCaptureMethod.SINGLE_RUN,
+                      latitude="40.8772",
+                  )
+              elif field == "longitude":
+                  mismatched = _evidence(
+                      market_date,
+                      capture_contract_id=_ARCHIVE_CONTRACT,
+                      capture_method=ForecastCaptureMethod.SINGLE_RUN,
+                      longitude="-73.9726",
+                  )
+              elif field == "market_timezone":
+                  mismatched = _evidence(
+                      market_date,
+                      capture_contract_id=_ARCHIVE_CONTRACT,
+                      capture_method=ForecastCaptureMethod.SINGLE_RUN,
+                      market_timezone="America/Chicago",
+                  )
+              elif field == "bias_correction":
+                  mismatched = _evidence(
+                      market_date,
+                      capture_contract_id=_ARCHIVE_CONTRACT,
+                      capture_method=ForecastCaptureMethod.SINGLE_RUN,
+                      bias_correction=False,
+                  )
+              else:
+                  raise AssertionError(f"unsupported test field: {field}")
+              candidate = (mismatched, candidate[1])
+
+              with pytest.raises(CalibrationError, match=message):
+                  compare_archive_parity(reference, candidate, policy=_POLICY)
+          '''
+          replacement = "\n".join(
+              line[10:] if line.startswith("          ") else line for line in replacement.splitlines()
+          ) + "\n"
+          tests.write_text(text[:start] + replacement + text[end:], encoding="utf-8")
+          PY
+      - run: uv run ruff check --fix weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_parity_contract.py tests/forecasting/test_calibration_parity_evidence.py
+      - run: uv run ruff format weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_parity_contract.py tests/forecasting/test_calibration_parity_evidence.py
+      - name: Verify strict typing before commit
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
+      - name: Verify calibration suite before commit
+        run: >
+          PYTHONPATH=. uv run pytest -q
+          tests/forecasting/test_calibration.py
+          tests/forecasting/test_calibration_fit.py
+          tests/forecasting/test_calibration_semantics.py
+          tests/forecasting/test_calibration_data.py
+          tests/forecasting/test_calibration_parity_contract.py
+          tests/forecasting/test_calibration_parity_evidence.py
+      - name: Commit verified hardening
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_parity_contract.py tests/forecasting/test_calibration_parity_evidence.py
+          git commit -m "Harden issue 12 archive parity checks"
+          git push origin HEAD:agent/issue-12-calibrated-uncertainty
