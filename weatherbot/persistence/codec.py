@@ -33,8 +33,13 @@ from weatherbot.domain import (
     OrderSubmitted,
     OutcomeId,
     OutcomePayout,
+    PortfolioValuation,
+    PortfolioValuationRecorded,
     PositionSettled,
+    PositionValuation,
     ResolutionEvidenceStatus,
+    RiskScope,
+    RiskScopeRegistered,
     Side,
     WeatherObservationEvidence,
     WeatherObservationRecorded,
@@ -56,6 +61,8 @@ _EVENT_TYPE_BY_CLASS: dict[type[object], str] = {
     MarketResolutionEvidenceRecorded: "market_resolution_evidence_recorded",
     MarketResolved: "market_resolved",
     PositionSettled: "position_settled",
+    RiskScopeRegistered: "risk_scope_registered",
+    PortfolioValuationRecorded: "portfolio_valuation_recorded",
 }
 
 
@@ -115,6 +122,36 @@ def _intent_to_data(value: OrderIntent) -> dict[str, object]:
         "limit_price": format(value.limit_price, "f"),
         "fee_reserve": _money_to_data(value.fee_reserve),
         "created_at": value.created_at.isoformat(),
+    }
+
+
+def _risk_scope_to_data(value: RiskScope) -> dict[str, object]:
+    return {
+        "market_id": str(value.market_id),
+        "outcome_id": str(value.outcome_id),
+        "event_id": value.event_id,
+        "city_key": value.city_key,
+        "market_date": value.market_date.isoformat(),
+        "correlation_groups": list(value.correlation_groups),
+    }
+
+
+def _position_valuation_to_data(value: PositionValuation) -> dict[str, object]:
+    return {
+        "market_id": str(value.market_id),
+        "outcome_id": str(value.outcome_id),
+        "quantity": format(value.quantity, "f"),
+        "liquidation_value": _money_to_data(value.liquidation_value),
+        "observed_at": value.observed_at.isoformat(),
+    }
+
+
+def _portfolio_valuation_to_data(value: PortfolioValuation) -> dict[str, object]:
+    return {
+        "positions": [_position_valuation_to_data(mark) for mark in value.positions],
+        "equity": _money_to_data(value.equity),
+        "assembled_at": value.assembled_at.isoformat(),
+        "source": value.source,
     }
 
 
@@ -216,6 +253,10 @@ def _event_data(event: LedgerEvent) -> dict[str, object]:
         return {**common, "evidence": _evidence_to_data(event.evidence)}
     if isinstance(event, MarketResolved):
         return {**common, "resolution": _resolution_to_data(event.resolution)}
+    if isinstance(event, RiskScopeRegistered):
+        return {**common, "scope": _risk_scope_to_data(event.scope)}
+    if isinstance(event, PortfolioValuationRecorded):
+        return {**common, "valuation": _portfolio_valuation_to_data(event.valuation)}
     return {
         **common,
         "market_id": str(event.market_id),
@@ -255,6 +296,8 @@ def _index_fields(
         return None, None, str(event.resolution.market_id), None
     if isinstance(event, PositionSettled):
         return None, None, str(event.market_id), str(event.outcome_id)
+    if isinstance(event, RiskScopeRegistered):
+        return None, None, str(event.scope.market_id), str(event.scope.outcome_id)
     return None, None, None, None
 
 
@@ -422,6 +465,97 @@ def _intent(value: object) -> OrderIntent:
         limit_price=_decimal(data["limit_price"], label="intent.limit_price"),
         fee_reserve=_money(data["fee_reserve"], label="intent.fee_reserve"),
         created_at=_datetime(data["created_at"], label="intent.created_at"),
+    )
+
+
+def _risk_scope(value: object) -> RiskScope:
+    data = _mapping(value, label="risk_scope")
+    _expect_keys(
+        data,
+        required={
+            "market_id",
+            "outcome_id",
+            "event_id",
+            "city_key",
+            "market_date",
+            "correlation_groups",
+        },
+        label="risk_scope",
+    )
+    groups = tuple(
+        _text(group, label=f"risk_scope.correlation_groups[{index}]")
+        for index, group in enumerate(
+            _sequence(data["correlation_groups"], label="risk_scope.correlation_groups")
+        )
+    )
+    return RiskScope(
+        market_id=MarketId(_text(data["market_id"], label="risk_scope.market_id")),
+        outcome_id=OutcomeId(_text(data["outcome_id"], label="risk_scope.outcome_id")),
+        event_id=_text(data["event_id"], label="risk_scope.event_id"),
+        city_key=_text(data["city_key"], label="risk_scope.city_key"),
+        market_date=_date(data["market_date"], label="risk_scope.market_date"),
+        correlation_groups=groups,
+    )
+
+
+def _portfolio_valuation(value: object) -> PortfolioValuation:
+    data = _mapping(value, label="portfolio_valuation")
+    _expect_keys(
+        data,
+        required={"positions", "equity", "assembled_at", "source"},
+        label="portfolio_valuation",
+    )
+    marks: list[PositionValuation] = []
+    for index, raw_mark in enumerate(
+        _sequence(data["positions"], label="portfolio_valuation.positions")
+    ):
+        mark = _mapping(raw_mark, label=f"portfolio_valuation.positions[{index}]")
+        _expect_keys(
+            mark,
+            required={
+                "market_id",
+                "outcome_id",
+                "quantity",
+                "liquidation_value",
+                "observed_at",
+            },
+            label=f"portfolio_valuation.positions[{index}]",
+        )
+        marks.append(
+            PositionValuation(
+                market_id=MarketId(
+                    _text(
+                        mark["market_id"],
+                        label=f"portfolio_valuation.positions[{index}].market_id",
+                    )
+                ),
+                outcome_id=OutcomeId(
+                    _text(
+                        mark["outcome_id"],
+                        label=f"portfolio_valuation.positions[{index}].outcome_id",
+                    )
+                ),
+                quantity=_decimal(
+                    mark["quantity"],
+                    label=f"portfolio_valuation.positions[{index}].quantity",
+                ),
+                liquidation_value=_money(
+                    mark["liquidation_value"],
+                    label=f"portfolio_valuation.positions[{index}].liquidation_value",
+                ),
+                observed_at=_datetime(
+                    mark["observed_at"],
+                    label=f"portfolio_valuation.positions[{index}].observed_at",
+                ),
+            )
+        )
+    return PortfolioValuation(
+        positions=tuple(marks),
+        equity=_money(data["equity"], label="portfolio_valuation.equity"),
+        assembled_at=_datetime(
+            data["assembled_at"], label="portfolio_valuation.assembled_at"
+        ),
+        source=_text(data["source"], label="portfolio_valuation.source"),
     )
 
 
@@ -760,6 +894,20 @@ def decode_event(payload_json: str) -> LedgerEvent:
             market_id=MarketId(_text(data["market_id"], label="market_id")),
             outcome_id=OutcomeId(_text(data["outcome_id"], label="outcome_id")),
             fee=_money(data["fee"], label="fee"),
+        )
+    if event_type == "risk_scope_registered":
+        event_id, occurred_at = _common(data, required={"scope"})
+        return RiskScopeRegistered(
+            event_id=event_id,
+            occurred_at=occurred_at,
+            scope=_risk_scope(data["scope"]),
+        )
+    if event_type == "portfolio_valuation_recorded":
+        event_id, occurred_at = _common(data, required={"valuation"})
+        return PortfolioValuationRecorded(
+            event_id=event_id,
+            occurred_at=occurred_at,
+            valuation=_portfolio_valuation(data["valuation"]),
         )
     raise SchemaVersionError(f"unsupported event type {event_type!r}")
 
