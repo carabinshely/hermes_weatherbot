@@ -1,0 +1,181 @@
+name: Temporary issue 12 phase A verification
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - run: uv sync --locked --all-groups
+      - name: Apply bounded Phase A fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected one match, found {count}: {old!r}")
+              return text.replace(old, new)
+
+          module = Path("weatherbot/forecasting/calibration_data.py")
+          text = module.read_text(encoding="utf-8")
+          marker = '''def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:
+              if isinstance(value, bool):
+                  raise CalibrationError(f"{label} must be decimal")
+          '''
+          marker = "\n".join(line[14:] if line.startswith("              ") else line for line in marker.splitlines()) + "\n"
+          replacement = '''def _integer(value: object, *, label: str) -> int:
+              if isinstance(value, bool) or not isinstance(value, int):
+                  raise CalibrationError(f"{label} must be an integer")
+              return value
+
+
+          def _boolean(value: object, *, label: str) -> bool:
+              if not isinstance(value, bool):
+                  raise CalibrationError(f"{label} must be boolean")
+              return value
+
+
+          def _decimal(value: Decimal | int | str | float, *, label: str) -> Decimal:
+              if isinstance(value, bool):
+                  raise CalibrationError(f"{label} must be decimal")
+          '''
+          replacement = "\n".join(line[10:] if line.startswith("          ") else line for line in replacement.splitlines()) + "\n"
+          text = replace_once(text, marker, replacement)
+          text = replace_once(
+              text,
+              '''        if isinstance(self.bias_correction, bool) is False:
+                  raise CalibrationError("bias_correction must be boolean")
+          '''.replace("          ", ""),
+              '''        bias_correction = _boolean(self.bias_correction, label="bias_correction")
+          '''.replace("          ", ""),
+          )
+          text = replace_once(
+              text,
+              '''        if isinstance(self.lead_days, bool) or not isinstance(self.lead_days, int):
+                  raise CalibrationError("forecast lead_days must be an integer")
+          '''.replace("          ", ""),
+              '''        _integer(self.lead_days, label="forecast lead_days")
+          '''.replace("          ", ""),
+          )
+          text = replace_once(
+              text,
+              '        object.__setattr__(self, "payload_sha256", payload_hash)\n',
+              '        object.__setattr__(self, "bias_correction", bias_correction)\n'
+              '        object.__setattr__(self, "payload_sha256", payload_hash)\n',
+          )
+          text = replace_once(
+              text,
+              '''        if isinstance(self.min_pairs, bool) or not isinstance(self.min_pairs, int):
+                  raise CalibrationError("parity min_pairs must be an integer")
+          '''.replace("          ", ""),
+              '''        _integer(self.min_pairs, label="parity min_pairs")
+          '''.replace("          ", ""),
+          )
+          old = '''        for label, value in (
+              ("reference_count", self.reference_count),
+              ("candidate_count", self.candidate_count),
+              ("matched_count", self.matched_count),
+          ):
+              if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                  raise CalibrationError(f"parity {label} must be a non-negative integer")
+          '''
+          old = "\n".join(line[10:] if line.startswith("          ") else line for line in old.splitlines()) + "\n"
+          new = '''        for label, value in (
+              ("reference_count", self.reference_count),
+              ("candidate_count", self.candidate_count),
+              ("matched_count", self.matched_count),
+          ):
+              _integer(value, label=f"parity {label}")
+              if value < 0:
+                  raise CalibrationError(f"parity {label} must be non-negative")
+          '''
+          new = "\n".join(line[10:] if line.startswith("          ") else line for line in new.splitlines()) + "\n"
+          text = replace_once(text, old, new)
+          text = replace_once(
+              text,
+              '''        if isinstance(self.forecast_bias_correction, bool) is False:
+                  raise CalibrationError("dataset forecast_bias_correction must be boolean")
+          '''.replace("          ", ""),
+              '''        bias_correction = _boolean(
+              self.forecast_bias_correction,
+              label="dataset forecast_bias_correction",
+          )
+          '''.replace("          ", ""),
+          )
+          text = replace_once(
+              text,
+              '''        object.__setattr__(
+              self,
+              "forecast_provenance_sha256",
+          '''.replace("          ", ""),
+              '''        object.__setattr__(self, "forecast_bias_correction", bias_correction)
+          object.__setattr__(
+              self,
+              "forecast_provenance_sha256",
+          '''.replace("          ", ""),
+          )
+          module.write_text(text, encoding="utf-8")
+
+          tests = Path("tests/forecasting/test_calibration_data.py")
+          text = tests.read_text(encoding="utf-8")
+          text = replace_once(
+              text,
+              "from datetime import UTC, date, datetime, time, timedelta\n",
+              "from datetime import UTC, date, datetime, time, timedelta\nfrom pathlib import Path\n",
+          )
+          text = replace_once(
+              text,
+              "    ArchiveParityPolicy,\n",
+              "    ArchiveParityPolicy,\n    ArchiveParityReport,\n",
+          )
+          text = replace_once(
+              text,
+              "def _passing_parity_report() -> object:\n",
+              "def _passing_parity_report() -> ArchiveParityReport:\n",
+          )
+          text = replace_once(
+              text,
+              '            payload_character=chr(ord("e") + index),\n',
+              '            payload_character=("1", "2", "3", "4")[index],\n',
+          )
+          text = replace_once(
+              text,
+              "def test_dataset_hash_and_manifest_are_independent_of_input_order(tmp_path: object) -> None:\n"
+              "    from pathlib import Path\n\n"
+              "    assert isinstance(tmp_path, Path)\n",
+              "def test_dataset_hash_and_manifest_are_independent_of_input_order(tmp_path: Path) -> None:\n",
+          )
+          tests.write_text(text, encoding="utf-8")
+          PY
+      - run: uv run ruff check --fix weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
+      - run: uv run ruff format weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
+      - name: Verify strict typing before commit
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
+      - name: Verify all calibration tests before commit
+        run: PYTHONPATH=. uv run pytest -q tests/forecasting/test_calibration.py tests/forecasting/test_calibration_fit.py tests/forecasting/test_calibration_semantics.py tests/forecasting/test_calibration_data.py
+      - name: Commit verified Phase A fixes
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
+          git commit -m "Fix issue 12 calibration dataset typing"
+          git push origin HEAD:agent/issue-12-calibrated-uncertainty
