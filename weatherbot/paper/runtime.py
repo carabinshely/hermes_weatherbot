@@ -115,6 +115,10 @@ class PaperRuntimeConfig:
             starting_cash=self.starting_cash,
         )
 
+    def open_read_only_store(self) -> PortfolioRiskEventStore:
+        """Open an existing PAPER ledger without migrations or state mutation."""
+        return PortfolioRiskEventStore(self.ledger_path, read_only=True)
+
     def open_service(self) -> tuple[PortfolioRiskEventStore, PaperTradingService]:
         store = self.open_store()
         return store, PaperTradingService(store)
