@@ -55,6 +55,7 @@ from weatherbot.paper import (
     PaperRuntimeConfig,
     paper_runtime_status,
     paper_scan_decision_id,
+    recover_paper_runtime,
     reset_paper_runtime,
     submit_scanner_candidate,
 )
@@ -1229,6 +1230,8 @@ def _parse_temperature_markets(event):
 
 def scan_and_trade(context: ExecutionContext):
     """Scan markets with explicit token, quote, bucket, and local-date contracts."""
+    if context.mode is ExecutionMode.PAPER:
+        recover_paper_runtime(runtime=PAPER_RUNTIME)
     now = datetime.now(timezone.utc)
     is_live = context.mode is ExecutionMode.LIVE
     state = load_state() if is_live else {"balance": 0.0, "total_trades": 0}
