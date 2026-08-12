@@ -1,0 +1,235 @@
+"""Atomic portfolio-risk evaluation and order-intent persistence."""
+
+from __future__ import annotations
+
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import datetime
+
+from weatherbot.domain import (
+    EventId,
+    OrderIntentCreated,
+    PortfolioValuation,
+    PortfolioValuationRecorded,
+    RiskScope,
+    RiskScopeRegistered,
+    Side,
+    fingerprint,
+    risk_scope_event_id,
+)
+from weatherbot.persistence.codec import decode_event, encode_metadata, sha256_text
+from weatherbot.persistence.errors import (
+    ConcurrentDecisionError,
+    CorruptLedgerError,
+    DuplicateIntentError,
+)
+from weatherbot.persistence.store import AppendResult, SQLiteEventStore, _require_text, _utc_now
+from weatherbot.risk import (
+    PortfolioRiskDecision,
+    PortfolioRiskPolicy,
+    evaluate_portfolio_risk,
+)
+
+
+@dataclass(frozen=True, slots=True)
+class RiskCheckedCommitResult:
+    """One atomic risk check plus its optional durable order-intent append."""
+
+    decision: PortfolioRiskDecision | None
+    append_result: AppendResult
+    committed: bool
+
+
+def _valuation_event_id(decision_key: str, valuation: PortfolioValuation) -> EventId:
+    material = f"{decision_key}\n{fingerprint(valuation)}"
+    return EventId(f"portfolio_valuation_{sha256_text(material)}")
+
+
+class PortfolioRiskEventStore(SQLiteEventStore):
+    """SQLite event store that serializes portfolio risk with BUY intent creation."""
+
+    def _current_append_result_locked(self, *, duplicate_event_id: str | None = None) -> AppendResult:
+        _, state, last_sequence, tail_hash = self._load_locked()
+        return AppendResult(
+            appended_sequences=(),
+            duplicate_event_ids=(() if duplicate_event_id is None else (duplicate_event_id,)),
+            state=state,
+            last_sequence=last_sequence,
+            chain_hash=tail_hash,
+        )
+
+    def commit_risk_checked_order_intent(
+        self,
+        event: OrderIntentCreated,
+        *,
+        scope: RiskScope,
+        valuation: PortfolioValuation,
+        policy: PortfolioRiskPolicy,
+        evaluated_at: datetime,
+        owner_id: str,
+        metadata: Mapping[str, object] | None = None,
+    ) -> RiskCheckedCommitResult:
+        """Re-evaluate current durable risk state and append only if it still permits the BUY."""
+        if event.intent.side is not Side.BUY:
+            raise ValueError("portfolio risk checked intent commit is only for BUY entries")
+        if scope.position_key != (event.intent.market_id, event.intent.outcome_id):
+            raise ValueError("risk scope does not match order-intent position key")
+
+        owner_id = _require_text(owner_id, label="owner_id")
+        decision_key = _require_text(event.intent.decision_id, label="decision_id")
+        base_metadata_json, base_metadata_hash = encode_metadata(metadata)
+        del base_metadata_json
+        now = _utc_now()
+
+        with self._lock, self._transaction():
+            row = self._decision_row_locked(decision_key)
+            if row is not None:
+                claim = self._claim_from_row(row)
+                if claim.status == "committed":
+                    if claim.intent_id != event.intent.intent_id:
+                        raise DuplicateIntentError(
+                            f"decision {decision_key!r} already committed intent {claim.intent_id}"
+                        )
+                    prior = self._intent_event_locked(str(event.intent.intent_id))
+                    if prior is None:
+                        raise CorruptLedgerError(
+                            f"decision {decision_key!r} is committed but its intent event is missing"
+                        )
+                    prior_event = decode_event(str(prior["payload_json"]))
+                    if not isinstance(prior_event, OrderIntentCreated):
+                        raise CorruptLedgerError("stored intent row decoded as another event type")
+                    if prior_event.intent != event.intent:
+                        raise DuplicateIntentError(
+                            f"order intent {event.intent.intent_id} was reused with different data"
+                        )
+                    return RiskCheckedCommitResult(
+                        decision=None,
+                        append_result=self._current_append_result_locked(
+                            duplicate_event_id=str(event.event_id)
+                        ),
+                        committed=True,
+                    )
+                if claim.status == "completed":
+                    if claim.owner_id != owner_id or claim.intent_id is not None:
+                        raise ConcurrentDecisionError(
+                            f"decision {decision_key!r} is already completed by another outcome"
+                        )
+                    return RiskCheckedCommitResult(
+                        decision=None,
+                        append_result=self._current_append_result_locked(),
+                        committed=False,
+                    )
+                if claim.status != "claimed" or claim.owner_id != owner_id:
+                    raise ConcurrentDecisionError(
+                        f"decision {decision_key!r} is {claim.status} by owner {claim.owner_id!r}"
+                    )
+                stored_metadata = str(row["metadata_hash"])
+                if stored_metadata != base_metadata_hash:
+                    raise ConcurrentDecisionError(
+                        f"decision {decision_key!r} metadata changed between claim and risk commit"
+                    )
+
+            events, state, _, _ = self._load_locked()
+            decision = evaluate_portfolio_risk(
+                state=state,
+                events=events,
+                proposed_scope=scope,
+                proposed_cash=event.intent.cash_reservation,
+                valuation=valuation,
+                policy=policy,
+                evaluated_at=evaluated_at,
+            )
+            committed_metadata = dict(metadata or {})
+            committed_metadata.update(decision.metadata())
+            metadata_json, metadata_hash = encode_metadata(committed_metadata)
+
+            if not decision.status.value == "approved":
+                if row is None:
+                    self._connection.execute(
+                        """
+                        INSERT INTO decision_claims(
+                            decision_key, owner_id, status, intent_id, metadata_json,
+                            metadata_hash, claimed_at, updated_at
+                        )
+                        VALUES (?, ?, 'completed', NULL, ?, ?, ?, ?)
+                        """,
+                        (
+                            decision_key,
+                            owner_id,
+                            metadata_json,
+                            metadata_hash,
+                            now,
+                            now,
+                        ),
+                    )
+                else:
+                    self._connection.execute(
+                        """
+                        UPDATE decision_claims
+                        SET status = 'completed', intent_id = NULL, metadata_json = ?,
+                            metadata_hash = ?, updated_at = ?
+                        WHERE decision_key = ?
+                        """,
+                        (metadata_json, metadata_hash, now, decision_key),
+                    )
+                return RiskCheckedCommitResult(
+                    decision=decision,
+                    append_result=self._current_append_result_locked(),
+                    committed=False,
+                )
+
+            if row is None:
+                self._connection.execute(
+                    """
+                    INSERT INTO decision_claims(
+                        decision_key, owner_id, status, intent_id, metadata_json,
+                        metadata_hash, claimed_at, updated_at
+                    )
+                    VALUES (?, ?, 'committed', ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        decision_key,
+                        owner_id,
+                        str(event.intent.intent_id),
+                        metadata_json,
+                        metadata_hash,
+                        now,
+                        now,
+                    ),
+                )
+            else:
+                self._connection.execute(
+                    """
+                    UPDATE decision_claims
+                    SET status = 'committed', intent_id = ?, metadata_json = ?,
+                        metadata_hash = ?, updated_at = ?
+                    WHERE decision_key = ?
+                    """,
+                    (
+                        str(event.intent.intent_id),
+                        metadata_json,
+                        metadata_hash,
+                        now,
+                        decision_key,
+                    ),
+                )
+
+            scope_event = RiskScopeRegistered(
+                event_id=risk_scope_event_id(scope),
+                occurred_at=evaluated_at,
+                scope=scope,
+            )
+            valuation_event = PortfolioValuationRecorded(
+                event_id=_valuation_event_id(decision_key, valuation),
+                occurred_at=valuation.assembled_at,
+                valuation=valuation,
+            )
+            appended = self._append_events_locked(
+                (scope_event, valuation_event, event),
+                allow_intent_created=True,
+            )
+            return RiskCheckedCommitResult(
+                decision=decision,
+                append_result=appended,
+                committed=True,
+            )
