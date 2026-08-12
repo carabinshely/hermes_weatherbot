@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import cast
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from weatherbot.forecasting.calibration import CalibrationError
 from weatherbot.forecasting.calibration_data import (
@@ -65,8 +65,10 @@ class CalibrationLocation:
             raise CalibrationError("calibration longitude is outside [-180, 180]")
         try:
             timezone = ZoneInfo(self.market_timezone.strip())
-        except Exception as exc:
-            raise CalibrationError(f"invalid calibration market timezone: {self.market_timezone!r}") from exc
+        except ZoneInfoNotFoundError as exc:
+            raise CalibrationError(
+                f"invalid calibration market timezone: {self.market_timezone!r}"
+            ) from exc
         object.__setattr__(self, "city", city)
         object.__setattr__(self, "climate_region", region)
         object.__setattr__(self, "latitude", latitude)
@@ -82,7 +84,7 @@ class CalibrationForecastSamplingPolicy:
     horizons: tuple[int, ...] = _DEFAULT_HORIZONS
 
     def __post_init__(self) -> None:
-        if isinstance(self.run_cycle_hour_utc, bool) or not isinstance(self.run_cycle_hour_utc, int):
+        if isinstance(self.run_cycle_hour_utc, bool):
             raise CalibrationError("run cycle hour must be an integer")
         if self.run_cycle_hour_utc not in {0, 6, 12, 18}:
             raise CalibrationError("ECMWF run cycle must be one of 00, 06, 12, or 18 UTC")
@@ -93,7 +95,7 @@ class CalibrationForecastSamplingPolicy:
             raise CalibrationError("calibration forecast horizons must not be empty")
         if len(horizons) != len(set(horizons)):
             raise CalibrationError("calibration forecast horizons must be unique")
-        if any(isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 7 for value in horizons):
+        if any(isinstance(value, bool) or not 0 <= value <= 7 for value in horizons):
             raise CalibrationError("calibration forecast horizons must be integer days in [0, 7]")
         object.__setattr__(self, "horizons", tuple(sorted(horizons)))
 
@@ -110,17 +112,30 @@ class OpenMeteoSingleRunCapture:
     forecasts: tuple[ForecastCalibrationEvidence, ...]
 
     def __post_init__(self) -> None:
-        if self.run_initialized_at_utc.tzinfo is None or self.run_initialized_at_utc.utcoffset() is None:
+        if (
+            self.run_initialized_at_utc.tzinfo is None
+            or self.run_initialized_at_utc.utcoffset() is None
+        ):
             raise CalibrationError("single-run initialization must be timezone-aware")
         if self.decision_time_utc.tzinfo is None or self.decision_time_utc.utcoffset() is None:
             raise CalibrationError("calibration decision time must be timezone-aware")
         digest = self.raw_payload_sha256.lower()
-        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        if len(digest) != 64 or any(
+            character not in "0123456789abcdef" for character in digest
+        ):
             raise CalibrationError("single-run payload hash must be SHA-256")
         if not self.forecasts:
             raise CalibrationError("single-run capture must contain forecasts")
-        object.__setattr__(self, "run_initialized_at_utc", self.run_initialized_at_utc.astimezone(UTC))
-        object.__setattr__(self, "decision_time_utc", self.decision_time_utc.astimezone(UTC))
+        object.__setattr__(
+            self,
+            "run_initialized_at_utc",
+            self.run_initialized_at_utc.astimezone(UTC),
+        )
+        object.__setattr__(
+            self,
+            "decision_time_utc",
+            self.decision_time_utc.astimezone(UTC),
+        )
         object.__setattr__(self, "raw_payload_sha256", digest)
 
 
@@ -169,12 +184,17 @@ def calibration_decision_time(
     policy: CalibrationForecastSamplingPolicy = _DEFAULT_POLICY,
 ) -> datetime:
     timezone = ZoneInfo(market_timezone)
-    decision = datetime.combine(market_day, policy.decision_local_time, timezone).astimezone(UTC)
+    decision = datetime.combine(
+        market_day,
+        policy.decision_local_time,
+        timezone,
+    ).astimezone(UTC)
     run = calibration_run_for_market_day(market_day, policy=policy)
     run_age = decision - run
     if run_age < policy.min_safe_run_age:
         raise CalibrationError(
-            "calibration decision time is too close to model initialization for the availability policy"
+            "calibration decision time is too close to model initialization for the "
+            "availability policy"
         )
     return decision
 
@@ -205,7 +225,11 @@ def _validate_source_url(
     run_initialized_at_utc: datetime,
 ) -> None:
     parsed = urllib.parse.urlparse(source_url)
-    if parsed.scheme != "https" or parsed.hostname != _SINGLE_RUN_HOST or parsed.path != _SINGLE_RUN_PATH:
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != _SINGLE_RUN_HOST
+        or parsed.path != _SINGLE_RUN_PATH
+    ):
         raise CalibrationError("single-run source URL is not the canonical Open-Meteo endpoint")
     query = urllib.parse.parse_qs(parsed.query, keep_blank_values=True)
     expected = urllib.parse.parse_qs(
@@ -246,10 +270,19 @@ def parse_single_run_daily_highs(
     expected_run = calibration_run_for_market_day(market_day, policy=policy)
     if run != expected_run:
         raise CalibrationError(
-            f"single-run initialization mismatch: expected {expected_run.isoformat()}, got {run.isoformat()}"
+            f"single-run initialization mismatch: expected {expected_run.isoformat()}, "
+            f"got {run.isoformat()}"
         )
-    decision = calibration_decision_time(market_day, location.market_timezone, policy=policy)
-    _validate_source_url(source_url, location=location, run_initialized_at_utc=run)
+    decision = calibration_decision_time(
+        market_day,
+        location.market_timezone,
+        policy=policy,
+    )
+    _validate_source_url(
+        source_url,
+        location=location,
+        run_initialized_at_utc=run,
+    )
     if retrieved_at_utc.tzinfo is None or retrieved_at_utc.utcoffset() is None:
         raise CalibrationError("single-run retrieval time must be timezone-aware")
     retrieved = retrieved_at_utc.astimezone(UTC)
@@ -273,7 +306,9 @@ def parse_single_run_daily_highs(
         label="Open-Meteo hourly temperatures",
     )
     if len(times) != len(temperatures):
-        raise CalibrationError("Open-Meteo hourly timestamps and temperatures have different lengths")
+        raise CalibrationError(
+            "Open-Meteo hourly timestamps and temperatures have different lengths"
+        )
 
     by_date: dict[date, list[Decimal]] = defaultdict(list)
     seen_timestamps: set[str] = set()
@@ -285,7 +320,10 @@ def parse_single_run_daily_highs(
         if temperature_raw is None:
             continue
         by_date[local_date].append(
-            _decimal(temperature_raw, label="Open-Meteo hourly temperature")
+            _decimal(
+                temperature_raw,
+                label="Open-Meteo hourly temperature",
+            )
         )
 
     payload_hash = hashlib.sha256(raw_payload).hexdigest()
@@ -296,11 +334,15 @@ def parse_single_run_daily_highs(
         values = by_date.get(target_date, [])
         if len(values) < 20:
             raise CalibrationError(
-                f"Open-Meteo single-run has insufficient local-day temperature coverage for {target_date}: "
-                f"{len(values)} values"
+                "Open-Meteo single-run has insufficient local-day temperature coverage "
+                f"for {target_date}: {len(values)} values"
             )
         valid_from = datetime.combine(target_date, time.min, timezone).astimezone(UTC)
-        valid_until = datetime.combine(target_date + timedelta(days=1), time.min, timezone).astimezone(UTC)
+        valid_until = datetime.combine(
+            target_date + timedelta(days=1),
+            time.min,
+            timezone,
+        ).astimezone(UTC)
         forecast = DailyHighForecast(
             temperature_f=max(values),
             market_date=target_date,
