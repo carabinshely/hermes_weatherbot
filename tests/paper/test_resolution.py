@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -37,7 +37,7 @@ class StaticPaperResolutionSource:
         self,
         context: ResolutionContext,
         *,
-        checked_at=None,
+        checked_at: datetime | None = None,
     ) -> ResolutionPollResult:
         checked = checked_at or NOW + timedelta(days=1)
         payouts = (
