@@ -60,8 +60,8 @@ jobs:
 
           bot = Path("bot_v3.py")
           bot_text = bot.read_text()
-          old_banner = '        info("  Paper fills: pending implementation in #27")\n'
-          new_banner = '        info(f"  Paper ledger: {PAPER_RUNTIME.ledger_path}")\n'
+          old_banner = '            print("  Paper fills:   pending implementation in #27")\n'
+          new_banner = '            print(f"  Paper ledger:  {PAPER_RUNTIME.ledger_path}")\n'
           if old_banner not in bot_text:
               raise SystemExit("stale PAPER banner not found")
           bot.write_text(bot_text.replace(old_banner, new_banner, 1))
