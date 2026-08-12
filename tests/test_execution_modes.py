@@ -102,6 +102,16 @@ def test_non_live_status_runs_without_wallet_credentials(mode: str) -> None:
     assert completed.returncode == 0, completed.stderr
     assert f"Execution mode: {mode.upper()}" in completed.stdout
     assert "Wallet access: disabled" in completed.stdout
+    if mode == "paper":
+        assert "Paper ledger:" in completed.stdout
+        assert "Starting cash:" in completed.stdout
+        assert "Available cash:" in completed.stdout
+        assert "Market value:" in completed.stdout
+        assert "Realized P/L:" in completed.stdout
+        assert "Unrealized P/L:" in completed.stdout
+        assert "Fees:" in completed.stdout
+        assert "Exposure:" in completed.stdout
+        assert "Drawdown:" in completed.stdout
 
 
 def test_default_status_is_research_and_wallet_free() -> None:
@@ -137,3 +147,40 @@ def test_non_live_cancel_is_blocked_before_live_client_access() -> None:
     )
     assert completed.returncode == 2
     assert "order cancellation is blocked in research mode" in completed.stderr
+
+
+def test_paper_reset_requires_explicit_confirmation_before_history_mutation() -> None:
+    environment = os.environ.copy()
+    environment.pop("PK", None)
+    environment.pop("WALLET", None)
+    completed = subprocess.run(
+        [sys.executable, "bot_v3.py", "paper-reset", "--mode", "paper"],
+        cwd=Path.cwd(),
+        env=environment,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 2
+    assert "--confirm-paper-reset" in completed.stderr
+
+
+def test_paper_scanner_bypasses_legacy_kelly_times_max_bet_path() -> None:
+    source = Path("bot_v3.py").read_text(encoding="utf-8")
+    scanner = source[source.index("def scan_weather_markets") :]
+    paper_branch = scanner.index("if context.mode is ExecutionMode.PAPER:")
+    legacy_sizing = scanner.index("preliminary_kelly = get_adjusted_kelly")
+
+    assert paper_branch < legacy_sizing
+    assert "candidate only; simulated fills are implemented in #27" not in scanner
+    assert "submit_scanner_candidate(" in scanner[:legacy_sizing]
+
+
+def test_paper_resolution_and_status_select_dedicated_ledger() -> None:
+    source = Path("bot_v3.py").read_text(encoding="utf-8")
+
+    assert "PAPER_RUNTIME.ledger_path" in source
+    assert "paper_runtime_status(" in source
+    assert 'choices=("scan", "run", "status", "resolve", "cancel", "paper-reset")' in source
