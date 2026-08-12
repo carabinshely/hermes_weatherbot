@@ -4,6 +4,7 @@ from weatherbot.paper.execution import PaperExecutionAdapter, build_paper_execut
 from weatherbot.paper.integration import (
     paper_runtime_status,
     paper_scan_decision_id,
+    recover_paper_runtime,
     reset_paper_runtime,
     submit_scanner_candidate,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "paper_runtime_status",
     "paper_scan_decision_id",
     "paper_status",
+    "recover_paper_runtime",
     "reset_paper_runtime",
     "submit_scanner_candidate",
 ]
