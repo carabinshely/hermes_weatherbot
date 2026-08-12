@@ -108,6 +108,21 @@ jobs:
               "            self,\n"
               "            \"forecast_provenance_sha256\",\n",
           )
+          text = replace_once(
+              text,
+              "        if forecast.capture_contract_id != effective_contract:\n"
+              "            if forecast.capture_contract_id not in accepted_archive_contracts:\n"
+              "                raise CalibrationError(\n"
+              "                    \"archive forecast cannot enter the dataset without passing source parity\"\n"
+              "                )\n",
+              "        if (\n"
+              "            forecast.capture_contract_id != effective_contract\n"
+              "            and forecast.capture_contract_id not in accepted_archive_contracts\n"
+              "        ):\n"
+              "            raise CalibrationError(\n"
+              "                \"archive forecast cannot enter the dataset without passing source parity\"\n"
+              "            )\n",
+          )
           module.write_text(text, encoding="utf-8")
 
           tests = Path("tests/forecasting/test_calibration_data.py")
@@ -141,7 +156,7 @@ jobs:
           )
           tests.write_text(text, encoding="utf-8")
           PY
-      - run: uv run ruff check --fix --unsafe-fixes weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
+      - run: uv run ruff check --fix weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
       - run: uv run ruff format weatherbot/forecasting/calibration_data.py tests/forecasting/test_calibration_data.py
       - name: Verify strict typing before commit
         run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
