@@ -5,17 +5,26 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import tempfile
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
-from tests.paper.helpers import entry_request, paper_book, scope
-from tests.paper.test_resolution import StaticPaperResolutionSource
-from tests.quoting.helpers import NOW
-from weatherbot.domain import Money
-from weatherbot.paper import PaperEntryStatus, PaperTradingService, initialize_paper_store
-from weatherbot.resolution import ResolutionWorker, StoredDecisionContextProvider
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from tests.paper.helpers import entry_request, paper_book, scope  # noqa: E402
+from tests.paper.test_resolution import StaticPaperResolutionSource  # noqa: E402
+from tests.quoting.helpers import NOW  # noqa: E402
+from weatherbot.domain import Money  # noqa: E402
+from weatherbot.paper import (  # noqa: E402
+    PaperEntryStatus,
+    PaperTradingService,
+    initialize_paper_store,
+)
+from weatherbot.resolution import ResolutionWorker, StoredDecisionContextProvider  # noqa: E402
 
 
 def _state_summary(state) -> dict[str, object]:
