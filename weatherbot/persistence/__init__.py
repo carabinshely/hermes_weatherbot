@@ -19,6 +19,7 @@ from weatherbot.persistence.recovery import (
     RecoveryAction,
     StartupRecovery,
 )
+from weatherbot.persistence.risk_store import PortfolioRiskEventStore, RiskCheckedCommitResult
 from weatherbot.persistence.store import (
     AppendResult,
     DecisionClaimResult,
@@ -41,8 +42,10 @@ __all__ = [
     "PendingDecisionRecovery",
     "PendingOrderRecovery",
     "PersistenceError",
+    "PortfolioRiskEventStore",
     "RecoveryAction",
     "RecoveryRequiredError",
+    "RiskCheckedCommitResult",
     "SQLiteEventStore",
     "SchemaVersionError",
     "StartupRecovery",
