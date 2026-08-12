@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
 
 
@@ -33,4 +34,4 @@ def test_completion_report_covers_required_paper_scenarios() -> None:
     assert scenarios["depth_limited"]["entry_status"] == "partial_fill"
     for scenario in scenarios.values():
         assert scenario["integrity"] == "verified"
-        assert scenario["state"]["reserved_cash"] == "0"
+        assert Decimal(scenario["state"]["reserved_cash"]) == 0
