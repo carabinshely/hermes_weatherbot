@@ -113,12 +113,11 @@ def _realized_pnl_today(
     state = LedgerState.empty(currency)
     realized = Money.zero(currency)
     for event in events:
-        if event.occurred_at > evaluated_at:
-            break
         before = _realized_total(state)
         state = apply_event(state, event)
         after = _realized_total(state)
-        if start <= event.occurred_at.astimezone(UTC) <= end:
+        event_utc = event.occurred_at.astimezone(UTC)
+        if event.occurred_at <= evaluated_at and start <= event_utc <= end:
             realized += after - before
     return realized
 
