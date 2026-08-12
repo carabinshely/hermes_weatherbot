@@ -70,7 +70,9 @@ def test_fit_uses_only_pre_cutoff_samples_and_evaluates_untouched_holdout() -> N
 
     assert result.artifact.training_end == date(2025, 7, 30)
     assert result.artifact.validation_start == date(2026, 6, 1)
-    assert all(group.training_end == result.artifact.training_end for group in result.artifact.groups)
+    assert all(
+        group.training_end == result.artifact.training_end for group in result.artifact.groups
+    )
     assert max(group.sample_count for group in result.artifact.groups) == 60
     assert result.validation.sample_count == 18
     assert result.validation.forecast_bias_f == pytest.approx(3.0)
@@ -102,7 +104,9 @@ def test_distribution_selection_diagnostics_are_training_only_and_reproducible()
     assert first.artifact.artifact_sha256 == second.artifact.artifact_sha256
     assert first.validation == second.validation
     assert all(group.diagnostics.normality_p_value >= 0 for group in first.artifact.groups)
-    assert all(group.diagnostics.empirical_selection_crps is not None for group in first.artifact.groups)
+    assert all(
+        group.diagnostics.empirical_selection_crps is not None for group in first.artifact.groups
+    )
 
 
 def test_duplicate_sample_identity_is_rejected_instead_of_double_counted() -> None:

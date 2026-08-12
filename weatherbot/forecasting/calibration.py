@@ -322,7 +322,12 @@ class CalibrationGroupKey:
             GroupLevel.SOURCE_LEAD: (False, False, True, False),
             GroupLevel.SOURCE: (False, False, False, False),
         }[self.level]
-        actual = (city is not None, region is not None, self.lead_days is not None, self.season is not None)
+        actual = (
+            city is not None,
+            region is not None,
+            self.lead_days is not None,
+            self.season is not None,
+        )
         if actual != expected:
             raise CalibrationError(f"invalid dimensions for calibration level {self.level.value}")
         object.__setattr__(self, "city", city)
@@ -420,9 +425,7 @@ class CalibrationArtifact:
 
     def __post_init__(self) -> None:
         if self.schema_version != _ARTIFACT_SCHEMA_VERSION:
-            raise CalibrationError(
-                f"unsupported calibration schema version: {self.schema_version}"
-            )
+            raise CalibrationError(f"unsupported calibration schema version: {self.schema_version}")
         model_version = self.model_version.strip()
         forecast_contract = self.forecast_contract_id.strip()
         observation_contract = self.observation_contract_id.strip()
@@ -457,7 +460,9 @@ class CalibrationArtifact:
         object.__setattr__(self, "observation_contract_id", observation_contract)
         object.__setattr__(self, "created_at_utc", created)
         object.__setattr__(self, "dataset_sha256", dataset_hash)
-        object.__setattr__(self, "groups", tuple(sorted(self.groups, key=lambda item: item.key.stable_key)))
+        object.__setattr__(
+            self, "groups", tuple(sorted(self.groups, key=lambda item: item.key.stable_key))
+        )
 
     def payload_mapping(self) -> Mapping[str, object]:
         return {

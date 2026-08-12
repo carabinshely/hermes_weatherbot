@@ -175,7 +175,9 @@ def _fit_group(
     *,
     training_end: date,
 ) -> CalibrationGroup:
-    ordered = tuple(sorted(samples, key=lambda item: (item.market_date, item.city, item.station_id)))
+    ordered = tuple(
+        sorted(samples, key=lambda item: (item.market_date, item.city, item.station_id))
+    )
     inner_train, inner_validation = _inner_selection_split(ordered)
     inner_residuals = tuple(sample.residual_f for sample in inner_train)
     validation_residuals = tuple(sample.residual_f for sample in inner_validation)
@@ -244,7 +246,9 @@ def _keys_for_sample(sample: CalibrationSample) -> tuple[CalibrationGroupKey, ..
     )
 
 
-def validate_calibration_samples(samples: Iterable[CalibrationSample]) -> tuple[CalibrationSample, ...]:
+def validate_calibration_samples(
+    samples: Iterable[CalibrationSample],
+) -> tuple[CalibrationSample, ...]:
     ordered = tuple(
         sorted(
             samples,
