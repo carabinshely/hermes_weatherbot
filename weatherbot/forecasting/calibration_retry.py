@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Sequence
-from typing import Any, TypeVar
+from typing import Any
 from unittest.mock import patch
 
 from weatherbot.forecasting import calibration_sweep
@@ -27,7 +27,6 @@ _DEFAULT_REQUEST_MAX_ATTEMPTS = 3
 _DEFAULT_REQUEST_BACKOFF_SECONDS = 3.0
 _RETRYABLE_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 _REQUEST_FAILURE_PREFIX = "historical data request failed for "
-_T = TypeVar("_T")
 
 
 def is_retryable_request_error(exc: OSError) -> bool:
@@ -36,9 +35,7 @@ def is_retryable_request_error(exc: OSError) -> bool:
     if isinstance(exc, urllib.error.HTTPError):
         return exc.code in _RETRYABLE_HTTP_STATUS
     if isinstance(exc, urllib.error.URLError):
-        if isinstance(exc.reason, ssl.SSLCertVerificationError):
-            return False
-        return True
+        return not isinstance(exc.reason, ssl.SSLCertVerificationError)
     return True
 
 
@@ -52,9 +49,7 @@ def is_retryable_transport_error(exc: CalibrationError) -> bool:
         if isinstance(cause, urllib.error.HTTPError):
             return cause.code in _RETRYABLE_HTTP_STATUS
         if isinstance(cause, urllib.error.URLError):
-            if isinstance(cause.reason, ssl.SSLCertVerificationError):
-                return False
-            return True
+            return not isinstance(cause.reason, ssl.SSLCertVerificationError)
         if isinstance(cause, OSError):
             return True
         cause = cause.__cause__
@@ -65,14 +60,14 @@ def _stderr_log(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
-def run_request_with_retries(
-    operation: Callable[[], _T],
+def run_request_with_retries[T](
+    operation: Callable[[], T],
     *,
     max_attempts: int = _DEFAULT_REQUEST_MAX_ATTEMPTS,
     backoff_seconds: float = _DEFAULT_REQUEST_BACKOFF_SECONDS,
     sleep: Callable[[float], None] = time.sleep,
     log: Callable[[str], None] = _stderr_log,
-) -> _T:
+) -> T:
     """Retry one HTTP operation without unwinding the enclosing calibration sweep."""
 
     if isinstance(max_attempts, bool) or max_attempts < 1:
