@@ -110,12 +110,10 @@ def test_v3_keeps_empirical_diagnostics_but_emits_only_normal_groups() -> None:
         for decision in result.group_fit_decisions
     )
     assert all(
-        group.distribution.kind is DistributionKind.NORMAL
-        for group in result.artifact.groups
+        group.distribution.kind is DistributionKind.NORMAL for group in result.artifact.groups
     )
     assert not any(
-        group.distribution.kind is DistributionKind.EMPIRICAL
-        for group in result.artifact.groups
+        group.distribution.kind is DistributionKind.EMPIRICAL for group in result.artifact.groups
     )
 
 
