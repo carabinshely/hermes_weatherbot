@@ -2,8 +2,9 @@
 
 This adapter intentionally consumes only the canonical public HTML history page. It does
 not depend on undocumented frontend APIs. The page embeds station identity and one JSON
-observation series; the parser validates those against the market contract and derives
-the finalized whole-degree daily high from the station observations.
+observation series; the parser validates those against the market contract, normalizes the
+embedded Celsius temperatures to the whole-degree Fahrenheit values used by the public
+history display/settlement contract, and derives the finalized daily high.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ import urllib.request
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from html.parser import HTMLParser
 from typing import cast
 from urllib.parse import urlparse
@@ -23,10 +24,11 @@ from zoneinfo import ZoneInfo
 
 from weatherbot.domain import MarketId, ObservationEvidenceStatus, WeatherObservationEvidence
 
-_NORMALIZED_SCHEMA_VERSION = 1
+_NORMALIZED_SCHEMA_VERSION = 2
 _SOURCE_NAME = "Weather Underground public daily history"
 _MEASUREMENT_BASIS = (
-    "finalized daily high temperature from the public station daily-history observation series"
+    "finalized whole-degree Fahrenheit daily high normalized from the public station "
+    "daily-history embedded Celsius observation series"
 )
 _ALLOWED_HOSTS = {"www.wunderground.com", "wunderground.com"}
 
@@ -65,6 +67,10 @@ class WeatherUndergroundObservation:
         temperature = Decimal(self.temperature_f)
         if not temperature.is_finite():
             raise WeatherUndergroundHistoryError("observation temperature must be finite")
+        if temperature != temperature.to_integral_value():
+            raise WeatherUndergroundHistoryError(
+                "normalized Weather Underground Fahrenheit temperature must be whole-degree"
+            )
         object.__setattr__(self, "timestamp_utc", timestamp.astimezone(UTC))
         object.__setattr__(self, "temperature_f", temperature)
 
@@ -164,6 +170,14 @@ def _number(value: object, *, label: str) -> Decimal:
     if not result.is_finite():
         raise WeatherUndergroundHistoryError(f"{label} must be finite")
     return result
+
+
+def _embedded_celsius_to_display_fahrenheit(value: object) -> Decimal:
+    """Normalize one embedded Celsius observation to WU's whole-degree Fahrenheit display."""
+
+    celsius = _number(value, label="Weather Underground embedded Celsius temperature")
+    fahrenheit = celsius * Decimal("9") / Decimal("5") + Decimal("32")
+    return fahrenheit.quantize(Decimal("1"), rounding=ROUND_HALF_UP)
 
 
 def _integer(value: object, *, label: str) -> int:
@@ -273,7 +287,7 @@ def _normalize_observations(
         observations.append(
             WeatherUndergroundObservation(
                 timestamp_utc=timestamp_utc,
-                temperature_f=_number(temperature_raw, label="Weather Underground temperature"),
+                temperature_f=_embedded_celsius_to_display_fahrenheit(temperature_raw),
             )
         )
     if not observations:
@@ -317,6 +331,9 @@ def _normalized_payload(
         "station_id": station_id.strip().upper(),
         "market_date": market_date.isoformat(),
         "market_timezone": market_timezone,
+        "embedded_temperature_unit": "C",
+        "normalized_temperature_unit": "F",
+        "normalization": "celsius-to-fahrenheit-nearest-whole-degree",
         "observations": [
             {
                 "timestamp_utc": item.timestamp_utc.isoformat(),
@@ -404,7 +421,7 @@ def parse_wunderground_daily_history_html(
         unit="F",
         retrieved_at=retrieved,
         source_timestamp=high_observation.timestamp_utc,
-        source_revision=f"public-history-html-v1:{normalized_hash[:16]}",
+        source_revision=f"public-history-html-v2:{normalized_hash[:16]}",
         status=ObservationEvidenceStatus.FINAL,
         payload_hash=normalized_hash,
     )
