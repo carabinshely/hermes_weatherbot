@@ -78,7 +78,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p data/calibration/issue12-v1
-          # calibration_retry logs bounded provider bodies for non-retryable HTTP responses.
           PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_retry \
             --max-attempts 3 \
             --retry-backoff-seconds 10 \
@@ -92,6 +91,7 @@ jobs:
             --manifest-out data/calibration/issue12-v1/dataset-manifest.json \
             --exclusions-out data/calibration/issue12-v1/dataset-exclusions.json \
             --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
+            --unavailable-runs-evidence tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json \
             --timeout-seconds 30 \
             --request-delay-seconds 1.0
 
@@ -99,7 +99,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sweep \
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sparse_sweep \
             --start-date 2026-04-05 \
             --end-date 2026-08-10 \
             --cache-dir "$ISSUE12_CACHE_DIR" \
@@ -107,6 +107,7 @@ jobs:
             --manifest-out data/calibration/issue12-v1/dataset-manifest-offline.json \
             --exclusions-out data/calibration/issue12-v1/dataset-exclusions-offline.json \
             --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
+            --unavailable-runs-evidence tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json \
             --offline
           cmp data/calibration/issue12-v1/dataset.jsonl data/calibration/issue12-v1/dataset-offline.jsonl
           cmp data/calibration/issue12-v1/dataset-manifest.json data/calibration/issue12-v1/dataset-manifest-offline.json
