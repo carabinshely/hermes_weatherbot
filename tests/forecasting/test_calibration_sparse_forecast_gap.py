@@ -31,10 +31,10 @@ def test_unavailable_run_registry_loads_frozen_provider_evidence() -> None:
 def test_missing_run_excludes_only_matching_horizon_per_target_day() -> None:
     registry = load_unavailable_run_registry(_EVIDENCE)
 
-    assert set(missing_horizons(date(2026, 6, 10), registry)) == {0}
-    assert set(missing_horizons(date(2026, 6, 11), registry)) == {1}
-    assert set(missing_horizons(date(2026, 6, 12), registry)) == {2}
-    assert missing_horizons(date(2026, 6, 13), registry) == {}
+    assert set(missing_horizons(date(2026, 6, 11), registry)) == {0}
+    assert set(missing_horizons(date(2026, 6, 12), registry)) == {1}
+    assert set(missing_horizons(date(2026, 6, 13), registry)) == {2}
+    assert missing_horizons(date(2026, 6, 14), registry) == {}
 
 
 def test_sparse_report_counts_observation_days_and_forecast_samples_separately() -> None:
@@ -53,7 +53,7 @@ def test_sparse_report_counts_observation_days_and_forecast_samples_separately()
     forecast_gap = CalibrationSourceGap(
         city="nyc",
         station_id="KLGA",
-        market_date=date(2026, 6, 10),
+        market_date=date(2026, 6, 11),
         lead_days=0,
         source_class="forecast",
         source_url="https://single-runs-api.open-meteo.com/v1/forecast?example=1",
