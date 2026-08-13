@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import urllib.error
+from email.message import Message
 
 import pytest
 
@@ -18,14 +19,20 @@ def _calibration_error(cause: BaseException) -> CalibrationError:
         return exc
 
 
+def _http_error(code: int, message: str) -> urllib.error.HTTPError:
+    return urllib.error.HTTPError(
+        "https://example.test",
+        code,
+        message,
+        Message(),
+        None,
+    )
+
+
 def test_retryable_transport_error_accepts_timeout_and_selected_http_statuses() -> None:
     timeout = _calibration_error(urllib.error.URLError(TimeoutError("timed out")))
-    unavailable = _calibration_error(
-        urllib.error.HTTPError("https://example.test", 503, "unavailable", {}, None)
-    )
-    missing = _calibration_error(
-        urllib.error.HTTPError("https://example.test", 404, "missing", {}, None)
-    )
+    unavailable = _calibration_error(_http_error(503, "unavailable"))
+    missing = _calibration_error(_http_error(404, "missing"))
 
     assert is_retryable_transport_error(timeout)
     assert is_retryable_transport_error(unavailable)
