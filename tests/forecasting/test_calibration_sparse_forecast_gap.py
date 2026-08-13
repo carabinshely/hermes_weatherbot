@@ -7,8 +7,8 @@ from pathlib import Path
 from weatherbot.forecasting.calibration_sparse_sweep import (
     CalibrationSourceGap,
     CalibrationSparseReport,
-    _missing_horizons,
     load_unavailable_run_registry,
+    missing_horizons,
 )
 
 _EVIDENCE = Path("tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json")
@@ -31,10 +31,10 @@ def test_unavailable_run_registry_loads_frozen_provider_evidence() -> None:
 def test_missing_run_excludes_only_matching_horizon_per_target_day() -> None:
     registry = load_unavailable_run_registry(_EVIDENCE)
 
-    assert set(_missing_horizons(date(2026, 6, 10), registry)) == {0}
-    assert set(_missing_horizons(date(2026, 6, 11), registry)) == {1}
-    assert set(_missing_horizons(date(2026, 6, 12), registry)) == {2}
-    assert _missing_horizons(date(2026, 6, 13), registry) == {}
+    assert set(missing_horizons(date(2026, 6, 10), registry)) == {0}
+    assert set(missing_horizons(date(2026, 6, 11), registry)) == {1}
+    assert set(missing_horizons(date(2026, 6, 12), registry)) == {2}
+    assert missing_horizons(date(2026, 6, 13), registry) == {}
 
 
 def test_sparse_report_counts_observation_days_and_forecast_samples_separately() -> None:

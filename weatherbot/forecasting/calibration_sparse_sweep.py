@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 from zoneinfo import ZoneInfo
 
-from weatherbot.domain import MarketId
+from weatherbot.domain import MarketId, WeatherObservationEvidence
 from weatherbot.forecasting.archive import (
     calibration_run_for_market_day,
     parse_single_run_daily_highs,
@@ -23,13 +23,13 @@ from weatherbot.forecasting.calibration_build import (
     OBSERVATION_CONTRACT_ID,
     CalibrationMarketSpec,
     ImmutableHttpCache,
-    _wunderground_headers,
     collect_calibration_dataset,
     parity_report_from_evidence,
 )
 from weatherbot.forecasting.calibration_data import (
     ArchiveParityReport,
     CalibrationDataset,
+    ForecastCalibrationEvidence,
     build_calibration_dataset,
     write_calibration_dataset,
 )
@@ -241,7 +241,18 @@ def load_unavailable_run_registry(path: Path) -> dict[datetime, UnavailableRunEv
     return result
 
 
-def _missing_horizons(
+def _wunderground_headers() -> dict[str, str]:
+    return {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/151.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+
+
+def missing_horizons(
     target_date: date,
     unavailable_runs: dict[datetime, UnavailableRunEvidence],
 ) -> dict[int, UnavailableRunEvidence]:
@@ -292,7 +303,7 @@ def _collect_partial_day(
     )
     observation = parsed.evidence
 
-    pairs = []
+    pairs: list[tuple[ForecastCalibrationEvidence, WeatherObservationEvidence]] = []
     for horizon in available_horizons:
         decision_day = target_date - timedelta(days=horizon)
         run = calibration_run_for_market_day(decision_day)
@@ -408,7 +419,7 @@ def collect_sparse_calibration_sweep(
 
     for market in markets:
         for target_date in target_dates:
-            missing = _missing_horizons(target_date, unavailable_runs)
+            missing = missing_horizons(target_date, unavailable_runs)
             available = tuple(horizon for horizon in _HORIZONS if horizon not in missing)
             try:
                 if not missing:
