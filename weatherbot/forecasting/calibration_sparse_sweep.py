@@ -226,7 +226,9 @@ def load_unavailable_run_registry(path: Path) -> dict[datetime, UnavailableRunEv
         if response_mapping.get("error") is not True or response_mapping.get("reason") != reason:
             raise CalibrationError("unavailable-run provider response does not match evidence")
         if not reason.startswith(_UNAVAILABLE_REASON_PREFIX):
-            raise CalibrationError("unavailable-run reason is outside the approved provider contract")
+            raise CalibrationError(
+                "unavailable-run reason is outside the approved provider contract"
+            )
         if run in result:
             raise CalibrationError(f"duplicate unavailable-run evidence: {run.isoformat()}")
         result[run] = UnavailableRunEvidence(
