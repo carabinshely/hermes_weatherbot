@@ -11,9 +11,7 @@ from weatherbot.forecasting.calibration_sparse_sweep import (
     load_unavailable_run_registry,
 )
 
-_EVIDENCE = Path(
-    "tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json"
-)
+_EVIDENCE = Path("tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json")
 _DATASET_SHA = hashlib.sha256(b"dataset").hexdigest()
 
 
@@ -63,8 +61,7 @@ def test_sparse_report_counts_observation_days_and_forecast_samples_separately()
         raw_payload_sha256=hashlib.sha256(b"forecast-gap").hexdigest(),
         reason_code="open_meteo_model_run_unavailable",
         reason_detail=(
-            "The requested model run is not available. Model: ecmwf_ifs025, "
-            "run: 2026-06-10T18:00Z"
+            "The requested model run is not available. Model: ecmwf_ifs025, run: 2026-06-10T18:00Z"
         ),
         run_initialized_at_utc=datetime(2026, 6, 10, 18, tzinfo=UTC),
     )
