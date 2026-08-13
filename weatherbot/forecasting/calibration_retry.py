@@ -18,7 +18,7 @@ from collections.abc import Callable, Sequence
 from typing import Any
 from unittest.mock import patch
 
-from weatherbot.forecasting import calibration_sweep
+from weatherbot.forecasting import calibration_sparse_sweep as calibration_sweep
 from weatherbot.forecasting.calibration import CalibrationError
 
 _DEFAULT_MAX_ATTEMPTS = 4
