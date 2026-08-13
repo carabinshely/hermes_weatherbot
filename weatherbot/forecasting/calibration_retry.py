@@ -96,7 +96,10 @@ def run_request_with_retries[T](
         except OSError as exc:
             if not is_retryable_request_error(exc):
                 if isinstance(exc, urllib.error.HTTPError):
-                    log(f"historical request non-retryable provider response: {_http_error_detail(exc)}")
+                    log(
+                        "historical request non-retryable provider response: "
+                        f"{_http_error_detail(exc)}"
+                    )
                 raise
             if attempt == max_attempts:
                 log(f"historical request exhausted {max_attempts} transport attempts: {exc}")
