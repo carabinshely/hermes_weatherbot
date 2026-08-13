@@ -25,6 +25,7 @@ _DEFAULT_MAX_ATTEMPTS = 4
 _DEFAULT_BACKOFF_SECONDS = 2.0
 _DEFAULT_REQUEST_MAX_ATTEMPTS = 3
 _DEFAULT_REQUEST_BACKOFF_SECONDS = 3.0
+_MAX_HTTP_ERROR_BODY_BYTES = 4096
 _RETRYABLE_HTTP_STATUS = frozenset({408, 425, 429, 500, 502, 503, 504})
 _REQUEST_FAILURE_PREFIX = "historical data request failed for "
 
@@ -60,6 +61,20 @@ def _stderr_log(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
 
 
+def _http_error_detail(exc: urllib.error.HTTPError) -> str:
+    """Return a bounded public provider error body for diagnostics."""
+
+    detail = f"HTTP {exc.code} {exc.reason}"
+    try:
+        body = exc.read(_MAX_HTTP_ERROR_BODY_BYTES)
+    except (AttributeError, OSError, ValueError):
+        return detail
+    if not body:
+        return detail
+    text = body.decode("utf-8", errors="replace").strip()
+    return f"{detail}; response_body={text!r}" if text else detail
+
+
 def run_request_with_retries[T](
     operation: Callable[[], T],
     *,
@@ -80,6 +95,8 @@ def run_request_with_retries[T](
             return operation()
         except OSError as exc:
             if not is_retryable_request_error(exc):
+                if isinstance(exc, urllib.error.HTTPError):
+                    log(f"historical request non-retryable provider response: {_http_error_detail(exc)}")
                 raise
             if attempt == max_attempts:
                 log(f"historical request exhausted {max_attempts} transport attempts: {exc}")
