@@ -25,16 +25,18 @@ from weatherbot.forecasting.calibration import (
 )
 from weatherbot.forecasting.calibration_fit import (
     ValidationMetrics,
-    _empirical_distribution,
-    _inner_selection_split,
-    _jarque_bera,
-    _keys_for_sample,
-    _mean_crps,
-    _normal_distribution,
     evaluate_holdout,
     validate_calibration_samples,
 )
 from weatherbot.forecasting.calibration_policy import CalibrationGroupFitDecision
+from weatherbot.forecasting.calibration_v3_math import (
+    empirical_distribution,
+    inner_selection_split,
+    jarque_bera,
+    keys_for_sample,
+    mean_crps,
+    normal_distribution,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,22 +55,22 @@ def _fit_group_v3(
     ordered = tuple(
         sorted(samples, key=lambda item: (item.market_date, item.city, item.station_id))
     )
-    inner_train, inner_validation = _inner_selection_split(ordered)
+    inner_train, inner_validation = inner_selection_split(ordered)
     inner_residuals = tuple(sample.residual_f for sample in inner_train)
     validation_residuals = tuple(sample.residual_f for sample in inner_validation)
 
-    normal_candidate = _normal_distribution(inner_residuals)
-    empirical_candidate = _empirical_distribution(inner_residuals)
+    normal_candidate = normal_distribution(inner_residuals)
+    empirical_candidate = empirical_distribution(inner_residuals)
     normal_crps = (
-        None if normal_candidate is None else _mean_crps(normal_candidate, validation_residuals)
+        None if normal_candidate is None else mean_crps(normal_candidate, validation_residuals)
     )
-    empirical_crps = _mean_crps(empirical_candidate, validation_residuals)
+    empirical_crps = mean_crps(empirical_candidate, validation_residuals)
 
     all_residuals = tuple(sample.residual_f for sample in ordered)
-    fitted_normal = _normal_distribution(all_residuals)
-    jarque_bera, p_value = _jarque_bera(all_residuals)
+    fitted_normal = normal_distribution(all_residuals)
+    jarque_bera_statistic, p_value = jarque_bera(all_residuals)
     diagnostics = CalibrationDiagnostics(
-        jarque_bera=jarque_bera,
+        jarque_bera=jarque_bera_statistic,
         normality_p_value=p_value,
         normal_selection_crps=normal_crps,
         empirical_selection_crps=empirical_crps,
@@ -140,7 +142,7 @@ def fit_v3_calibration_artifact(
 
     grouped: dict[CalibrationGroupKey, list[CalibrationSample]] = defaultdict(list)
     for sample in training:
-        for key in _keys_for_sample(sample):
+        for key in keys_for_sample(sample):
             grouped[key].append(sample)
 
     groups: list[CalibrationGroup] = []
