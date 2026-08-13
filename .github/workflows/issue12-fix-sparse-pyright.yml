@@ -1,0 +1,96 @@
+name: Fix issue 12 sparse Pyright findings
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+    paths:
+      - .github/workflows/issue12-fix-sparse-pyright.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --locked --all-groups
+      - name: Apply exact Pyright fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          module = Path("weatherbot/forecasting/calibration_sparse_sweep.py")
+          test = Path("tests/forecasting/test_calibration_sparse_forecast_gap.py")
+          text = module.read_text(encoding="utf-8")
+
+          def replace_once(old: str, new: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"expected exactly one occurrence, got {count}: {old!r}")
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "from weatherbot.domain import MarketId\n",
+              "from weatherbot.domain import MarketId, WeatherObservationEvidence\n",
+          )
+          replace_once("    _wunderground_headers,\n", "")
+          replace_once(
+              "    CalibrationDataset,\n    build_calibration_dataset,\n",
+              "    CalibrationDataset,\n    ForecastCalibrationEvidence,\n    build_calibration_dataset,\n",
+          )
+          replace_once(
+              "def _missing_horizons(\n",
+              "def missing_horizons(\n",
+          )
+          replace_once(
+              "    pairs = []\n",
+              "    pairs: list[tuple[ForecastCalibrationEvidence, WeatherObservationEvidence]] = []\n",
+          )
+          headers_anchor = "\ndef missing_horizons(\n"
+          if text.count(headers_anchor) != 1:
+              raise SystemExit("missing public horizon helper anchor")
+          headers = '''\n\ndef _wunderground_headers() -> dict[str, str]:\n    return {\n        "User-Agent": (\n            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "\n            "(KHTML, like Gecko) Chrome/151.0 Safari/537.36"\n        ),\n        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",\n        "Accept-Language": "en-US,en;q=0.9",\n    }\n'''
+          text = text.replace(headers_anchor, headers + headers_anchor, 1)
+          text = text.replace("_missing_horizons(", "missing_horizons(")
+          module.write_text(text, encoding="utf-8")
+
+          test_text = test.read_text(encoding="utf-8")
+          if "_missing_horizons" not in test_text:
+              raise SystemExit("expected private horizon helper in test")
+          test_text = test_text.replace("_missing_horizons", "missing_horizons")
+          test.write_text(test_text, encoding="utf-8")
+          PY
+      - name: Format and validate focused files
+        run: |
+          uv run ruff check --fix \
+            weatherbot/forecasting/calibration_sparse_sweep.py \
+            tests/forecasting/test_calibration_sparse_forecast_gap.py
+          uv run ruff format \
+            weatherbot/forecasting/calibration_sparse_sweep.py \
+            tests/forecasting/test_calibration_sparse_forecast_gap.py
+          uv run pyright \
+            weatherbot/forecasting/calibration_sparse_sweep.py \
+            tests/forecasting/test_calibration_sparse_forecast_gap.py
+      - name: Commit exact fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          paths=(
+            weatherbot/forecasting/calibration_sparse_sweep.py
+            tests/forecasting/test_calibration_sparse_forecast_gap.py
+          )
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- "${paths[@]}"
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git commit -m "Fix sparse calibration type checks"
+          git push origin HEAD:agent/issue-12-calibrated-uncertainty
