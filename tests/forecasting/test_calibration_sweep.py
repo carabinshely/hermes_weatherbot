@@ -11,8 +11,8 @@ import pytest
 from weatherbot.forecasting import calibration_sweep
 from weatherbot.forecasting.calibration import CalibrationSample
 from weatherbot.forecasting.calibration_build import (
-    CachedHttpCapture,
     DEFAULT_MARKETS,
+    CachedHttpCapture,
     ImmutableHttpCache,
 )
 from weatherbot.forecasting.calibration_data import (
@@ -160,7 +160,8 @@ def test_sparse_sweep_excludes_only_coverage_deficient_station_day(
         return _dataset(day, day.day * 10)
 
     monkeypatch.setattr(calibration_sweep, "collect_calibration_dataset", fake_collect)
-    cache = cast(ImmutableHttpCache, _FakeCache())
+    fake_cache = _FakeCache()
+    cache = cast(ImmutableHttpCache, fake_cache)
     parity_report = cast(ArchiveParityReport, object())
 
     dataset, report = collect_calibration_sweep(
@@ -183,7 +184,7 @@ def test_sparse_sweep_excludes_only_coverage_deficient_station_day(
     assert exclusion.station_id == "KLGA"
     assert exclusion.reason_code == "weather_underground_coverage"
     assert exclusion.reason_detail.endswith("02:51:00")
-    assert exclusion.raw_payload_sha256 == hashlib.sha256(cache.payload).hexdigest()
+    assert exclusion.raw_payload_sha256 == hashlib.sha256(fake_cache.payload).hexdigest()
     assert report.dataset_sha256 == dataset.manifest.dataset_sha256
 
 
@@ -214,8 +215,7 @@ def test_sweep_report_checksum_covers_exclusion_provenance() -> None:
         station_id="KLGA",
         market_date=date(2026, 6, 2),
         source_url=(
-            "https://www.wunderground.com/history/daily/us/ny/new-york-city/KLGA/"
-            "date/2026-06-02"
+            "https://www.wunderground.com/history/daily/us/ny/new-york-city/KLGA/date/2026-06-02"
         ),
         raw_payload_sha256=hashlib.sha256(b"page").hexdigest(),
         reason_code="weather_underground_coverage",
