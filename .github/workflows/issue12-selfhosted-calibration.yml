@@ -62,7 +62,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p data/calibration/issue12-v1
-          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sweep \
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_retry \
+            --max-attempts 4 \
+            --retry-backoff-seconds 2 \
+            -- \
             --start-date 2026-04-05 \
             --end-date 2026-08-10 \
             --cache-dir "$ISSUE12_CACHE_DIR" \
