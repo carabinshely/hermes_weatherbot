@@ -57,7 +57,7 @@ jobs:
           uv run pyright \
             tests/forecasting/test_calibration_sparse_forecast_gap.py \
             tests/forecasting/test_calibration_sparse_public_api.py
-          uv run pytest -q \
+          PYTHONPATH=. uv run pytest -q \
             tests/forecasting/test_calibration_sparse_forecast_gap.py \
             tests/forecasting/test_calibration_sparse_public_api.py
       - name: Commit corrected tests
