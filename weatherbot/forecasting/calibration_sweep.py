@@ -77,9 +77,12 @@ class CalibrationSweepExclusion:
         if not city or not station or not source_url or not reason_code or not reason_detail:
             raise CalibrationError("calibration exclusion text fields must not be blank")
         if not source_url.startswith("https://www.wunderground.com/history/daily/"):
-            raise CalibrationError("calibration exclusion must reference Weather Underground history")
+            raise CalibrationError(
+                "calibration exclusion must reference Weather Underground history"
+            )
         object.__setattr__(self, "city", city)
         object.__setattr__(self, "station_id", station)
+        object.__setattr__(self, "source_url", source_url)
         object.__setattr__(
             self,
             "raw_payload_sha256",
@@ -187,7 +190,9 @@ def merge_calibration_datasets(datasets: Iterable[CalibrationDataset]) -> Calibr
     if len(forecast_contracts) != 1 or len(observation_contracts) != 1:
         raise CalibrationError("calibration sweep chunks disagree on source contracts")
 
-    ordered = tuple(sorted((record for item in chunks for record in item.records), key=_record_sort_key))
+    ordered = tuple(
+        sorted((record for item in chunks for record in item.records), key=_record_sort_key)
+    )
     if not ordered:
         raise CalibrationError("calibration sweep produced no usable records")
     seen: set[tuple[str, object, date, int, str, str]] = set()
@@ -211,13 +216,7 @@ def merge_calibration_datasets(datasets: Iterable[CalibrationDataset]) -> Calibr
             sorted({record.forecast_capture_contract_id for record in ordered})
         ),
         parity_report_sha256s=tuple(
-            sorted(
-                {
-                    digest
-                    for item in chunks
-                    for digest in item.manifest.parity_report_sha256s
-                }
-            )
+            sorted({digest for item in chunks for digest in item.manifest.parity_report_sha256s})
         ),
         dataset_sha256=hashlib.sha256(jsonl.encode()).hexdigest(),
     )
