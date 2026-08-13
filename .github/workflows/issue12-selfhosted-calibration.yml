@@ -79,8 +79,10 @@ jobs:
           set -euo pipefail
           mkdir -p data/calibration/issue12-v1
           PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_retry \
-            --max-attempts 5 \
-            --retry-backoff-seconds 5 \
+            --max-attempts 3 \
+            --retry-backoff-seconds 10 \
+            --request-max-attempts 4 \
+            --request-retry-backoff-seconds 3 \
             -- \
             --start-date 2026-04-05 \
             --end-date 2026-08-10 \
@@ -89,7 +91,7 @@ jobs:
             --manifest-out data/calibration/issue12-v1/dataset-manifest.json \
             --exclusions-out data/calibration/issue12-v1/dataset-exclusions.json \
             --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
-            --timeout-seconds 60 \
+            --timeout-seconds 30 \
             --request-delay-seconds 1.0
 
       - name: Verify byte-identical offline replay
