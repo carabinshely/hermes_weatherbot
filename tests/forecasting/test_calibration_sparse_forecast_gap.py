@@ -11,7 +11,9 @@ from weatherbot.forecasting.calibration_sparse_sweep import (
     load_unavailable_run_registry,
 )
 
-_EVIDENCE = Path("tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json")
+_EVIDENCE = Path(
+    "tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json"
+)
 _DATASET_SHA = hashlib.sha256(b"dataset").hexdigest()
 
 
