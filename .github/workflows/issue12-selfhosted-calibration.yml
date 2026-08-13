@@ -12,12 +12,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: issue12-selfhosted-calibration-isolated-v1
+  group: issue12-selfhosted-calibration-isolated-v2
   cancel-in-progress: false
 
 jobs:
   calibrate:
-    name: Collect and fit calibration v1
+    name: Collect and fit calibration v2
     runs-on: hermes-weather-calibration
     timeout-minutes: 180
 
@@ -73,11 +73,11 @@ jobs:
               raise SystemExit(f"calibration requires Python 3.12, got {sys.version_info[:2]}")
           PY
 
-      - name: Collect full calibration dataset
+      - name: Collect corrected calibration dataset from preserved cache
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p data/calibration/issue12-v1
+          mkdir -p data/calibration/issue12-v2
           PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_retry \
             --max-attempts 3 \
             --retry-backoff-seconds 10 \
@@ -87,9 +87,9 @@ jobs:
             --start-date 2026-04-05 \
             --end-date 2026-08-10 \
             --cache-dir "$ISSUE12_CACHE_DIR" \
-            --records-out data/calibration/issue12-v1/dataset.jsonl \
-            --manifest-out data/calibration/issue12-v1/dataset-manifest.json \
-            --exclusions-out data/calibration/issue12-v1/dataset-exclusions.json \
+            --records-out data/calibration/issue12-v2/dataset.jsonl \
+            --manifest-out data/calibration/issue12-v2/dataset-manifest.json \
+            --exclusions-out data/calibration/issue12-v2/dataset-exclusions.json \
             --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
             --unavailable-runs-evidence tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json \
             --timeout-seconds 30 \
@@ -103,60 +103,60 @@ jobs:
             --start-date 2026-04-05 \
             --end-date 2026-08-10 \
             --cache-dir "$ISSUE12_CACHE_DIR" \
-            --records-out data/calibration/issue12-v1/dataset-offline.jsonl \
-            --manifest-out data/calibration/issue12-v1/dataset-manifest-offline.json \
-            --exclusions-out data/calibration/issue12-v1/dataset-exclusions-offline.json \
+            --records-out data/calibration/issue12-v2/dataset-offline.jsonl \
+            --manifest-out data/calibration/issue12-v2/dataset-manifest-offline.json \
+            --exclusions-out data/calibration/issue12-v2/dataset-exclusions-offline.json \
             --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
             --unavailable-runs-evidence tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json \
             --offline
-          cmp data/calibration/issue12-v1/dataset.jsonl data/calibration/issue12-v1/dataset-offline.jsonl
-          cmp data/calibration/issue12-v1/dataset-manifest.json data/calibration/issue12-v1/dataset-manifest-offline.json
-          cmp data/calibration/issue12-v1/dataset-exclusions.json data/calibration/issue12-v1/dataset-exclusions-offline.json
+          cmp data/calibration/issue12-v2/dataset.jsonl data/calibration/issue12-v2/dataset-offline.jsonl
+          cmp data/calibration/issue12-v2/dataset-manifest.json data/calibration/issue12-v2/dataset-manifest-offline.json
+          cmp data/calibration/issue12-v2/dataset-exclusions.json data/calibration/issue12-v2/dataset-exclusions-offline.json
 
-      - name: Fit issue12-v1 and evaluate untouched holdout
+      - name: Fit issue12-v2 and evaluate untouched holdout
         shell: bash
         run: |
           set -euo pipefail
           PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_train \
-            --records data/calibration/issue12-v1/dataset.jsonl \
-            --manifest data/calibration/issue12-v1/dataset-manifest.json \
-            --model-version issue12-v1 \
-            --created-at-utc 2026-08-13T10:10:00Z \
+            --records data/calibration/issue12-v2/dataset.jsonl \
+            --manifest data/calibration/issue12-v2/dataset-manifest.json \
+            --model-version issue12-v2 \
+            --created-at-utc 2026-08-13T15:45:00Z \
             --training-end 2026-07-13 \
             --validation-start 2026-07-14 \
             --validation-end 2026-08-10 \
             --min-sample-count 30 \
-            --artifact-out data/calibration/issue12-v1/calibration-artifact.json \
-            --report-out data/calibration/issue12-v1/holdout-report.json
+            --artifact-out data/calibration/issue12-v2/calibration-artifact.json \
+            --report-out data/calibration/issue12-v2/holdout-report.json
 
       - name: Print evidence summary
         if: success()
         shell: bash
         run: |
           set -euo pipefail
-          wc -l data/calibration/issue12-v1/dataset.jsonl
+          wc -l data/calibration/issue12-v2/dataset.jsonl
           sha256sum \
-            data/calibration/issue12-v1/dataset.jsonl \
-            data/calibration/issue12-v1/dataset-manifest.json \
-            data/calibration/issue12-v1/dataset-exclusions.json \
-            data/calibration/issue12-v1/calibration-artifact.json \
-            data/calibration/issue12-v1/holdout-report.json
+            data/calibration/issue12-v2/dataset.jsonl \
+            data/calibration/issue12-v2/dataset-manifest.json \
+            data/calibration/issue12-v2/dataset-exclusions.json \
+            data/calibration/issue12-v2/calibration-artifact.json \
+            data/calibration/issue12-v2/holdout-report.json
           du -sh "$ISSUE12_CACHE_DIR"
           printf '%s\n' '--- exclusion report ---'
-          uv run python -m json.tool data/calibration/issue12-v1/dataset-exclusions.json
+          uv run python -m json.tool data/calibration/issue12-v2/dataset-exclusions.json
           printf '%s\n' '--- holdout report ---'
-          uv run python -m json.tool data/calibration/issue12-v1/holdout-report.json
+          uv run python -m json.tool data/calibration/issue12-v2/holdout-report.json
 
       - name: Upload normalized calibration evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: issue12-calibration-evidence
+          name: issue12-calibration-evidence-v2
           if-no-files-found: error
           retention-days: 30
           path: |
-            data/calibration/issue12-v1/dataset.jsonl
-            data/calibration/issue12-v1/dataset-manifest.json
-            data/calibration/issue12-v1/dataset-exclusions.json
-            data/calibration/issue12-v1/calibration-artifact.json
-            data/calibration/issue12-v1/holdout-report.json
+            data/calibration/issue12-v2/dataset.jsonl
+            data/calibration/issue12-v2/dataset-manifest.json
+            data/calibration/issue12-v2/dataset-exclusions.json
+            data/calibration/issue12-v2/calibration-artifact.json
+            data/calibration/issue12-v2/holdout-report.json
