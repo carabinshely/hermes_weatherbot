@@ -1,0 +1,29 @@
+name: Issue 47 Ruff formatting diagnostic
+
+on:
+  push:
+    branches:
+      - agent/issue-47-v3-policy
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - run: uv sync --locked --all-groups
+      - name: Print canonical Ruff output
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv run ruff format tests/forecasting/test_calibration_v3_policy.py tests/forecasting/test_calibration_v3_train.py
+          printf '%s\n' '--- POLICY ---'
+          cat tests/forecasting/test_calibration_v3_policy.py
+          printf '%s\n' '--- TRAIN ---'
+          cat tests/forecasting/test_calibration_v3_train.py
