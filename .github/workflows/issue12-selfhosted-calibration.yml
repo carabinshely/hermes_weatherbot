@@ -12,13 +12,13 @@ permissions:
   contents: read
 
 concurrency:
-  group: issue12-selfhosted-calibration
+  group: issue12-selfhosted-calibration-isolated-v1
   cancel-in-progress: false
 
 jobs:
   calibrate:
     name: Collect and fit calibration v1
-    runs-on: [self-hosted, Linux, X64, hermes-weather-calibration]
+    runs-on: hermes-weather-calibration
     timeout-minutes: 180
 
     steps:
