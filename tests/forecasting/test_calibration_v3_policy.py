@@ -214,7 +214,7 @@ def test_model_builds_group_index_once_and_does_not_change_artifact_bytes(
     )
     before = artifact.to_json()
     calls = 0
-    original = getattr(calibration_module, "_build_group_index")
+    original = calibration_module._build_group_index
 
     def counted(value: CalibrationArtifact) -> Mapping[CalibrationGroupKey, CalibrationGroup]:
         nonlocal calls
