@@ -72,9 +72,7 @@ def _write_dataset(tmp_path: Path) -> tuple[Path, Path]:
                 forecast_latitude=Decimal("40.7772"),
                 forecast_longitude=Decimal("-73.8726"),
                 forecast_bias_correction=True,
-                forecast_provenance_sha256=hashlib.sha256(
-                    f"p-{token}".encode()
-                ).hexdigest(),
+                forecast_provenance_sha256=hashlib.sha256(f"p-{token}".encode()).hexdigest(),
             )
         )
     frozen = tuple(records)
