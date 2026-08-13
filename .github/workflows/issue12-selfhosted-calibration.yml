@@ -54,8 +54,24 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
-      - name: Install locked environment
-        run: uv sync --locked --all-groups
+      - name: Install locked Python 3.12 environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .venv
+          uv sync --locked --all-groups --python "$(command -v python)"
+
+      - name: Verify calibration interpreter contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python - <<'PY'
+          import sys
+
+          print(sys.version)
+          if sys.version_info[:2] != (3, 12):
+              raise SystemExit(f"calibration requires Python 3.12, got {sys.version_info[:2]}")
+          PY
 
       - name: Collect full calibration dataset
         shell: bash
@@ -63,8 +79,8 @@ jobs:
           set -euo pipefail
           mkdir -p data/calibration/issue12-v1
           PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_retry \
-            --max-attempts 4 \
-            --retry-backoff-seconds 2 \
+            --max-attempts 5 \
+            --retry-backoff-seconds 5 \
             -- \
             --start-date 2026-04-05 \
             --end-date 2026-08-10 \
@@ -73,7 +89,8 @@ jobs:
             --manifest-out data/calibration/issue12-v1/dataset-manifest.json \
             --exclusions-out data/calibration/issue12-v1/dataset-exclusions.json \
             --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
-            --request-delay-seconds 0.5
+            --timeout-seconds 60 \
+            --request-delay-seconds 1.0
 
       - name: Verify byte-identical offline replay
         shell: bash
