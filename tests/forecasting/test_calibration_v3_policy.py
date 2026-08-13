@@ -82,7 +82,9 @@ def test_v3_keeps_empirical_diagnostics_but_emits_only_normal_groups() -> None:
         values.append(sample("nyc", start + timedelta(days=index), residual=residual))
     for index in range(5):
         residual = -5 if index % 2 == 0 else 5
-        values.append(sample("nyc", date(2026, 7, 11) + timedelta(days=index), residual=residual))
+        values.append(
+            sample("nyc", date(2026, 7, 11) + timedelta(days=index), residual=residual)
+        )
 
     result = fit(tuple(values))
 
@@ -91,8 +93,13 @@ def test_v3_keeps_empirical_diagnostics_but_emits_only_normal_groups() -> None:
         decision.diagnostics.empirical_selection_crps is not None
         for decision in result.group_fit_decisions
     )
-    assert all(group.distribution.kind is DistributionKind.NORMAL for group in result.artifact.groups)
-    assert not any(group.distribution.kind is DistributionKind.EMPIRICAL for group in result.artifact.groups)
+    assert all(
+        group.distribution.kind is DistributionKind.NORMAL for group in result.artifact.groups
+    )
+    assert not any(
+        group.distribution.kind is DistributionKind.EMPIRICAL
+        for group in result.artifact.groups
+    )
 
 
 def test_v3_omits_zero_variance_specific_group_and_uses_broader_fallback() -> None:
@@ -170,7 +177,7 @@ def test_model_builds_group_index_once_and_does_not_change_artifact_bytes(
     )
     before = artifact.to_json()
     calls = 0
-    original = calibration_module._build_group_index
+    original = getattr(calibration_module, "_build_group_index")
 
     def counted(value: CalibrationArtifact):
         nonlocal calls
