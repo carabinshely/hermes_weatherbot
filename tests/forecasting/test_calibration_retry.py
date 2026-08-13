@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import urllib.error
-from collections.abc import Callable
 
 import pytest
 
@@ -94,7 +93,8 @@ def test_run_with_retries_stops_at_attempt_limit() -> None:
 
 
 def test_run_with_retries_rejects_invalid_retry_policy() -> None:
-    operation: Callable[[], int] = lambda: 0
+    def operation() -> int:
+        return 0
 
     with pytest.raises(ValueError, match="positive integer"):
         run_with_retries(operation, max_attempts=0)
