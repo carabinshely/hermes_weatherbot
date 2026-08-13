@@ -78,6 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p data/calibration/issue12-v1
+          # calibration_retry logs bounded provider bodies for non-retryable HTTP responses.
           PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_retry \
             --max-attempts 3 \
             --retry-backoff-seconds 10 \
