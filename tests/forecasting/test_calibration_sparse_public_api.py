@@ -16,4 +16,4 @@ def test_missing_horizons_is_public_sparse_gap_contract() -> None:
     run = datetime(2026, 6, 10, 18, tzinfo=UTC)
 
     assert registry[run].run_initialized_at_utc == run
-    assert set(missing_horizons(date(2026, 6, 10), registry)) == {0}
+    assert set(missing_horizons(date(2026, 6, 11), registry)) == {0}
