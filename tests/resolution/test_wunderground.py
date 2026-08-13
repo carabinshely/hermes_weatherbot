@@ -26,6 +26,8 @@ def _observations(
     first_hour: int = 0,
     fractional_high: bool = False,
 ) -> list[dict[str, object]]:
+    """Return the Celsius-shaped series embedded by the public WU history page."""
+
     timezone = ZoneInfo(_TIMEZONE)
     values: list[dict[str, object]] = []
     for index in range(count):
@@ -34,16 +36,16 @@ def _observations(
             time(hour=first_hour, minute=51),
             timezone,
         ) + timedelta(hours=index)
-        temperature: int | float = 48 + min(index, 13)
+        temperature: int | float = 16 + min(index, 13)
         if index > 13:
-            temperature = 61 - min(index - 13, 8)
+            temperature = 29 - min(index - 13, 8)
         if fractional_high and index == 13:
-            temperature = 61.5
+            temperature = 29.5
         values.append(
             {
                 "ts": int(local.astimezone(UTC).timestamp() * 1000),
                 "temp": temperature,
-                "dewPt": 40,
+                "dewPt": 10,
                 "hum": 60,
             }
         )
@@ -108,13 +110,31 @@ def test_public_history_page_becomes_final_authoritative_evidence() -> None:
     assert capture.evidence.station_id == "KLGA"
     assert capture.evidence.market_date == _MARKET_DATE
     assert capture.evidence.market_timezone == _TIMEZONE
-    assert capture.evidence.temperature == Decimal("61")
+    assert capture.evidence.temperature == Decimal("84")
     assert capture.evidence.unit == "F"
+    assert capture.evidence.source_revision.startswith("public-history-html-v2:")
     assert capture.evidence.learning_eligible
     assert capture.observation_count == 24
     assert capture.evidence.payload_hash == capture.normalized_payload_sha256
     assert capture.raw_page_sha256 != capture.normalized_payload_sha256
     assert capture.high_observation_utc.astimezone(ZoneInfo(_TIMEZONE)).hour == 13
+
+
+def test_embedded_28_celsius_normalizes_to_displayed_82_fahrenheit() -> None:
+    observations = _observations()
+    observations[13]["temp"] = 28
+
+    capture = _parse(_html(observations))
+
+    assert capture.evidence.temperature == Decimal("82")
+    assert capture.evidence.unit == "F"
+
+
+def test_fractional_embedded_celsius_normalizes_to_whole_degree_fahrenheit() -> None:
+    capture = _parse(_html(_observations(fractional_high=True)))
+
+    assert capture.evidence.temperature == Decimal("85")
+    assert capture.evidence.unit == "F"
 
 
 def test_normalized_weather_hash_ignores_unrelated_page_churn() -> None:
@@ -164,11 +184,6 @@ def test_series_that_begins_too_late_is_rejected_even_with_enough_rows() -> None
             _html(_observations(count=21, first_hour=3)),
             coverage_policy=WeatherUndergroundCoveragePolicy(min_observations=18),
         )
-
-
-def test_fractional_final_high_is_not_settlement_ready() -> None:
-    with pytest.raises(WeatherUndergroundHistoryError, match="whole-degree"):
-        _parse(_html(_observations(fractional_high=True)))
 
 
 def test_multiple_embedded_observation_series_are_rejected_as_ambiguous() -> None:
