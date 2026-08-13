@@ -22,6 +22,21 @@ jobs:
     timeout-minutes: 180
 
     steps:
+      - name: Preserve reusable calibration cache before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          persistent_cache="$(dirname "$(dirname "$GITHUB_WORKSPACE")")/issue12-calibration-cache"
+          legacy_cache="$GITHUB_WORKSPACE/data/calibration/issue12-v1/cache"
+          mkdir -p "$persistent_cache"
+          if [ -d "$legacy_cache" ]; then
+            cp -a -n "$legacy_cache/." "$persistent_cache/"
+          fi
+          echo "ISSUE12_CACHE_DIR=$persistent_cache" >> "$GITHUB_ENV"
+          printf 'preserved cache files: '
+          find "$persistent_cache" -type f | wc -l
+          du -sh "$persistent_cache"
+
       - name: Check out calibration branch
         uses: actions/checkout@v6
         with:
@@ -47,12 +62,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p data/calibration/issue12-v1
-          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_build \
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sweep \
             --start-date 2026-04-05 \
             --end-date 2026-08-10 \
-            --cache-dir data/calibration/issue12-v1/cache \
+            --cache-dir "$ISSUE12_CACHE_DIR" \
             --records-out data/calibration/issue12-v1/dataset.jsonl \
             --manifest-out data/calibration/issue12-v1/dataset-manifest.json \
+            --exclusions-out data/calibration/issue12-v1/dataset-exclusions.json \
             --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
             --request-delay-seconds 0.5
 
@@ -60,16 +76,18 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_build \
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sweep \
             --start-date 2026-04-05 \
             --end-date 2026-08-10 \
-            --cache-dir data/calibration/issue12-v1/cache \
+            --cache-dir "$ISSUE12_CACHE_DIR" \
             --records-out data/calibration/issue12-v1/dataset-offline.jsonl \
             --manifest-out data/calibration/issue12-v1/dataset-manifest-offline.json \
+            --exclusions-out data/calibration/issue12-v1/dataset-exclusions-offline.json \
             --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
             --offline
           cmp data/calibration/issue12-v1/dataset.jsonl data/calibration/issue12-v1/dataset-offline.jsonl
           cmp data/calibration/issue12-v1/dataset-manifest.json data/calibration/issue12-v1/dataset-manifest-offline.json
+          cmp data/calibration/issue12-v1/dataset-exclusions.json data/calibration/issue12-v1/dataset-exclusions-offline.json
 
       - name: Fit issue12-v1 and evaluate untouched holdout
         shell: bash
@@ -96,9 +114,12 @@ jobs:
           sha256sum \
             data/calibration/issue12-v1/dataset.jsonl \
             data/calibration/issue12-v1/dataset-manifest.json \
+            data/calibration/issue12-v1/dataset-exclusions.json \
             data/calibration/issue12-v1/calibration-artifact.json \
             data/calibration/issue12-v1/holdout-report.json
-          du -sh data/calibration/issue12-v1/cache
+          du -sh "$ISSUE12_CACHE_DIR"
+          printf '%s\n' '--- exclusion report ---'
+          uv run python -m json.tool data/calibration/issue12-v1/dataset-exclusions.json
           printf '%s\n' '--- holdout report ---'
           uv run python -m json.tool data/calibration/issue12-v1/holdout-report.json
 
@@ -112,5 +133,6 @@ jobs:
           path: |
             data/calibration/issue12-v1/dataset.jsonl
             data/calibration/issue12-v1/dataset-manifest.json
+            data/calibration/issue12-v1/dataset-exclusions.json
             data/calibration/issue12-v1/calibration-artifact.json
             data/calibration/issue12-v1/holdout-report.json
