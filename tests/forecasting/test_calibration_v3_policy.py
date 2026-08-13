@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -19,7 +20,10 @@ from weatherbot.forecasting.calibration import (
     NormalResidualDistribution,
     Season,
 )
-from weatherbot.forecasting.calibration_v3_fit import fit_v3_calibration_artifact
+from weatherbot.forecasting.calibration_v3_fit import (
+    V3CalibrationFitResult,
+    fit_v3_calibration_artifact,
+)
 from weatherbot.forecasting.model import ForecastSource
 from weatherbot.markets import TemperatureBucket, TemperatureUnit
 
@@ -45,10 +49,14 @@ def sample(
         forecast_temperature_f=forecast,
         observed_temperature_f=forecast + Decimal(residual),
         forecast_as_of_utc=datetime.combine(
-            day - timedelta(days=lead_days), datetime.min.time(), UTC
+            day - timedelta(days=lead_days),
+            datetime.min.time(),
+            UTC,
         ),
         observation_finalized_at_utc=datetime.combine(
-            day + timedelta(days=1), datetime.min.time(), UTC
+            day + timedelta(days=1),
+            datetime.min.time(),
+            UTC,
         ),
         observation_source="synthetic finalized observation",
         station_id=city.upper(),
@@ -58,7 +66,11 @@ def sample(
     )
 
 
-def fit(samples: tuple[CalibrationSample, ...], *, minimum: int = 20):
+def fit(
+    samples: tuple[CalibrationSample, ...],
+    *,
+    minimum: int = 20,
+) -> V3CalibrationFitResult:
     return fit_v3_calibration_artifact(
         samples,
         model_version="issue12-v3-fixture",
@@ -83,7 +95,11 @@ def test_v3_keeps_empirical_diagnostics_but_emits_only_normal_groups() -> None:
     for index in range(5):
         residual = -5 if index % 2 == 0 else 5
         values.append(
-            sample("nyc", date(2026, 7, 11) + timedelta(days=index), residual=residual)
+            sample(
+                "nyc",
+                date(2026, 7, 11) + timedelta(days=index),
+                residual=residual,
+            )
         )
 
     result = fit(tuple(values))
@@ -94,7 +110,8 @@ def test_v3_keeps_empirical_diagnostics_but_emits_only_normal_groups() -> None:
         for decision in result.group_fit_decisions
     )
     assert all(
-        group.distribution.kind is DistributionKind.NORMAL for group in result.artifact.groups
+        group.distribution.kind is DistributionKind.NORMAL
+        for group in result.artifact.groups
     )
     assert not any(
         group.distribution.kind is DistributionKind.EMPIRICAL
@@ -134,7 +151,11 @@ def test_v3_omits_zero_variance_specific_group_and_uses_broader_fallback() -> No
         market_date=date(2026, 7, 12),
         lead_days=1,
         forecast_temperature_f=80,
-        bucket=TemperatureBucket.bounded(80, 80, TemperatureUnit.FAHRENHEIT),
+        bucket=TemperatureBucket.bounded(
+            80,
+            80,
+            TemperatureUnit.FAHRENHEIT,
+        ),
     )
     assert estimate.fallback_level is GroupLevel.REGION_SOURCE_LEAD_SEASON
     assert estimate.distribution_type is DistributionKind.NORMAL
@@ -143,9 +164,21 @@ def test_v3_omits_zero_variance_specific_group_and_uses_broader_fallback() -> No
 def test_v3_fails_closed_when_every_eligible_group_has_zero_variance() -> None:
     values: list[CalibrationSample] = []
     for index in range(40):
-        values.append(sample("nyc", date(2026, 6, 1) + timedelta(days=index), residual=0))
+        values.append(
+            sample(
+                "nyc",
+                date(2026, 6, 1) + timedelta(days=index),
+                residual=0,
+            )
+        )
     for index in range(5):
-        values.append(sample("nyc", date(2026, 7, 11) + timedelta(days=index), residual=0))
+        values.append(
+            sample(
+                "nyc",
+                date(2026, 7, 11) + timedelta(days=index),
+                residual=0,
+            )
+        )
 
     with pytest.raises(CalibrationError, match="V3 normal-fit policy"):
         fit(tuple(values))
@@ -154,11 +187,17 @@ def test_v3_fails_closed_when_every_eligible_group_has_zero_variance() -> None:
 def test_model_builds_group_index_once_and_does_not_change_artifact_bytes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    diagnostics = CalibrationDiagnostics(jarque_bera=0.2, normality_p_value=0.9)
+    diagnostics = CalibrationDiagnostics(
+        jarque_bera=0.2,
+        normality_p_value=0.9,
+    )
     group = CalibrationGroup(
         key=CalibrationGroupKey(GroupLevel.SOURCE, _SOURCE),
         sample_count=100,
-        distribution=NormalResidualDistribution(Decimal("0.5"), Decimal("2.25")),
+        distribution=NormalResidualDistribution(
+            Decimal("0.5"),
+            Decimal("2.25"),
+        ),
         training_end=date(2026, 7, 10),
         diagnostics=diagnostics,
     )
@@ -179,7 +218,7 @@ def test_model_builds_group_index_once_and_does_not_change_artifact_bytes(
     calls = 0
     original = getattr(calibration_module, "_build_group_index")
 
-    def counted(value: CalibrationArtifact):
+    def counted(value: CalibrationArtifact) -> Mapping[CalibrationGroupKey, CalibrationGroup]:
         nonlocal calls
         calls += 1
         return original(value)
@@ -195,7 +234,11 @@ def test_model_builds_group_index_once_and_does_not_change_artifact_bytes(
             market_date=date(2026, 7, 12),
             lead_days=1,
             forecast_temperature_f=80,
-            bucket=TemperatureBucket.bounded(degree, degree, TemperatureUnit.FAHRENHEIT),
+            bucket=TemperatureBucket.bounded(
+                degree,
+                degree,
+                TemperatureUnit.FAHRENHEIT,
+            ),
         )
     assert calls == 1
     assert artifact.to_json() == before
