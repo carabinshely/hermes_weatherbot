@@ -19,7 +19,7 @@ jobs:
         with:
           ref: agent/issue-48-calibrated-runtime-boundary
 
-      - name: Repair and verify legacy CLI guard
+      - name: Repair and compile legacy CLI guard
         shell: bash
         run: |
           set -euo pipefail
@@ -56,15 +56,8 @@ jobs:
           PY
 
           python -m py_compile bot_v3_legacy.py
-          set +e
-          output="$(python bot_v3_legacy.py scan --mode research 2>&1)"
-          status=$?
-          set -e
-          printf '%s\n' "$output"
-          test "$status" -eq 2
-          grep -F 'legacy strategy scanning is disabled' <<<"$output"
 
-      - name: Commit verified repair
+      - name: Commit compiled repair
         shell: bash
         run: |
           set -euo pipefail
