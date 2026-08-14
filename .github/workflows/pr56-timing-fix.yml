@@ -1,0 +1,34 @@
+name: Verify PR 56 PAPER timing fix
+on:
+  push:
+    branches: [agent/issue-48b-calibrated-paper]
+    paths: [.github/workflows/pr56-timing-fix.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-48b-calibrated-paper
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+      - run: uv sync --locked --all-groups
+      - run: python scripts/pr56_timing_fix.py
+      - run: |
+          uv run ruff check --fix bot_v3.py weatherbot/paper/integration.py tests/paper/test_calibrated_integration.py
+          uv run ruff format bot_v3.py weatherbot/paper/integration.py tests/paper/test_calibrated_integration.py
+          uv run ruff check execution_modes.py runtime_security.py weatherbot tests
+          uv run pyright execution_modes.py runtime_security.py weatherbot tests
+      - run: PYTHONPATH=. uv run pytest -q tests/paper/test_calibrated_integration.py tests/paper/test_runtime.py tests/paper/test_service.py tests/forecasting/test_calibrated_scanner_gate.py tests/test_execution_modes.py
+      - run: PYTHONPATH=. uv run pytest -q
+      - run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot_v3.py weatherbot/paper/integration.py tests/paper/test_calibrated_integration.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Timestamp PAPER decisions after fresh book fetches"
+          git push origin HEAD:agent/issue-48b-calibrated-paper
