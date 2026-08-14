@@ -18,6 +18,7 @@ from weatherbot.forecasting.calibration import (
     DistributionKind,
     GroupLevel,
     NormalResidualDistribution,
+    ProbabilityEstimate,
     Season,
 )
 from weatherbot.forecasting.calibration_v3_fit import (
@@ -86,7 +87,7 @@ def fit(
     )
 
 
-def test_v3_keeps_empirical_diagnostics_but_emits_only_normal_groups() -> None:
+def test_v3_empirical_can_win_diagnostics_but_runtime_still_uses_normal() -> None:
     start = date(2026, 6, 1)
     values: list[CalibrationSample] = []
     for index in range(40):
@@ -103,17 +104,26 @@ def test_v3_keeps_empirical_diagnostics_but_emits_only_normal_groups() -> None:
         )
 
     result = fit(tuple(values))
+    key = CalibrationGroupKey(
+        GroupLevel.CITY_SOURCE_LEAD_SEASON,
+        _SOURCE,
+        city="nyc",
+        lead_days=1,
+        season=Season.JJA,
+    )
+    decision = next(item for item in result.group_fit_decisions if item.key == key)
+    normal_crps = decision.diagnostics.normal_selection_crps
+    empirical_crps = decision.diagnostics.empirical_selection_crps
 
-    assert result.group_fit_decisions
-    assert all(
-        decision.diagnostics.empirical_selection_crps is not None
-        for decision in result.group_fit_decisions
-    )
-    assert all(
-        group.distribution.kind is DistributionKind.NORMAL for group in result.artifact.groups
-    )
+    assert normal_crps is not None
+    assert empirical_crps is not None
+    assert empirical_crps < normal_crps
+    assert decision.runtime_eligible is True
+    assert decision.runtime_distribution_type is DistributionKind.NORMAL
+    group = next(item for item in result.artifact.groups if item.key == key)
+    assert isinstance(group.distribution, NormalResidualDistribution)
     assert not any(
-        group.distribution.kind is DistributionKind.EMPIRICAL for group in result.artifact.groups
+        item.distribution.kind is DistributionKind.EMPIRICAL for item in result.artifact.groups
     )
 
 
@@ -240,3 +250,192 @@ def test_model_builds_group_index_once_and_does_not_change_artifact_bytes(
         )
     assert calls == 1
     assert artifact.to_json() == before
+
+
+def _reference_probability(
+    artifact: CalibrationArtifact,
+    *,
+    city: str,
+    climate_region: str,
+    market_date: date,
+    lead_days: int,
+    forecast_temperature_f: Decimal,
+    bucket: TemperatureBucket,
+) -> ProbabilityEstimate:
+    season = Season.for_date(market_date)
+    candidates = (
+        CalibrationGroupKey(
+            GroupLevel.CITY_SOURCE_LEAD_SEASON,
+            _SOURCE,
+            city=city.strip().lower(),
+            lead_days=lead_days,
+            season=season,
+        ),
+        CalibrationGroupKey(
+            GroupLevel.REGION_SOURCE_LEAD_SEASON,
+            _SOURCE,
+            climate_region=climate_region.strip().lower(),
+            lead_days=lead_days,
+            season=season,
+        ),
+        CalibrationGroupKey(
+            GroupLevel.SOURCE_LEAD_SEASON,
+            _SOURCE,
+            lead_days=lead_days,
+            season=season,
+        ),
+        CalibrationGroupKey(GroupLevel.SOURCE_LEAD, _SOURCE, lead_days=lead_days),
+        CalibrationGroupKey(GroupLevel.SOURCE, _SOURCE),
+    )
+    by_key = {group.key.stable_key: group for group in artifact.groups}
+    selected = next(
+        (
+            by_key[candidate.stable_key]
+            for candidate in candidates
+            if candidate.stable_key in by_key
+            and by_key[candidate.stable_key].sample_count >= artifact.min_sample_count
+        ),
+        None,
+    )
+    if selected is None:
+        raise CalibrationError("reference evaluator found no compatible calibration group")
+
+    lower = bucket.continuous_lower
+    upper = bucket.continuous_upper
+    if lower is None:
+        if upper is None:
+            raise CalibrationError("reference bucket has no bounds")
+        probability = selected.distribution.cdf(upper - forecast_temperature_f)
+    elif upper is None:
+        probability = 1.0 - selected.distribution.cdf(lower - forecast_temperature_f)
+    else:
+        probability = selected.distribution.cdf(
+            upper - forecast_temperature_f
+        ) - selected.distribution.cdf(lower - forecast_temperature_f)
+
+    return ProbabilityEstimate(
+        probability=max(0.0, min(1.0, probability)),
+        model_version=artifact.model_version,
+        artifact_sha256=artifact.artifact_sha256,
+        calibration_group_key=selected.key.stable_key,
+        fallback_level=selected.key.level,
+        distribution_type=selected.distribution.kind,
+        calibration_sample_count=selected.sample_count,
+        training_cutoff=artifact.training_end,
+    )
+
+
+def _fallback_artifact() -> CalibrationArtifact:
+    diagnostics = CalibrationDiagnostics(jarque_bera=0.1, normality_p_value=0.95)
+    distribution = NormalResidualDistribution(Decimal("0.25"), Decimal("2.5"))
+    groups = (
+        CalibrationGroup(
+            key=CalibrationGroupKey(
+                GroupLevel.CITY_SOURCE_LEAD_SEASON,
+                _SOURCE,
+                city="nyc",
+                lead_days=1,
+                season=Season.JJA,
+            ),
+            sample_count=51,
+            distribution=distribution,
+            training_end=date(2026, 7, 10),
+            diagnostics=diagnostics,
+        ),
+        CalibrationGroup(
+            key=CalibrationGroupKey(
+                GroupLevel.REGION_SOURCE_LEAD_SEASON,
+                _SOURCE,
+                climate_region="south",
+                lead_days=2,
+                season=Season.JJA,
+            ),
+            sample_count=52,
+            distribution=distribution,
+            training_end=date(2026, 7, 10),
+            diagnostics=diagnostics,
+        ),
+        CalibrationGroup(
+            key=CalibrationGroupKey(
+                GroupLevel.SOURCE_LEAD_SEASON,
+                _SOURCE,
+                lead_days=3,
+                season=Season.JJA,
+            ),
+            sample_count=53,
+            distribution=distribution,
+            training_end=date(2026, 7, 10),
+            diagnostics=diagnostics,
+        ),
+        CalibrationGroup(
+            key=CalibrationGroupKey(GroupLevel.SOURCE_LEAD, _SOURCE, lead_days=4),
+            sample_count=54,
+            distribution=distribution,
+            training_end=date(2026, 7, 10),
+            diagnostics=diagnostics,
+        ),
+        CalibrationGroup(
+            key=CalibrationGroupKey(GroupLevel.SOURCE, _SOURCE),
+            sample_count=55,
+            distribution=distribution,
+            training_end=date(2026, 7, 10),
+            diagnostics=diagnostics,
+        ),
+    )
+    return CalibrationArtifact(
+        model_version="fallback-equivalence-fixture",
+        created_at_utc=datetime(2026, 8, 10, tzinfo=UTC),
+        forecast_contract_id="fixture-forecast-v1",
+        observation_contract_id="fixture-observation-v1",
+        training_start=date(2026, 6, 1),
+        training_end=date(2026, 7, 10),
+        validation_start=date(2026, 7, 11),
+        validation_end=date(2026, 7, 15),
+        dataset_sha256="e" * 64,
+        min_sample_count=20,
+        groups=groups,
+    )
+
+
+@pytest.mark.parametrize(
+    ("city", "region", "market_date", "lead_days", "expected_level"),
+    [
+        ("nyc", "north", date(2026, 7, 12), 1, GroupLevel.CITY_SOURCE_LEAD_SEASON),
+        ("atl", "south", date(2026, 7, 12), 2, GroupLevel.REGION_SOURCE_LEAD_SEASON),
+        ("lax", "west", date(2026, 7, 12), 3, GroupLevel.SOURCE_LEAD_SEASON),
+        ("sea", "west", date(2026, 1, 12), 4, GroupLevel.SOURCE_LEAD),
+        ("mia", "south", date(2026, 1, 12), 5, GroupLevel.SOURCE),
+    ],
+)
+def test_optimized_evaluator_matches_old_stable_key_lookup_across_fallbacks(
+    city: str,
+    region: str,
+    market_date: date,
+    lead_days: int,
+    expected_level: GroupLevel,
+) -> None:
+    artifact = _fallback_artifact()
+    bucket = TemperatureBucket.bounded(80, 80, TemperatureUnit.FAHRENHEIT)
+    forecast = Decimal("80")
+
+    expected = _reference_probability(
+        artifact,
+        city=city,
+        climate_region=region,
+        market_date=market_date,
+        lead_days=lead_days,
+        forecast_temperature_f=forecast,
+        bucket=bucket,
+    )
+    actual = CalibratedTemperatureModel(artifact).probability(
+        city=city,
+        climate_region=region,
+        forecast_source=_SOURCE,
+        market_date=market_date,
+        lead_days=lead_days,
+        forecast_temperature_f=forecast,
+        bucket=bucket,
+    )
+
+    assert expected.fallback_level is expected_level
+    assert actual == expected
