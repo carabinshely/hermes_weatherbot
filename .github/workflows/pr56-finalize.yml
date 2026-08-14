@@ -64,3 +64,5 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "Finalize calibrated PAPER integration"
           git push origin HEAD:agent/issue-48b-calibrated-paper
+
+# rerun after Pyright fixture narrowing
