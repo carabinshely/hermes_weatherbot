@@ -263,8 +263,8 @@ def scan_and_trade(context: ExecutionContext):
                     weather=weather,
                     bucket=target_bucket,
                 )
-            except CalibrationError as exc:
-                _legacy.skip(f"{loc['name']} {horizon}: no eligible calibration group: {exc}")
+            except (CalibrationError, CalibrationRuntimeError) as exc:
+                _legacy.skip(f"{loc['name']} {horizon}: calibration rejected candidate: {exc}")
                 continue
 
             probability = float(calibrated.model_probability)

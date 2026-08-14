@@ -57,3 +57,10 @@ def test_scanner_gates_network_work_to_calibrated_decision_window() -> None:
     assert gate < network
     assert "decision_start <= now < decision_end" in source
     assert "CALIBRATION_DECISION_WINDOW.total_seconds()" in source
+
+
+def test_candidate_runtime_calibration_rejections_are_local() -> None:
+    source = Path("bot_v3.py").read_text(encoding="utf-8")
+
+    assert "except (CalibrationError, CalibrationRuntimeError) as exc:" in source
+    assert "calibration rejected candidate" in source
