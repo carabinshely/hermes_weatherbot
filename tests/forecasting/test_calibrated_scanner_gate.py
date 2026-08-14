@@ -45,23 +45,47 @@ def test_missing_calibration_fails_research_scan_before_network(
     assert "fixture has no accepted artifact" in errors[0]
 
 
-@pytest.mark.parametrize("mode", (ExecutionMode.PAPER, ExecutionMode.LIVE))
-def test_execution_strategy_scans_are_disabled_before_network(
+def test_paper_recovers_before_missing_calibration_and_then_stops_before_network(
     monkeypatch: pytest.MonkeyPatch,
-    mode: ExecutionMode,
 ) -> None:
     _forbid_network(monkeypatch)
+    events: list[str] = []
 
-    def forbidden_loader(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("disabled execution modes must not load calibration")
+    def recover(*_args: object, **_kwargs: object) -> object:
+        events.append("recover")
+        return object()
 
-    monkeypatch.setattr(bot_v3, "load_calibrated_probability_runtime", forbidden_loader)
+    def unavailable(*_args: object, **_kwargs: object) -> object:
+        events.append("calibration")
+        raise CalibrationUnavailable("fixture has no accepted artifact")
 
-    new_trades, errors = bot_v3.scan_and_trade(_context(mode))
+    monkeypatch.setattr(bot_v3, "recover_paper_runtime", recover)
+    monkeypatch.setattr(bot_v3, "load_calibrated_probability_runtime", unavailable)
+
+    new_trades, errors = bot_v3.scan_and_trade(_context(ExecutionMode.PAPER))
 
     assert new_trades == 0
     assert len(errors) == 1
-    assert f"{mode.value.upper()} strategy scanning is disabled" in errors[0]
+    assert events == ["recover", "calibration"]
+    assert "PAPER scan failed closed" in errors[0]
+
+
+def test_live_strategy_scan_is_disabled_before_recovery_calibration_or_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _forbid_network(monkeypatch)
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("LIVE must not recover PAPER or load calibration")
+
+    monkeypatch.setattr(bot_v3, "recover_paper_runtime", forbidden)
+    monkeypatch.setattr(bot_v3, "load_calibrated_probability_runtime", forbidden)
+
+    new_trades, errors = bot_v3.scan_and_trade(_context(ExecutionMode.LIVE))
+
+    assert new_trades == 0
+    assert len(errors) == 1
+    assert "LIVE strategy scanning remains disabled" in errors[0]
 
 
 def test_quarantined_legacy_scanner_is_hard_disabled_before_network(
@@ -152,16 +176,18 @@ def test_research_signal_log_preserves_complete_calibration_provenance(
     assert json.loads(log_path.read_text(encoding="utf-8")) == signal
 
 
-def test_research_run_loop_retains_resolution_monitoring(
+@pytest.mark.parametrize("mode", (ExecutionMode.RESEARCH, ExecutionMode.PAPER))
+def test_non_live_run_loop_retains_resolution_monitoring(
     monkeypatch: pytest.MonkeyPatch,
+    mode: ExecutionMode,
 ) -> None:
     events: list[str] = []
-    clock = iter((10000.0, 10000.0, 10001.0))
+    clock = iter((10000.0,))
 
     monkeypatch.setattr(bot_v3.time, "time", lambda: next(clock))
 
-    def record_scan(_context: ExecutionContext) -> tuple[int, list[str]]:
-        events.append("scan")
+    def record_scan(context: ExecutionContext) -> tuple[int, list[str]]:
+        events.append(f"scan:{context.mode.value}")
         return 0, []
 
     def record_resolution(*_args: object, **_kwargs: object) -> None:
@@ -178,6 +204,23 @@ def test_research_run_loop_retains_resolution_monitoring(
     monkeypatch.setattr(bot_v3.time, "sleep", stop_after_monitor)
 
     with pytest.raises(StopLoop):
-        bot_v3.run_loop(_context(ExecutionMode.RESEARCH))
+        bot_v3.run_loop(_context(mode))
 
-    assert events == ["scan", "resolve"]
+    assert events == [f"scan:{mode.value}", "resolve"]
+
+
+def test_scanner_has_one_shared_calibration_call_and_paper_bypasses_legacy_sizing() -> None:
+    source = Path("bot_v3.py").read_text(encoding="utf-8")
+    scanner = source[source.index("def scan_and_trade") : source.index("\n\ndef show_status")]
+
+    assert scanner.count("calibration_runtime.probability(") == 1
+    paper_start = scanner.index("if context.mode is ExecutionMode.PAPER:", scanner.index("calibrated ="))
+    submit = scanner.index("submit_scanner_candidate(", paper_start)
+    research_sizing = scanner.index("preliminary_kelly =", paper_start)
+    paper_segment = scanner[paper_start:research_sizing]
+
+    assert paper_start < submit < research_sizing
+    assert "continue" in paper_segment
+    assert "_legacy.calc_kelly(" not in paper_segment
+    assert "_legacy.get_adjusted_kelly(" not in paper_segment
+    assert "_legacy.bet_size(" not in paper_segment
