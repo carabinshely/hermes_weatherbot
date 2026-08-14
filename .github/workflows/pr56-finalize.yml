@@ -36,6 +36,9 @@ jobs:
       - name: Apply documentation cleanup
         run: python scripts/pr56_finalize_patch.py
 
+      - name: Normalize test fixture typography
+        run: sed -i 's/85–86°F/85-86°F/g' tests/paper/test_calibrated_integration.py
+
       - name: Apply exact Ruff formatting
         run: |
           uv run ruff check --fix bot_v3.py weatherbot/forecasting/runtime.py weatherbot/paper/integration.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py tests/paper/test_runtime.py tests/paper/helpers.py tests/quoting/test_scanner_integration.py tests/test_execution_modes.py tests/forecasting/test_bot_source.py
