@@ -25,6 +25,7 @@ _CALIBRATION_AUDIT_KEYS = frozenset(
         "city_slug",
         "climate_region",
         "lead_days",
+        "weather_fingerprint",
         "forecast_source",
         "calibration_group_key",
         "fallback_level",
@@ -47,6 +48,8 @@ def _validate_calibrated_context(
         raise ValueError("PAPER risk scope market_date must match calibrated weather")
     if calibrated.forecast_source != weather.forecast.source.value:
         raise ValueError("calibrated forecast_source must match PAPER weather source")
+    if calibrated.weather_fingerprint != fingerprint(weather):
+        raise ValueError("calibrated weather_fingerprint must match PAPER weather snapshot")
 
 
 def _scanner_audit_metadata(
@@ -54,6 +57,9 @@ def _scanner_audit_metadata(
     calibrated: CalibratedProbability,
     audit_metadata: Mapping[str, object],
 ) -> Mapping[str, object]:
+    bucket_key = audit_metadata.get("bucket_key")
+    if bucket_key != calibrated.bucket_key:
+        raise ValueError("PAPER bucket_key must match calibrated bucket identity")
     normalized_keys = {str(key).strip() for key in audit_metadata}
     collisions = sorted(normalized_keys & _CALIBRATION_AUDIT_KEYS)
     if collisions:

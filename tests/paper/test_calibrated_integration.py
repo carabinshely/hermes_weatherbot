@@ -167,3 +167,55 @@ def test_scanner_facade_rejects_probability_context_mismatch() -> None:
             event=event,
             decision_book=decision_book,
         )
+
+
+def test_scanner_facade_rejects_probability_from_different_weather_snapshot() -> None:
+    calibrated = calibrated_probability()
+    refreshed_weather = weather_snapshot(
+        issued_at=NOW - __import__("datetime").timedelta(minutes=30)
+    )
+    event = event_snapshot()
+    decision_book = paper_book(book_hash="refreshed-weather-book")
+
+    with pytest.raises(ValueError, match="weather_fingerprint"):
+        paper_scan_decision_id(
+            calibrated=calibrated,
+            scope=scope(),
+            weather=refreshed_weather,
+            event=event,
+            decision_book=decision_book,
+        )
+
+
+def test_scanner_facade_rejects_bucket_mismatch_before_ledger_mutation(tmp_path: Path) -> None:
+    runtime = PaperRuntimeConfig.from_mapping(
+        {"paper_ledger_path": "paper.sqlite3"}, base_dir=tmp_path
+    )
+    calibrated = calibrated_probability()
+    weather = weather_snapshot()
+    event = event_snapshot()
+    decision_book = paper_book(book_hash="bucket-mismatch-book")
+
+    def forbidden_fetch(_condition_id: ConditionId, _token_id: OutcomeTokenId):
+        raise AssertionError("bucket mismatch must fail before PAPER book work")
+
+    with pytest.raises(ValueError, match="bucket_key"):
+        submit_scanner_candidate(
+            runtime=runtime,
+            strategy_id="bot-v3-weather",
+            calibrated=calibrated,
+            scope=scope(),
+            weather=weather,
+            event=event,
+            decision_book=decision_book,
+            condition_id=decision_book.condition_id,
+            token_id=decision_book.token_id,
+            evaluated_at=NOW,
+            freshness_policy=freshness_policy(),
+            cost_policy=cost_policy(),
+            fetch_book=forbidden_fetch,
+            audit_metadata={"bucket_key": "F:90:91"},
+            owner_id="bucket-mismatch",
+        )
+
+    assert not runtime.ledger_path.exists()

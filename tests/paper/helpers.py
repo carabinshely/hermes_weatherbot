@@ -17,7 +17,7 @@ from tests.quoting.helpers import (
 )
 from tests.risk.helpers import policy as sizing_policy
 from tests.risk.portfolio_helpers import policy as portfolio_policy
-from weatherbot.domain import MarketId, OutcomeId, PositionKey, RiskScope
+from weatherbot.domain import MarketId, OutcomeId, PositionKey, RiskScope, fingerprint
 from weatherbot.forecasting import CalibratedProbability
 from weatherbot.markets import OrderBookSnapshot, parse_order_book
 from weatherbot.paper import PaperEntryRequest
@@ -55,6 +55,8 @@ def calibrated_probability(
         city_slug=city_slug,
         climate_region=climate_region,
         lead_days=lead_days,
+        weather_fingerprint=fingerprint(weather_snapshot()),
+        bucket_key="F:85:86",
         forecast_source="open_meteo_ecmwf_ifs025",
         calibration_group_key=calibration_group_key,
         fallback_level="source",

@@ -251,6 +251,8 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
         "city_slug": "chicago",
         "climate_region": "ohio_valley",
         "lead_days": 0,
+        "weather_fingerprint": result.weather_fingerprint,
+        "bucket_key": result.bucket_key,
         "forecast_source": result.forecast_source,
         "calibration_group_key": result.calibration_group_key,
         "fallback_level": result.fallback_level,

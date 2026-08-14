@@ -17,6 +17,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import cast
 
+from weatherbot.domain import fingerprint
 from weatherbot.forecasting.archive import PRODUCTION_FORECAST_CONTRACT_ID
 from weatherbot.forecasting.calibration import (
     CalibratedTemperatureModel,
@@ -120,6 +121,8 @@ class CalibratedProbability:
     city_slug: str
     climate_region: str
     lead_days: int
+    weather_fingerprint: str
+    bucket_key: str
     forecast_source: str
     calibration_group_key: str
     fallback_level: str
@@ -133,6 +136,8 @@ class CalibratedProbability:
             ("artifact_sha256", self.artifact_sha256),
             ("city_slug", self.city_slug),
             ("climate_region", self.climate_region),
+            ("weather_fingerprint", self.weather_fingerprint),
+            ("bucket_key", self.bucket_key),
             ("forecast_source", self.forecast_source),
             ("calibration_group_key", self.calibration_group_key),
             ("fallback_level", self.fallback_level),
@@ -157,6 +162,8 @@ class CalibratedProbability:
             "city_slug": self.city_slug,
             "climate_region": self.climate_region,
             "lead_days": self.lead_days,
+            "weather_fingerprint": self.weather_fingerprint,
+            "bucket_key": self.bucket_key,
             "forecast_source": self.forecast_source,
             "calibration_group_key": self.calibration_group_key,
             "fallback_level": self.fallback_level,
@@ -244,6 +251,8 @@ class CalibratedProbabilityRuntime:
             city_slug=city,
             climate_region=climate_region,
             lead_days=lead_days,
+            weather_fingerprint=fingerprint(weather),
+            bucket_key=bucket.key,
             forecast_source=weather.forecast.source.value,
             calibration_group_key=estimate.calibration_group_key,
             fallback_level=estimate.fallback_level.value,
