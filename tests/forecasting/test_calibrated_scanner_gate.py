@@ -20,9 +20,7 @@ def _forbid_network(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("strategy gate should run before weather/market network work")
 
-    monkeypatch.setattr(bot_v3._legacy, "get_forecast_snapshot", forbidden)
-    monkeypatch.setattr(bot_v3._legacy, "get_polymarket_event", forbidden)
-    monkeypatch.setattr(bot_v3._legacy, "_fetch_selected_order_book", forbidden)
+    monkeypatch.setattr(bot_v3.requests, "get", forbidden)
 
 
 def test_missing_calibration_fails_research_scan_before_network(
