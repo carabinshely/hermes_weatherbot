@@ -34,12 +34,12 @@ jobs:
         run: uv sync --locked --all-groups
 
       - name: Apply forecast-vintage fix
-        run: python scripts/pr53_codex_vintage_patch.py
+        run: python scripts/pr53_codex_vintage_wrapper.py
 
       - name: Format and lint
         run: |
-          uv run ruff check --fix weatherbot/forecasting/contracts.py weatherbot/forecasting/archive.py weatherbot/forecasting/runtime.py bot_v3.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_bot_source.py tests/forecasting/test_archive.py
-          uv run ruff format weatherbot/forecasting/contracts.py weatherbot/forecasting/archive.py weatherbot/forecasting/runtime.py bot_v3.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_bot_source.py tests/forecasting/test_archive.py
+          uv run ruff check --fix weatherbot/forecasting/contracts.py weatherbot/forecasting/archive.py weatherbot/forecasting/runtime.py bot_v3.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_bot_source.py tests/forecasting/test_archive.py tests/quoting/helpers.py
+          uv run ruff format weatherbot/forecasting/contracts.py weatherbot/forecasting/archive.py weatherbot/forecasting/runtime.py bot_v3.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_bot_source.py tests/forecasting/test_archive.py tests/quoting/helpers.py
           uv run ruff check execution_modes.py runtime_security.py weatherbot tests
           uv run ruff format --check execution_modes.py runtime_security.py weatherbot tests
 
@@ -56,6 +56,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add weatherbot/forecasting/contracts.py weatherbot/forecasting/archive.py weatherbot/forecasting/runtime.py bot_v3.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_bot_source.py tests/forecasting/test_archive.py docs/forecast-calibration.md
+          git add weatherbot/forecasting/contracts.py weatherbot/forecasting/archive.py weatherbot/forecasting/runtime.py bot_v3.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_bot_source.py tests/forecasting/test_archive.py tests/quoting/helpers.py docs/forecast-calibration.md
           git commit -m "Align runtime probabilities with calibrated forecast vintage"
           git push origin HEAD:agent/issue-48-calibrated-runtime-boundary
