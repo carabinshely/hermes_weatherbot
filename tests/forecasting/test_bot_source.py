@@ -66,12 +66,14 @@ def test_candidate_runtime_calibration_rejections_are_local() -> None:
     assert "calibration rejected candidate" in source
 
 
-def test_persisted_signal_includes_probability_input_dimensions() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
+def test_probability_input_dimensions_come_from_typed_calibrated_metadata() -> None:
+    bot_source = Path("bot_v3.py").read_text(encoding="utf-8")
+    runtime_source = Path("weatherbot/forecasting/runtime.py").read_text(encoding="utf-8")
 
-    assert '"city_slug": city_slug' in source
-    assert '"climate_region": str(loc["climate_region"])' in source
-    assert '"lead_days": horizon_index' in source
+    assert "**calibrated.audit_metadata()" in bot_source
+    assert '"city_slug": self.city_slug' in runtime_source
+    assert '"climate_region": self.climate_region' in runtime_source
+    assert '"lead_days": self.lead_days' in runtime_source
 
 
 def test_continuous_probe_interval_is_shorter_than_decision_window() -> None:
