@@ -1,17 +1,23 @@
 # PAPER trading
 
-> **#48A integration state:** the PAPER simulation subsystem remains implemented, testable, and administratively accessible, but `bot_v3.py scan --mode paper` and `bot_v3.py run --mode paper` are intentionally disabled until the calibrated strategy-to-PAPER integration is reviewed. This phase does not generate new PAPER candidates from the public scanner.
+> **#48B integration state:** `bot_v3.py scan/run --mode paper` is implemented through the same calibrated probability boundary as RESEARCH. PAPER always recovers durable state before checking calibration availability. With no accepted artifact, or without provable exact-run forecast evidence, new model-backed PAPER decisions fail closed. LIVE strategy `scan/run` remains disabled.
 
-PAPER mode is a deterministic **paper simulation**, not live trading and not evidence that the strategy is profitable. It exercises the production market-discovery, forecasting, pricing, sizing, portfolio-risk, accounting, recovery, and settlement contracts without a wallet, private key, signature, allowance, blockchain transaction, or Polymarket write order.
+PAPER mode is a deterministic **paper simulation**, not live trading and not evidence that the strategy is profitable. It exercises the production market-discovery, forecasting, calibrated-probability, pricing, sizing, portfolio-risk, accounting, recovery, and settlement contracts without a wallet, private key, signature, allowance, blockchain transaction, or Polymarket write order.
 
 ## Runtime flow
 
 ```text
+recover durable PAPER runtime
+        ↓
+load separately accepted calibration artifact
+        ↓
 public market + forecast snapshots
         ↓
-#17 executable quote
+shared CalibratedProbabilityRuntime
         ↓
-#15 bankroll sizing
+CalibratedProbability + exact provenance
+        ↓
+#15 bankroll sizing / #17 executable quote
         ↓
 fresh bid-side portfolio valuation
         ↓
@@ -28,7 +34,32 @@ shared immutable ledger events
 #13 authoritative resolution + settlement
 ```
 
-PAPER mode is deliberately routed **before** the legacy `kelly × MAX_BET` scanner code. `MAX_BET` is only the configured per-trade ceiling used by the #15 sizing policy.
+Global calibration failure stops new strategy scanning after recovery and before weather/market collection. Candidate-local calibration failures reject only that candidate. The exact forecast-vintage boundary remains fail-closed: a forecast must satisfy the calibrated decision window and prove the required previous-day 18Z ECMWF run identity.
+
+PAPER mode is deliberately routed **before** the legacy `kelly × MAX_BET` research-reference sizing code. PAPER sizing comes only from the durable #15 bankroll sizing policy and #16 portfolio-risk controls. `MAX_BET` is the configured per-trade ceiling inside the shared sizing policy, not a transient scanner bankroll base.
+
+## Calibration identity and idempotency
+
+RESEARCH and PAPER consume the same immutable `CalibratedProbability` object. It contains:
+
+```text
+model_probability
+model_version
+artifact_sha256
+city_slug
+climate_region
+lead_days
+forecast_source
+calibration_group_key
+fallback_level
+distribution_type
+calibration_sample_count
+training_cutoff
+```
+
+The PAPER scanner decision ID hashes a canonical fingerprint of this complete calibration identity together with market/outcome identity, weather/event fingerprints, and the decision-book hash. A different artifact, probability, group/fallback, lead, or other calibrated input therefore creates a different durable decision identity even when the model-version string is unchanged.
+
+Scanner callers cannot independently supply `model_version` or `model_probability` to the PAPER facade. They also cannot override calibration-owned audit keys. The facade derives the generic `PaperEntryRequest` model fields from the typed calibrated result and persists the canonical calibration mapping under `caller_audit.calibration`.
 
 ## Execution assumptions
 
@@ -85,22 +116,25 @@ Default paths and limits are configured in `config.json`:
 }
 ```
 
-The starting balance is written exactly once as `AccountOpened`. Reopening an existing ledger with a different configured starting balance fails closed instead of silently resetting history.
+The starting balance is written exactly once as `AccountOpened`. Reopening an existing ledger with a different configured starting balance fails closed instead of silently resetting history. #48B does not migrate or reset existing PAPER history.
 
 ## Commands
 
-### Strategy scan gate during #48A
-
-The public PAPER strategy commands are intentionally disabled in this phase:
+Run a one-shot calibrated PAPER strategy scan:
 
 ```bash
 python bot_v3.py scan --mode paper
+```
+
+Run continuous PAPER scanning plus mechanical resolution monitoring:
+
+```bash
 python bot_v3.py run --mode paper
 ```
 
-Both exit with status 2 before strategy/calibration/network work. They are **not** the supported way to generate PAPER candidates until the remaining #48 integration is completed. The deterministic PAPER service, fixtures, ledger, recovery, valuation, risk, and settlement tests remain available.
+These commands are **implemented but may intentionally create zero new decisions**. Before #49 accepts an artifact, global calibration loading fails closed after PAPER recovery and before weather/market scanning. After an artifact is accepted, candidate generation still requires exact compatible forecast-run provenance; the current stitched Open-Meteo path must not invent that provenance.
 
-Administrative/mechanical PAPER commands remain supported. Show PAPER account status:
+Show PAPER account status:
 
 ```bash
 python bot_v3.py status --mode paper
@@ -122,11 +156,14 @@ python bot_v3.py paper-reset --mode paper --confirm-paper-reset
 
 Without `--confirm-paper-reset`, the command exits without changing history.
 
+LIVE strategy commands remain blocked independently of whether a calibration artifact is accepted.
+
 ## Audit trail
 
 Each PAPER decision persists JSON-safe exact audit data including:
 
-- model version and model probability;
+- top-level model version and model probability derived from the typed calibrated result;
+- canonical `caller_audit.calibration` with artifact SHA, city/region/lead inputs, forecast source, selected group/fallback, distribution, sample count, training cutoff, and model probability;
 - forecast and observation snapshot identity/timestamps;
 - market snapshot identity/timestamps;
 - full decision-time and submit-time order-book levels and hashes;
@@ -137,6 +174,10 @@ Each PAPER decision persists JSON-safe exact audit data including:
 - execution-plan fingerprint and durable execution-plan payload.
 
 Legacy floating-point caller metadata is converted to strings before persistence so it cannot silently lose precision through JSON encoding.
+
+## Historical evidence boundary
+
+Pre-calibration/fixed-sigma PAPER history must not be mixed with calibrated strategy-performance evidence. Existing ledgers are never automatically reset or rewritten. If an operator wants a clean experimental cohort after final #49/#48 activation, the explicit archive/reset command is the boundary.
 
 ## Reproducible completion evidence
 
@@ -168,4 +209,4 @@ CI runs the complete repository suite on Python 3.12 and 3.13 and separately enf
 
 ## Release caveats
 
-PAPER mode does not auto-tune parameters. Issue #26 remains the gate for any adaptive policy changes. Repository-wide security/documentation/data-quality gates such as #2, #12, #24, and #25 still apply before treating PAPER results as release-quality strategy evidence. No PAPER result should be described as expected live profitability.
+PAPER mode does not auto-tune parameters. Issue #26 remains the gate for any adaptive policy changes. The untouched #49 holdout and final #12 activation evidence still gate interpretation of PAPER strategy results. No PAPER result should be described as expected live profitability.
