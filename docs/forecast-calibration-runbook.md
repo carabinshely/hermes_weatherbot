@@ -1,8 +1,13 @@
 # Issue #12 calibration runbook
 
-This runbook performs the expensive historical collection locally and then fits the
-versioned calibration artifact from the frozen dataset. It intentionally keeps the full
-network sweep out of GitHub-hosted CI.
+This runbook performs the expensive historical collection locally and then fits versioned
+calibration artifacts from a frozen dataset. It intentionally keeps the full network sweep
+out of GitHub-hosted CI.
+
+The current V3 policy is documented in `docs/forecast-calibration-v3.md`. In particular,
+`2026-07-14..2026-08-10` is now **development evidence**, not an untouched holdout. The
+registered final V3 holdout is `2026-08-11..2026-08-24` and belongs exclusively to Issue
+#49 after the existing finalization guard.
 
 ## Prerequisites
 
@@ -12,12 +17,12 @@ Use Python 3.12 or 3.13 and the repository lock file:
 uv sync --locked --all-groups
 ```
 
-Run all commands from the repository root on branch
-`agent/issue-12-calibrated-uncertainty`.
+Historical collection/reproduction work starts from the Issue #12 calibration branch.
+Issue #47 V3 development replay runs from the stacked `agent/issue-47-v3-policy` branch.
 
 ## 1. Collect the frozen historical dataset
 
-The recommended first v1 sweep is 2026-04-05 through 2026-08-10. The Single Runs archive
+The frozen development dataset is 2026-04-05 through 2026-08-10. The Single Runs archive
 documents most model archives from 2026-04-02. Because the calibration dataset includes
 D+2 forecasts, the April 5 target date is the first date whose required decision-day run
 stays inside that documented archive window.
@@ -62,10 +67,13 @@ and rerun the same command so completed immutable entries are reused. For self-h
 Actions reruns, reuse the same runner `_work` directory and keep `checkout` configured with
 `clean: false`; moving to a fresh runner workspace discards the preserved HTTP cache.
 
+Issue #47 closure must **not** run a fresh network sweep. Reuse the already-frozen
+2026-04-05..2026-08-10 dataset and cache evidence produced by the calibration branch.
+
 ## 2. Prove offline reproducibility
 
-After the online collection succeeds, rerun with network disabled and write to temporary
-output paths:
+After the original online collection succeeds, rerun with network disabled and write to
+temporary output paths:
 
 ```bash
 PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sweep \
@@ -87,71 +95,171 @@ All three comparisons must be byte-identical. The exclusion report is part of th
 reproducibility evidence, not an informational log. On Windows PowerShell, use a binary or
 hash comparison instead of `cmp`.
 
-## 3. Fit once with an untouched final holdout
-
-The initial split is defined by calendar date, not by a required record count:
+For an Issue #47 V3 replay, verify the existing dataset manifest before fitting and require:
 
 ```text
-training / inner selection: 2026-04-05 .. 2026-07-13
-untouched final holdout:     2026-07-14 .. 2026-08-10
+start_date = 2026-04-05
+end_date   = 2026-08-10
 ```
 
-Coverage exclusions may reduce the number of samples inside either interval. Review that
-missingness explicitly before accepting the model; do not move the split to improve scores.
+Abort if any real observation/market date after 2026-08-10 appears in the replay inputs.
 
-Choose one immutable model version and one explicit UTC artifact timestamp. Reusing those
-same values with the same dataset must reproduce the same artifact checksum.
+## 3. Historical V1/V2 reproduction
 
-Example:
+The old chronological split was:
+
+```text
+training:             2026-04-05 .. 2026-07-13
+historical evaluation: 2026-07-14 .. 2026-08-10
+```
+
+V1 and V2 already inspected that second interval. It therefore must never again be called
+an untouched V3 holdout. Commands using `weatherbot.forecasting.calibration_train` with
+that split are retained only for rejected V1/V2 reproduction and audit.
+
+Example historical reproduction shape:
 
 ```bash
 PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_train \
   --records data/calibration/v1/dataset.jsonl \
   --manifest data/calibration/v1/dataset-manifest.json \
-  --model-version issue12-v1 \
-  --created-at-utc 2026-08-13T10:10:00Z \
+  --model-version issue12-v2 \
+  --created-at-utc <frozen-historical-timestamp> \
   --training-end 2026-07-13 \
   --validation-start 2026-07-14 \
   --validation-end 2026-08-10 \
   --min-sample-count 30 \
-  --artifact-out data/calibration/v1/calibration-artifact.json \
-  --report-out data/calibration/v1/holdout-report.json
+  --artifact-out <historical-artifact-output> \
+  --report-out <historical-report-output>
 ```
 
-The trainer refuses a gap between training and validation, refuses a validation end that
-does not equal the dataset end, revalidates the dataset/manifest checksums before fitting,
-and records the fixed-2°F baseline beside the calibrated holdout scores.
+Do not use a rejected V1/V2 artifact for runtime configuration.
 
-## 4. Review the exclusions and holdout before scanner integration
+## 4. Run the frozen V3 development replay
 
-Do not integrate the artifact just because fitting succeeded. Review at least:
+Issue #47 may replay the already-inspected July 14-August 10 interval **only as development
+evidence**. Run from `agent/issue-47-v3-policy` using the dedicated V3 trainer:
 
-- excluded city/date count, reasons, raw-page hashes, and whether exclusions cluster by
-  city, season, or holdout period;
-- validation sample count and fallback coverage;
+```text
+dataset:             2026-04-05 .. 2026-08-10
+training:            2026-04-05 .. 2026-07-13
+development replay:  2026-07-14 .. 2026-08-10
+model version:       issue12-v3-dev-replay
+fitting policy:      v3-normal-runtime-v1
+evaluation kind:     development
+min sample count:    30
+```
+
+Choose one explicit UTC artifact timestamp before the first run and reuse that exact value
+for the reproduction run. Write both runs to a temporary directory outside the repository
+working tree.
+
+```bash
+CREATED_AT_UTC=<one-frozen-utc-timestamp>
+OUT=<temporary-directory-outside-the-repository>
+
+PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_v3_train \
+  --records data/calibration/v1/dataset.jsonl \
+  --manifest data/calibration/v1/dataset-manifest.json \
+  --evaluation-kind development \
+  --model-version issue12-v3-dev-replay \
+  --created-at-utc "$CREATED_AT_UTC" \
+  --training-end 2026-07-13 \
+  --validation-start 2026-07-14 \
+  --validation-end 2026-08-10 \
+  --min-sample-count 30 \
+  --artifact-out "$OUT/run1-artifact.json" \
+  --report-out "$OUT/run1-report.json"
+
+PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_v3_train \
+  --records data/calibration/v1/dataset.jsonl \
+  --manifest data/calibration/v1/dataset-manifest.json \
+  --evaluation-kind development \
+  --model-version issue12-v3-dev-replay \
+  --created-at-utc "$CREATED_AT_UTC" \
+  --training-end 2026-07-13 \
+  --validation-start 2026-07-14 \
+  --validation-end 2026-08-10 \
+  --min-sample-count 30 \
+  --artifact-out "$OUT/run2-artifact.json" \
+  --report-out "$OUT/run2-report.json"
+
+cmp "$OUT/run1-artifact.json" "$OUT/run2-artifact.json"
+cmp "$OUT/run1-report.json" "$OUT/run2-report.json"
+```
+
+Both comparisons must be byte-identical. The report must state:
+
+```text
+fitting_policy   = v3-normal-runtime-v1
+evaluation_kind  = development
+validation_start = 2026-07-14
+validation_end   = 2026-08-10
+```
+
+Review the development scores, diagnostics, fitted/omitted group counts, and fixed-2°F
+baseline comparison, but **do not tune the frozen V3 policy from those scores**. Mechanical
+failures, checksum mismatches, non-determinism, unsafe runtime distributions, or broken
+fallback behavior block Issue #47. Better or worse development scores do not accept or
+reject V3.
+
+The development artifact is not an accepted runtime artifact and must not be configured by
+Issue #48.
+
+## 5. Quarantine the final V3 holdout
+
+The registered final forward V3 holdout is:
+
+```text
+2026-08-11 .. 2026-08-24
+```
+
+Issue #47 must not read those outcomes. Issue #49 owns the one-time final evaluation after
+the complete interval is finalized under the two-day guard. Do not extend the Issue #47
+dataset, inspect provider outcome pages for those dates, or place those observations in any
+fixture/report used by the V3 closure work.
+
+## 6. Review development evidence before closing Issue #47
+
+Record at least:
+
+- dataset and manifest SHA-256 identities;
+- development artifact and report SHA-256 identities;
+- byte-identical reproduction result;
+- evaluation sample count;
 - forecast bias, MAE, and RMSE;
 - mean realized-bin log score;
 - mean ranked probability score;
 - reliability bins;
 - calibrated-versus-fixed-2°F score deltas;
-- fitted group counts and sparse fallback levels;
-- any city/horizon with insufficient evidence.
+- fitted and omitted group counts;
+- empirical-versus-normal training diagnostics;
+- fallback/group coverage where available.
 
-A worse calibrated holdout than the fixed-2°F baseline is evidence to revisit the model or
-data contract, not a reason to hide the comparison. Likewise, material or systematically
-clustered observation exclusions are a data-quality finding that must be reviewed before
-acceptance.
+Label the evidence explicitly as **development-only** and state that it is neither the final
+V3 holdout nor an accepted production artifact.
 
-## 5. Commit only reviewed evidence
+## 7. Runtime integration is separate
 
-The raw cache is working data and can be large. Before committing generated evidence,
-review repository hygiene and decide which normalized files belong in Git versus external
-artifact storage. Do not commit the raw Weather Underground/Open-Meteo cache.
+Issue #48 may implement the fail-closed research/PAPER calibrated probability boundary in
+parallel with the final holdout wait. It may remove the fixed-2°F scanner path and prebuild
+complete model provenance handling, but it must configure **no rejected or unaccepted
+artifact**.
 
-At minimum, the pull request needs reproducible checksums and access to the exact normalized
-dataset, manifest, exclusion report, model artifact, and holdout report used for review.
+Activation of a concrete V3 artifact remains blocked on Issue #49 acceptance. Therefore do
+not interpret the absence of a final accepted artifact as a reason to delay #48's fail-closed
+implementation.
 
-Only after the holdout and missingness evidence are accepted should `bot_v3.py` be changed
-to load the compatible artifact, remove `SIGMA_F = 2.0` / `get_sigma(...)`, persist model
-provenance on accepted signals, and rename user-facing `true_prob` language to
-`model_probability` or equivalent.
+## 8. Commit only reviewed evidence
+
+The raw cache is working data and can be large. Do not commit the raw Weather Underground or
+Open-Meteo cache. Do not commit the Issue #47 development artifact merely because the replay
+succeeded.
+
+For Issue #47, record compact reproducibility evidence in the pull request: exact command,
+branch/head SHA, dataset/manifest SHA-256 values, development artifact/report SHA-256 values,
+frozen date boundaries, fitted/omitted counts, main development metrics, and confirmation
+that the second run was byte-identical.
+
+Issue #49 will separately decide which final accepted artifact/manifest/exclusion/holdout
+evidence belongs in Git if V3 passes the registered final evaluation.

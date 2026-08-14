@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   calibrate:
-    name: Collect and fit calibration v2
+    name: Reproduce historical calibration v2
     runs-on: hermes-weather-calibration
     timeout-minutes: 180
 
@@ -113,7 +113,7 @@ jobs:
           cmp data/calibration/issue12-v2/dataset-manifest.json data/calibration/issue12-v2/dataset-manifest-offline.json
           cmp data/calibration/issue12-v2/dataset-exclusions.json data/calibration/issue12-v2/dataset-exclusions-offline.json
 
-      - name: Fit issue12-v2 and evaluate untouched holdout
+      - name: Reproduce issue12-v2 historical development evaluation
         shell: bash
         run: |
           set -euo pipefail
@@ -129,7 +129,7 @@ jobs:
             --artifact-out data/calibration/issue12-v2/calibration-artifact.json \
             --report-out data/calibration/issue12-v2/holdout-report.json
 
-      - name: Print evidence summary
+      - name: Print historical evidence summary
         if: success()
         shell: bash
         run: |
@@ -144,10 +144,10 @@ jobs:
           du -sh "$ISSUE12_CACHE_DIR"
           printf '%s\n' '--- exclusion report ---'
           uv run python -m json.tool data/calibration/issue12-v2/dataset-exclusions.json
-          printf '%s\n' '--- holdout report ---'
+          printf '%s\n' '--- historical development report ---'
           uv run python -m json.tool data/calibration/issue12-v2/holdout-report.json
 
-      - name: Upload normalized calibration evidence
+      - name: Upload normalized historical calibration evidence
         if: success()
         uses: actions/upload-artifact@v4
         with:

@@ -1,7 +1,7 @@
 """Versioned residual-distribution calibration for temperature probabilities.
 
 The production probability interface deliberately models forecast residuals rather than
-exposing a magic ``sigma``.  Historical fitting lives offline; runtime code loads one
+exposing a magic ``sigma``. Historical fitting lives offline; runtime code loads one
 strict, checksummed artifact and selects the most specific group with enough evidence.
 """
 
@@ -12,11 +12,12 @@ import json
 import math
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import Protocol, cast
 
 from weatherbot.forecasting.model import ForecastSource
@@ -504,9 +505,26 @@ class ProbabilityEstimate:
             raise CalibrationError("model probability must be finite and between zero and one")
 
 
+def _build_group_index(
+    artifact: CalibrationArtifact,
+) -> Mapping[CalibrationGroupKey, CalibrationGroup]:
+    """Build the immutable runtime group index exactly once for one artifact."""
+
+    return MappingProxyType({group.key: group for group in artifact.groups})
+
+
 @dataclass(frozen=True, slots=True)
 class CalibratedTemperatureModel:
     artifact: CalibrationArtifact
+    _groups_by_key: Mapping[CalibrationGroupKey, CalibrationGroup] = field(
+        init=False,
+        repr=False,
+        compare=False,
+        hash=False,
+    )
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "_groups_by_key", _build_group_index(self.artifact))
 
     def probability(
         self,
@@ -556,10 +574,9 @@ class CalibratedTemperatureModel:
             ),
             CalibrationGroupKey(GroupLevel.SOURCE, forecast_source),
         )
-        by_key = {group.key.stable_key: group for group in self.artifact.groups}
         selected: CalibrationGroup | None = None
         for candidate in candidates:
-            group = by_key.get(candidate.stable_key)
+            group = self._groups_by_key.get(candidate)
             if group is not None and group.sample_count >= self.artifact.min_sample_count:
                 selected = group
                 break
