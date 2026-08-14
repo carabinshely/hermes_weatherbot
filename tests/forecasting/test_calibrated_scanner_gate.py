@@ -90,6 +90,22 @@ def test_quarantined_legacy_cli_cannot_dispatch_scan(
     assert "legacy strategy scanning is disabled" in capsys.readouterr().err
 
 
+def test_quarantined_legacy_run_loop_is_disabled_before_live_approvals(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def forbidden_approvals() -> None:
+        calls.append("approvals")
+
+    monkeypatch.setattr(bot_v3_legacy, "ensure_approvals", forbidden_approvals)
+
+    with pytest.raises(RuntimeError, match="legacy strategy loop is disabled"):
+        bot_v3_legacy.run_loop(_context(ExecutionMode.LIVE))
+
+    assert calls == []
+
+
 def test_scanner_climate_regions_match_calibration_market_contract() -> None:
     calibration = {market.city: market.climate_region for market in DEFAULT_MARKETS}
     scanner = {city: str(details["climate_region"]) for city, details in bot_v3.LOCATIONS.items()}
