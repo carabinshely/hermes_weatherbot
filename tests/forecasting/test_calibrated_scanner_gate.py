@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 import bot_v3
@@ -111,3 +114,36 @@ def test_scanner_climate_regions_match_calibration_market_contract() -> None:
     scanner = {city: str(details["climate_region"]) for city, details in bot_v3.LOCATIONS.items()}
 
     assert scanner == calibration
+
+
+def test_public_entrypoint_does_not_expose_quarantined_strategy_primitives() -> None:
+    for name in (
+        "SIGMA_F",
+        "get_sigma",
+        "bucket_prob",
+        "ensure_approvals",
+        "place_buy_order",
+    ):
+        assert not hasattr(bot_v3, name)
+
+
+def test_research_signal_log_preserves_complete_calibration_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    log_path = tmp_path / "research-signals.jsonl"
+    monkeypatch.setattr(bot_v3, "RESEARCH_SIGNAL_LOG", log_path)
+    signal: dict[str, object] = {
+        "model_probability": "0.427",
+        "model_version": "issue12-v3-fixture",
+        "artifact_sha256": "a" * 64,
+        "forecast_source": "open_meteo_ecmwf_ifs025",
+        "calibration_group_key": "source|open_meteo_ecmwf_ifs025",
+        "fallback_level": "source",
+        "distribution_type": "normal",
+        "calibration_sample_count": 60,
+        "training_cutoff": "2026-08-10",
+    }
+
+    bot_v3.persist_research_signal(signal)
+
+    assert json.loads(log_path.read_text(encoding="utf-8")) == signal

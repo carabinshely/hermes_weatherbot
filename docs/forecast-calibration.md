@@ -318,3 +318,10 @@ The resulting object carries `model_probability` together with the model version
 artifact SHA-256, forecast source, selected calibration group and fallback level,
 distribution type, sample count, and training cutoff. Research output persists these
 fields as a unit rather than storing a probability without its model identity.
+
+
+### Runtime lead-domain and RESEARCH evidence
+
+The frozen calibration dataset supports only D+0, D+1, and D+2. Runtime probability evaluation rejects any other lead instead of falling through to a broader group trained on a different lead domain. The RESEARCH scanner requests exactly those supported horizons.
+
+Every emitted RESEARCH signal is appended to `state/research-signals.jsonl` before it is reported as an observed signal. Each JSON line retains the weather snapshot metadata, complete calibration provenance (`model_version`, `artifact_sha256`, `forecast_source`, `calibration_group_key`, `fallback_level`, `distribution_type`, `calibration_sample_count`, `training_cutoff`, and `model_probability`), and validated quote metadata. Persistence failure rejects that candidate rather than emitting unauditable research evidence.

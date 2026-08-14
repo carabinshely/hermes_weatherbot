@@ -9,15 +9,16 @@ strategy scans remain explicitly disabled until the remaining #48 integration is
 
 from __future__ import annotations
 
+import json
+import os
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import requests
 
 import bot_v3_legacy as _legacy
-from bot_v3_legacy import *  # noqa: F403
 from execution_modes import (
     ExecutionContext,
     ExecutionMode,
@@ -29,6 +30,7 @@ from weatherbot.forecasting import (
     load_calibrated_probability_runtime,
 )
 from weatherbot.forecasting.calibration import CalibrationError
+from weatherbot.forecasting.contracts import CALIBRATION_LEAD_DAYS
 from weatherbot.markets import (
     BinaryOutcome,
     GammaMarketError,
@@ -37,7 +39,6 @@ from weatherbot.markets import (
     TemperatureUnit,
 )
 from weatherbot.quoting import evaluate_executable_buy
-
 
 _CLIMATE_REGIONS = {
     "nyc": "northeast",
@@ -63,6 +64,23 @@ MAX_BET = _legacy.MAX_BET
 MIN_EV = _legacy.MIN_EV
 PAPER_RUNTIME = _legacy.PAPER_RUNTIME
 C = _legacy.C
+RESEARCH_SIGNAL_LOG = BOT_DIR / "state" / "research-signals.jsonl"
+
+
+def persist_research_signal(signal: dict[str, object]) -> None:
+    """Append one complete research signal with provenance to durable local history."""
+    RESEARCH_SIGNAL_LOG.parent.mkdir(parents=True, exist_ok=True)
+    encoded = json.dumps(
+        signal,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        default=str,
+    )
+    with RESEARCH_SIGNAL_LOG.open("a", encoding="utf-8") as handle:
+        handle.write(encoded + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
 
 
 def tg_scan_summary(
@@ -113,7 +131,7 @@ def scan_and_trade(context: ExecutionContext):
         _legacy.warn(message)
         return 0, [message]
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     errors: list[str] = []
     observed_signals = 0
     top_signals: list[dict[str, object]] = []
@@ -129,7 +147,8 @@ def scan_and_trade(context: ExecutionContext):
         market_timezone = TIMEZONES[city_slug]
         calendar = _legacy.MarketCalendar(market_timezone)
         dates = tuple(
-            candidate.isoformat() for candidate in calendar.candidate_dates(now, count=4)
+            candidate.isoformat()
+            for candidate in calendar.candidate_dates(now, count=len(CALIBRATION_LEAD_DAYS))
         )
 
         try:
@@ -144,7 +163,7 @@ def scan_and_trade(context: ExecutionContext):
             continue
 
         city_found_signal = False
-        for horizon_index, market_date in enumerate(dates):
+        for horizon_index, market_date in zip(CALIBRATION_LEAD_DAYS, dates, strict=True):
             horizon = f"D+{horizon_index}"
             try:
                 parsed_date = datetime.strptime(market_date, "%Y-%m-%d")
@@ -154,7 +173,7 @@ def scan_and_trade(context: ExecutionContext):
                     parsed_date.day,
                     parsed_date.year,
                 )
-                event_retrieved_at = datetime.now(timezone.utc)
+                event_retrieved_at = datetime.now(UTC)
             except Exception as exc:
                 errors.append(f"{loc['name']} {horizon}: market lookup failed: {exc}")
                 continue
@@ -245,7 +264,7 @@ def scan_and_trade(context: ExecutionContext):
                 event=event_snapshot,
                 order_book=book,
                 balance=None,
-                evaluated_at=datetime.now(timezone.utc),
+                evaluated_at=datetime.now(UTC),
                 freshness_policy=_legacy._quote_freshness_policy(),
                 cost_policy=_legacy._quote_cost_policy(),
             )
@@ -257,7 +276,7 @@ def scan_and_trade(context: ExecutionContext):
             quote = validated_quote.quote
             all_in_price = float(validated_quote.all_in_average_price)
             ev = float(validated_quote.expected_return)
-            signal_generated_at = datetime.now(timezone.utc)
+            signal_generated_at = datetime.now(UTC)
             weather_metadata = weather.signal_metadata(generated_at_utc=signal_generated_at)
             signal = {
                 "market_id": str(selection.market_id),
@@ -279,6 +298,11 @@ def scan_and_trade(context: ExecutionContext):
                 **calibrated.audit_metadata(),
                 **validated_quote.metadata(),
             }
+            try:
+                persist_research_signal(signal)
+            except (OSError, TypeError, ValueError) as exc:
+                errors.append(f"{loc['name']} {horizon}: research signal persistence failed: {exc}")
+                continue
             top_signals.append(
                 {
                     "city": loc["name"],
@@ -297,7 +321,6 @@ def scan_and_trade(context: ExecutionContext):
                 f"model probability {probability:.3f} | EV {ev:+.2f} | "
                 f"artifact {calibrated.artifact_sha256[:12]}"
             )
-            _ = signal
 
         if not city_found_signal:
             print("ok", end="", flush=True)

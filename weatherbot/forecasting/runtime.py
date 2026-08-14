@@ -22,7 +22,10 @@ from weatherbot.forecasting.calibration import (
     CalibrationError,
     load_calibration_artifact,
 )
-from weatherbot.forecasting.calibration_build import OBSERVATION_CONTRACT_ID
+from weatherbot.forecasting.contracts import (
+    CALIBRATION_LEAD_DAYS,
+    OBSERVATION_CONTRACT_ID,
+)
 from weatherbot.forecasting.model import WeatherInputSnapshot
 from weatherbot.markets import TemperatureBucket
 
@@ -147,6 +150,10 @@ class CalibratedProbabilityRuntime:
         weather: WeatherInputSnapshot,
         bucket: TemperatureBucket,
     ) -> CalibratedProbability:
+        if lead_days not in CALIBRATION_LEAD_DAYS:
+            raise CalibrationCompatibilityError(
+                f"lead_days={lead_days} is outside calibrated lead set {CALIBRATION_LEAD_DAYS}"
+            )
         estimate = self.model.probability(
             city=city,
             climate_region=climate_region,

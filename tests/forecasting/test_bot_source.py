@@ -37,3 +37,13 @@ def test_precalibration_scanner_is_quarantined_from_public_entrypoint() -> None:
     assert "import bot_v3_legacy as _legacy" in bot_source
     assert "_legacy.scan_and_trade(" not in bot_source
     assert "_legacy.run_loop(" not in bot_source
+
+
+def test_public_scanner_does_not_reexport_quarantined_helpers() -> None:
+    bot_source = Path("bot_v3.py").read_text(encoding="utf-8")
+
+    assert "from bot_v3_legacy import *" not in bot_source
+    assert "count=len(CALIBRATION_LEAD_DAYS)" in bot_source
+    assert "zip(" in bot_source and "CALIBRATION_LEAD_DAYS, dates, strict=True" in bot_source
+    assert "persist_research_signal(signal)" in bot_source
+    assert "_ = signal" not in bot_source

@@ -17,7 +17,10 @@ from weatherbot.forecasting.calibration import (
     GroupLevel,
     NormalResidualDistribution,
 )
-from weatherbot.forecasting.calibration_build import OBSERVATION_CONTRACT_ID
+from weatherbot.forecasting.contracts import (
+    CALIBRATION_LEAD_DAYS,
+    OBSERVATION_CONTRACT_ID,
+)
 from weatherbot.forecasting.model import ForecastSource
 from weatherbot.forecasting.runtime import (
     CalibrationApprovalError,
@@ -238,3 +241,19 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
         "calibration_sample_count": 60,
         "training_cutoff": "2026-08-10",
     }
+
+
+def test_runtime_rejects_lead_days_outside_frozen_dataset(tmp_path: Path) -> None:
+    _approved_repository(tmp_path)
+    runtime = load_calibrated_probability_runtime(repository_root=tmp_path)
+    weather = weather_snapshot()
+    bucket = TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT)
+
+    with pytest.raises(CalibrationCompatibilityError, match="outside calibrated lead set"):
+        runtime.probability(
+            city="chicago",
+            climate_region="ohio_valley",
+            lead_days=max(CALIBRATION_LEAD_DAYS) + 1,
+            weather=weather,
+            bucket=bucket,
+        )
