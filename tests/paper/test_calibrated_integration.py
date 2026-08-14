@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -90,8 +91,7 @@ def test_calibrated_paper_entry_persists_complete_probability_provenance(tmp_pat
     assert claim.metadata["model_probability"] == format(calibrated.model_probability, "f")
     caller_audit = claim.metadata["caller_audit"]
     assert isinstance(caller_audit, dict)
-    calibration = caller_audit["calibration"]
-    assert isinstance(calibration, dict)
+    calibration = cast(dict[str, object], caller_audit["calibration"])
     assert calibration == dict(calibrated.audit_metadata())
     assert calibration["artifact_sha256"] == calibrated.artifact_sha256
     assert calibration["city_slug"] == "chicago"
