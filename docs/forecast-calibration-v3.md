@@ -67,6 +67,54 @@ evaluation kind:     development
 
 Its artifact and report are development evidence only. They must not be configured as an accepted production artifact and must not be used as the final V3 acceptance decision.
 
+### Recorded Issue #47 replay
+
+The closure replay used the immutable normalized V2 evidence artifact produced by successful workflow run `31717108833`. No forecast or observation collection was performed during the V3 replay.
+
+Input evidence:
+
+```text
+record count:                    2238
+dataset interval:                2026-04-05 .. 2026-08-10
+dataset SHA-256:                 b78b9b0622d1061d1947657aa59ede1810dc9a6574a0a3672fc99dc693ceaecb
+dataset manifest semantic SHA:   30961b8c8ee501383fa06d8ceb8338d38be88dd63f344fe223ebdf33515e20ce
+dataset manifest file SHA-256:   ce77fabf44607ca1b84336721f57fd438012ec7d67307bd24c0347e1d67725c8
+exclusion report file SHA-256:   5034e9996d6114643936946fabadeb5c58b45e9be34a6802bcbf12315ad52d4f
+source workflow artifact digest: 4ccd4ba4f21c2bb5d68e0d9f960e565b97614ec8ac0aa349de554d823a72396f
+```
+
+Two V3 runs used the same inputs and the same frozen creation timestamp. Both produced byte-identical artifacts and reports:
+
+```text
+model version:                  issue12-v3-dev-replay
+policy:                         v3-normal-runtime-v1
+evaluation kind:                development
+training end:                   2026-07-13
+development validation:         2026-07-14 .. 2026-08-10
+validation sample count:        504
+fitted runtime groups:          76
+omitted groups:                 0
+embedded artifact SHA-256:      af0b4574850d4ebfeb47916e628d16f66f10a5207b0a363e63420b1b9ecaca18
+artifact file SHA-256:          0cf749a6a33cdf49b6e29adb46f2454534f5419fab65b2fd9490be76135d4ed2
+report file SHA-256:            a7a055c23056cd678e0ccff2009f1ce2f267ebf5a74761a1cc17917a1a9aebf3
+```
+
+Development metrics were:
+
+```text
+forecast bias:                  +0.604960°F
+MAE:                            2.843056°F
+RMSE:                           3.429694°F
+mean log score:                 2.516366
+fixed-2°F mean log score:       3.062888
+delta:                          -0.546522
+mean ranked probability score:  1.704312
+fixed-2°F ranked score:         2.080291
+delta:                          -0.375979
+```
+
+These scores are useful only as development evidence. They did not change the pre-registered V3 policy and do not accept V3 for runtime use. Final acceptance or rejection remains exclusively owned by Issue #49.
+
 ## Scope boundary
 
 Issue #47 does not remove the scanner's fixed-2°F path, activate an artifact, persist PAPER provenance, or accept/reject V3. Those responsibilities remain in Issues #48 and #49.
