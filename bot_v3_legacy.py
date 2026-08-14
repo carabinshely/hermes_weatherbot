@@ -1229,7 +1229,10 @@ def _parse_temperature_markets(event):
 
 
 def scan_and_trade(context: ExecutionContext):
-    """Scan markets with explicit token, quote, bucket, and local-date contracts."""
+    """Reject direct use of the quarantined pre-calibration strategy."""
+    raise RuntimeError(
+        "legacy strategy scanning is disabled; use bot_v3.py calibrated RESEARCH entrypoint"
+    )
     if context.mode is ExecutionMode.PAPER:
         recover_paper_runtime(runtime=PAPER_RUNTIME)
     now = datetime.now(timezone.utc)
@@ -1998,6 +2001,13 @@ def main(argv: list[str] | None = None) -> int:
     except ModeConfigurationError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
+
+    if args.command in {"scan", "run"}:
+    print(
+        "ERROR: legacy strategy scanning is disabled; use bot_v3.py",
+        file=sys.stderr,
+    )
+    return 2
 
     print(f"Execution mode: {context.label}")
     if context.mode is ExecutionMode.LIVE:
