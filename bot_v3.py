@@ -290,7 +290,6 @@ def scan_and_trade(context: ExecutionContext):
             probability = float(calibrated.model_probability)
 
             if context.mode is ExecutionMode.PAPER:
-                evaluated_at = datetime.now(UTC)
                 paper_scope = RiskScope(
                     market_id=MarketId(str(selection.market_id)),
                     outcome_id=OutcomeId(str(selection.token_id)),
@@ -309,7 +308,6 @@ def scan_and_trade(context: ExecutionContext):
                         decision_book=book,
                         condition_id=selection.condition_id,
                         token_id=selection.token_id,
-                        evaluated_at=evaluated_at,
                         freshness_policy=_legacy._quote_freshness_policy(),
                         cost_policy=_legacy._quote_cost_policy(),
                         fetch_book=_legacy._fetch_token_order_book,

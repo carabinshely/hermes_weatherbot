@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import UTC, datetime
 
 from weatherbot.domain import Money, PositionKey, RiskScope, fingerprint
 from weatherbot.forecasting import CalibratedProbability, WeatherInputSnapshot
@@ -15,6 +15,11 @@ from weatherbot.paper.runtime import PaperBookFetcher, PaperRuntimeConfig, load_
 from weatherbot.paper.service import PaperEntryRequest, PaperEntryResult, PaperTradingService
 from weatherbot.persistence import StartupRecovery
 from weatherbot.quoting import CostPolicy, FreshnessPolicy, MarketEventSnapshot
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
 
 _CALIBRATION_AUDIT_KEYS = frozenset(
     {
@@ -121,7 +126,6 @@ def submit_scanner_candidate(
     decision_book: OrderBookSnapshot,
     condition_id: ConditionId,
     token_id: OutcomeTokenId,
-    evaluated_at: datetime,
     freshness_policy: FreshnessPolicy,
     cost_policy: CostPolicy,
     fetch_book: PaperBookFetcher,
@@ -146,6 +150,7 @@ def submit_scanner_candidate(
         service.recover()
         valuation_books = load_open_position_books(store, fetch_book)
         execution_book = fetch_book(condition_id, token_id)
+        evaluated_at = _utc_now()
         request = PaperEntryRequest(
             strategy_id=strategy_id,
             decision_id=decision_id,

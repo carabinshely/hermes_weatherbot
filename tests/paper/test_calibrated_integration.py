@@ -6,6 +6,7 @@ from typing import cast
 
 import pytest
 
+import weatherbot.paper.integration as paper_integration
 from tests.paper.helpers import calibrated_probability, paper_book, scope
 from tests.quoting.helpers import (
     NOW,
@@ -58,7 +59,6 @@ def _submit(
         decision_book=decision_book,
         condition_id=decision_book.condition_id,
         token_id=decision_book.token_id,
-        evaluated_at=NOW,
         freshness_policy=freshness_policy(),
         cost_policy=cost_policy(),
         fetch_book=fetch,
@@ -82,11 +82,15 @@ def test_scanner_facade_accepts_only_typed_calibration_identity() -> None:
     assert "model_version" not in parameters
     assert "probability" not in parameters
     assert "decision_id" not in parameters
+    assert "evaluated_at" not in parameters
     assert "calibrated" in decision_parameters
     assert "model_version" not in decision_parameters
 
 
-def test_calibrated_paper_entry_persists_complete_probability_provenance(tmp_path: Path) -> None:
+def test_calibrated_paper_entry_persists_complete_probability_provenance(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(paper_integration, "_utc_now", lambda: NOW)
     runtime, calibrated, decision_id, result = _submit(tmp_path)
 
     assert result.status is PaperEntryStatus.FILLED
@@ -139,7 +143,6 @@ def test_scanner_facade_rejects_calibration_metadata_spoof_before_ledger_mutatio
             decision_book=decision_book,
             condition_id=decision_book.condition_id,
             token_id=decision_book.token_id,
-            evaluated_at=NOW,
             freshness_policy=freshness_policy(),
             cost_policy=cost_policy(),
             fetch_book=forbidden_fetch,
@@ -210,7 +213,6 @@ def test_scanner_facade_rejects_bucket_mismatch_before_ledger_mutation(tmp_path:
             decision_book=decision_book,
             condition_id=decision_book.condition_id,
             token_id=decision_book.token_id,
-            evaluated_at=NOW,
             freshness_policy=freshness_policy(),
             cost_policy=cost_policy(),
             fetch_book=forbidden_fetch,
@@ -244,7 +246,6 @@ def test_scanner_facade_rejects_normalized_duplicate_bucket_key(tmp_path: Path) 
             decision_book=decision_book,
             condition_id=decision_book.condition_id,
             token_id=decision_book.token_id,
-            evaluated_at=NOW,
             freshness_policy=freshness_policy(),
             cost_policy=cost_policy(),
             fetch_book=forbidden_fetch,
@@ -256,3 +257,47 @@ def test_scanner_facade_rejects_normalized_duplicate_bucket_key(tmp_path: Path) 
         )
 
     assert not runtime.ledger_path.exists()
+
+
+def test_scanner_facade_timestamps_after_fresh_execution_book(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = PaperRuntimeConfig.from_mapping(
+        {"paper_ledger_path": "paper.sqlite3"}, base_dir=tmp_path
+    )
+    calibrated = calibrated_probability()
+    weather = weather_snapshot()
+    event = event_snapshot()
+    decision_book = paper_book(book_hash="timing-decision-book")
+    events: list[str] = []
+
+    def fetch(_condition_id: ConditionId, _token_id: OutcomeTokenId):
+        events.append("fetch")
+        return paper_book(book_hash="timing-execution-book")
+
+    def now_after_fetch():
+        assert events == ["fetch"]
+        events.append("clock")
+        return NOW
+
+    monkeypatch.setattr(paper_integration, "_utc_now", now_after_fetch)
+
+    result = submit_scanner_candidate(
+        runtime=runtime,
+        strategy_id="bot-v3-weather",
+        calibrated=calibrated,
+        scope=scope(),
+        weather=weather,
+        event=event,
+        decision_book=decision_book,
+        condition_id=decision_book.condition_id,
+        token_id=decision_book.token_id,
+        freshness_policy=freshness_policy(),
+        cost_policy=cost_policy(),
+        fetch_book=fetch,
+        audit_metadata={"bucket_key": calibrated.bucket_key},
+        owner_id="timing-test",
+    )
+
+    assert result.status is PaperEntryStatus.FILLED
+    assert events == ["fetch", "clock"]
