@@ -57,8 +57,7 @@ def _scanner_audit_metadata(
     collisions = sorted(set(audit_metadata) & _CALIBRATION_AUDIT_KEYS)
     if collisions:
         raise ValueError(
-            "PAPER caller audit metadata cannot override calibration-owned keys: "
-            f"{collisions}"
+            f"PAPER caller audit metadata cannot override calibration-owned keys: {collisions}"
         )
     return {
         **audit_metadata,

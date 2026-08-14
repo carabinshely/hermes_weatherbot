@@ -214,7 +214,9 @@ def test_scanner_has_one_shared_calibration_call_and_paper_bypasses_legacy_sizin
     scanner = source[source.index("def scan_and_trade") : source.index("\n\ndef show_status")]
 
     assert scanner.count("calibration_runtime.probability(") == 1
-    paper_start = scanner.index("if context.mode is ExecutionMode.PAPER:", scanner.index("calibrated ="))
+    paper_start = scanner.index(
+        "if context.mode is ExecutionMode.PAPER:", scanner.index("calibrated =")
+    )
     submit = scanner.index("submit_scanner_candidate(", paper_start)
     research_sizing = scanner.index("preliminary_kelly =", paper_start)
     paper_segment = scanner[paper_start:research_sizing]

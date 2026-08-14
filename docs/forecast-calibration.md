@@ -224,6 +224,9 @@ fallback decision:
 ```text
 model_version
 artifact_sha256
+city_slug
+climate_region
+lead_days
 forecast_source
 calibration_group_key
 fallback_level
@@ -281,20 +284,20 @@ fails before weather or market collection. Missing, malformed, rejected, corrupt
 path-escaping, checksum-mismatched, or source-incompatible approval evidence never falls
 back to a global uncertainty constant.
 
-Issue #48A intentionally activates only the research probability boundary. During this
-phase:
+Issue #48B integrates both non-LIVE strategy modes through the same calibrated probability boundary while preserving separate activation gates:
 
 ```text
-RESEARCH strategy probability  = calibrated artifact when separately accepted
-PAPER strategy scanning         = disabled
+RESEARCH strategy probability  = calibrated artifact when separately accepted and runtime-compatible
+PAPER strategy scanning         = same calibrated probability boundary + durable PAPER sizing/risk/ledger
 LIVE strategy scanning          = disabled
 fixed 2°F fallback              = absent
 ```
 
-Adding an accepted artifact after the untouched V3 holdout must therefore not enable
-PAPER or LIVE execution implicitly. Those modes require a separate explicit integration
-change. Mechanical PAPER ledger, recovery, sizing, risk, and status tests remain valid
-independently of whether the weather strategy is permitted to feed them a probability.
+PAPER recovery runs before calibration loading so existing durable state can always be reconciled. A missing/corrupt/unaccepted global artifact then aborts new PAPER strategy work before weather or market collection. Candidate-local calibration failures reject only that candidate.
+
+PAPER decision identity includes a canonical fingerprint of the exact `CalibratedProbability`, including artifact SHA and the probability input/group provenance. The scanner facade does not accept independent model-version or probability primitives, and caller audit metadata cannot override calibration-owned fields. Durable PAPER metadata retains the canonical mapping under `caller_audit.calibration` while the generic PAPER service remains model-agnostic.
+
+Adding an accepted artifact still does not enable LIVE execution, and it does not weaken the forecast-vintage gate. The current stitched Open-Meteo forecast path cannot invent exact ECMWF run identity; candidates without provable compatible run provenance remain fail-closed.
 
 ## Scanner-facing probability object
 
@@ -314,15 +317,12 @@ WeatherInputSnapshot
 CalibratedProbability
 ```
 
-The resulting object carries `model_probability` together with the model version,
-artifact SHA-256, forecast source, selected calibration group and fallback level,
-distribution type, sample count, and training cutoff. Research output persists these
-fields as a unit rather than storing a probability without its model identity.
+The resulting object carries `model_probability` together with the model version, artifact SHA-256, `city_slug`, `climate_region`, `lead_days`, forecast source, selected calibration group and fallback level, distribution type, sample count, and training cutoff. RESEARCH output and durable PAPER caller audit metadata persist this canonical mapping as a unit rather than storing a probability without its replay identity.
 
 
-### Runtime lead-domain and RESEARCH evidence
+### Runtime lead-domain and durable non-LIVE evidence
 
-The frozen calibration dataset supports only D+0, D+1, and D+2. Runtime probability evaluation rejects any other lead instead of falling through to a broader group trained on a different lead domain. The RESEARCH scanner requests exactly those supported horizons.
+The frozen calibration dataset supports only D+0, D+1, and D+2. Runtime probability evaluation rejects any other lead instead of falling through to a broader group trained on a different lead domain. The shared RESEARCH/PAPER scanner requests exactly those supported horizons.
 
 Every emitted RESEARCH signal is appended to `state/research-signals.jsonl` before it is reported as an observed signal. Each JSON line retains the weather snapshot metadata, complete calibration provenance (`model_version`, `artifact_sha256`, `forecast_source`, `calibration_group_key`, `fallback_level`, `distribution_type`, `calibration_sample_count`, `training_cutoff`, and `model_probability`), and validated quote metadata. Persistence failure rejects that candidate rather than emitting unauditable research evidence.
 
@@ -331,12 +331,12 @@ Every emitted RESEARCH signal is appended to `state/research-signals.jsonl` befo
 
 The calibrated residuals are tied to the frozen market-local decision policy: D+0/D+1/D+2 are sampled from the previous UTC calendar day's 18Z ECMWF IFS 0.25° run at the 00:15 market-local decision point. Runtime therefore accepts probability generation only when the production forecast is retrieved in the narrow 00:15-00:25 market-local decision window for the corresponding decision day. The public scanner checks this window before weather or market network work, and the calibrated probability boundary checks the forecast retrieval timestamp independently. If model-run initialization metadata is available, it must also equal the expected previous-day 18Z run. A later continuously updated forecast cannot silently reuse the frozen residual distribution.
 
-Continuous RESEARCH mode probes on the decision-window cadence so each U.S. timezone can be evaluated near its own market-local decision point; mechanical resolution monitoring continues between probes.
+Continuous RESEARCH and PAPER modes probe on the decision-window cadence so each U.S. timezone can be evaluated near its own market-local decision point; mechanical resolution monitoring continues independently between probes.
 
 
 The current stitched production forecast parser does not invent model-run identity. If the provider cannot supply `model_run_initialized_at_utc`, calibrated runtime evaluation rejects the candidate even inside the decision window. This is deliberate: Open-Meteo documents the operational Forecast API as a continuously stitched latest-run series, while Single Runs is the exact-run interface. A later provider change may supply provable run identity, but #48A never guesses it from wall-clock time alone.
 
 
-Continuous RESEARCH does not sleep for an entire decision window between probes. It probes at most once per minute (and therefore at least four times faster than the 10-minute eligibility window) while scheduling resolution monitoring independently. This prevents monitor sleep/overhead from skipping a city's daily decision window.
+Continuous RESEARCH/PAPER does not sleep for an entire decision window between probes. It probes at most once per minute (and therefore at least four times faster than the 10-minute eligibility window) while scheduling resolution monitoring independently. This prevents monitor sleep/overhead from skipping a city's daily decision window.
 
 Durable RESEARCH records also preserve the probability-call dimensions `city_slug`, `climate_region`, and `lead_days` in addition to the selected calibration group/fallback metadata. This keeps historical probabilities reproducible even if location-to-region mappings change later.

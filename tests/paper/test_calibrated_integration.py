@@ -7,7 +7,13 @@ from typing import cast
 import pytest
 
 from tests.paper.helpers import calibrated_probability, paper_book, scope
-from tests.quoting.helpers import NOW, cost_policy, event_snapshot, freshness_policy, weather_snapshot
+from tests.quoting.helpers import (
+    NOW,
+    cost_policy,
+    event_snapshot,
+    freshness_policy,
+    weather_snapshot,
+)
 from weatherbot.markets import ConditionId, OutcomeTokenId
 from weatherbot.paper import (
     PaperEntryStatus,
@@ -85,7 +91,9 @@ def test_calibrated_paper_entry_persists_complete_probability_provenance(tmp_pat
 
     assert result.status is PaperEntryStatus.FILLED
     with runtime.open_read_only_store() as store:
-        claim = next(item for item in store.list_decision_claims() if item.decision_key == decision_id)
+        claim = next(
+            item for item in store.list_decision_claims() if item.decision_key == decision_id
+        )
 
     assert claim.metadata["model_version"] == calibrated.model_version
     assert claim.metadata["model_probability"] == format(calibrated.model_probability, "f")

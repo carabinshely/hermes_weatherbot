@@ -262,7 +262,9 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
     fingerprint = result.calibration_fingerprint()
     assert fingerprint == result.calibration_fingerprint()
     assert replace(result, artifact_sha256="f" * 64).calibration_fingerprint() != fingerprint
-    assert replace(result, model_probability=Decimal("0.5")).calibration_fingerprint() != fingerprint
+    assert (
+        replace(result, model_probability=Decimal("0.5")).calibration_fingerprint() != fingerprint
+    )
     assert replace(result, lead_days=1).calibration_fingerprint() != fingerprint
 
 

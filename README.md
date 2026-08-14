@@ -8,7 +8,7 @@
 
 ---
 
-> **Current #48A activation status:** calibrated strategy scanning is **RESEARCH-only**. `bot_v3.py scan/run --mode paper` and LIVE strategy `scan/run` are intentionally disabled and fail closed. Existing PAPER ledger/status/reset/resolution mechanics remain available. Historical target/legacy architecture sections below do not imply that automated trading is currently enabled.
+> **Current #48B activation status:** RESEARCH and durable PAPER strategy scanning share the same calibrated probability boundary. PAPER always recovers its durable ledger before calibration loading, but new model-backed decisions fail closed until an accepted artifact and provable exact-run forecast evidence exist. LIVE strategy `scan/run` remains disabled. Historical target/legacy architecture sections below do not imply that automated live trading is currently enabled.
 
 ![alt text](image-1.png)
 ## 🤖 Why Hermes Agent
@@ -60,6 +60,7 @@ Run commands through the selected locked environment, for example:
 
 ```bash
 uv run --no-dev python bot_v3.py scan --mode research
+uv run --no-dev python bot_v3.py scan --mode paper
 uv run --no-dev python bot_v3.py status --mode paper
 uv run --no-dev python -m weatherbot.resolution --help
 ```
@@ -112,8 +113,10 @@ TELEGRAM_CHAT_ID=your_telegram_chat_id
 # Read-only market research; no wallet access or orders
 python bot_v3.py scan --mode research
 
-# PAPER strategy scan/run are intentionally disabled during #48A.
-# Administrative PAPER commands remain available:
+# Durable PAPER uses the same calibrated probability boundary. Before final
+# #49/#48 activation this may intentionally create zero new model-backed entries.
+python bot_v3.py scan --mode paper
+python bot_v3.py run --mode paper
 python bot_v3.py status --mode paper
 python bot_v3.py resolve --mode paper
 
@@ -139,59 +142,41 @@ installation error before credential or wallet access.
 ./stop_bot_v3.sh
 ```
 
-During #48A the public strategy entrypoint is RESEARCH-only; PAPER/LIVE strategy execution remains explicitly disabled until the later integration gate.
+During #48B the public strategy entrypoint supports calibrated RESEARCH and durable PAPER simulation. Both remain fail-closed without accepted compatible calibration evidence; LIVE strategy execution remains explicitly disabled.
 
 ---
 
-## 🧠 Core Math: Gaussian Bucket Model
+## 🧠 Core Math: Calibrated Residual Model
 
-### Step 1 — True Probability from ECMWF
+### Step 1 — Model Probability from ECMWF
 
-```python
-import math
+The public strategy scanner no longer applies a global `sigma = 2°F`. It loads one separately accepted, checksummed calibration artifact and evaluates the residual distribution selected for the candidate's city/region, forecast source, lead, and season. Sparse groups fall back through the documented hierarchy; insufficient or incompatible evidence rejects the candidate.
 
-def norm_cdf(x):
-    """Cumulative distribution function of standard normal"""
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
+For a forecast `f`, calibration models:
 
-def bucket_prob(forecast_temp, t_low, t_high, sigma=2.0):
-    """
-    Forecast says 72°F ± 2σ.
-    What's the probability actual high falls in 70-75°F bucket?
-    P(t_low ≤ X ≤ t_high) = CDF(z_high) - CDF(z_low)
-    """
-    z_low  = (t_low  - forecast_temp) / sigma
-    z_high = (t_high - forecast_temp) / sigma
-    return norm_cdf(z_high) - norm_cdf(z_low)
+```text
+R = observed_daily_high - forecast_daily_high
 ```
+
+The probability of a `TemperatureBucket` is computed from the fitted residual CDF at the shared half-degree bucket boundaries. A normal runtime group may contain bias/sigma parameters internally, but `sigma` is not the scanner API.
+
+Every probability carries immutable provenance including the model version, artifact SHA-256, city/region/lead inputs, selected group/fallback level, distribution type, sample count, training cutoff, and `model_probability`.
 
 ### Step 2 — Expected Value (EV)
 
 ```python
-def calc_ev(true_prob, market_price):
-    """
-    EV = P(win) × payoff - P(lose) × cost
-    EV > 0 → market is underpriced → BUY signal
-    """
-    win  = true_prob * (1 / market_price - 1)
-    lose = (1 - true_prob) * 1
+def calc_ev(model_probability, market_price):
+    """Illustrative EV calculation from a model probability and market price."""
+    win = model_probability * (1 / market_price - 1)
+    lose = (1 - model_probability) * 1
     return win - lose
 ```
 
-**Example:**
-- Forecast: 72°F → 75% chance of 70-75°F bucket
-- Market price: $0.30 (implies 30% probability)
-- `EV = 0.75 × (1/0.30 - 1) - 0.25 = +1.25` → **Strong BUY** 📈
+A positive model edge is not evidence of profitability. RESEARCH/PAPER decisions also pass freshness, executable-depth, cost, bankroll-sizing, and portfolio-risk gates.
 
-### Step 3 — Kelly Criterion (Optimal Bet Sizing)
+### Step 3 — PAPER Sizing
 
-```python
-def calc_kelly(p, price):
-    """Kelly % = (bp - q) / b — uses 1/4 Kelly conservative fraction"""
-    b = 1.0 / price - 1.0
-    f = (p * b - (1.0 - p)) / b
-    return round(min(max(f, 0.0) * KELLY_FRAC, 1.0), 4)
-```
+PAPER does not use the legacy scanner's transient Kelly/`MAX_BET` sizing path. Its calibrated probability flows into the durable #15 bankroll-sizing and #16 portfolio-risk contracts, which reprice against executable order-book depth and enforce the configured per-trade and portfolio limits.
 
 ---
 
@@ -219,7 +204,7 @@ data/learning/
 ECMWF Weather Forecast API
         ↓
 Hermes Agent (Autonomous Decision Engine)
-    ├── Gaussian Bucket Model → True Probability
+    ├── Calibrated residual model → Model probability
     ├── calc_ev() → Expected Value Calculation
     ├── calc_kelly() → Optimal Bet Sizing
     └── Adaptive Learning → Auto Parameter Tuning
@@ -249,7 +234,7 @@ Telegram (Real-time Notifications)
 ```
 1. Fetch ECMWF forecast (D+0 ~ D+3)
 2. Query Polymarket temperature bucket markets
-3. Gaussian model → true probability (σ=2°F)
+3. Accepted calibrated residual model → model probability (fail closed if unavailable/incompatible)
 4. Compare to market price → calculate EV
 5. EV ≥ adaptive threshold → calculate Kelly bet size
 6. Execute order on Polymarket CLOB (Polygon)
