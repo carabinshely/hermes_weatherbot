@@ -60,7 +60,7 @@ def _submit(
         or {
             "fixture": "calibrated-paper",
             "bucket_key": "F:85:86",
-            "bucket_label": "85–86°F",
+            "bucket_label": "85-86°F",
             "declared_resolution_source": "https://example.com/resolution-rules",
         },
         owner_id="calibrated-paper-test",
@@ -91,6 +91,7 @@ def test_calibrated_paper_entry_persists_complete_probability_provenance(tmp_pat
     caller_audit = claim.metadata["caller_audit"]
     assert isinstance(caller_audit, dict)
     calibration = caller_audit["calibration"]
+    assert isinstance(calibration, dict)
     assert calibration == dict(calibrated.audit_metadata())
     assert calibration["artifact_sha256"] == calibrated.artifact_sha256
     assert calibration["city_slug"] == "chicago"
