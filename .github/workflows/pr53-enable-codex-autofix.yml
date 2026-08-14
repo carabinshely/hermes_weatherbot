@@ -28,26 +28,20 @@ jobs:
 
           path = Path('.github/workflows/pr53-codex-fixes.yml')
           source = path.read_text(encoding='utf-8')
-          anchor = '''      - name: Format and lint changed Python
-        run: |
-          uv run ruff format \\
-'''
-          replacement = '''      - name: Format and lint changed Python
-        run: |
-          uv run ruff check --fix \\
-            bot_v3.py \\
-            weatherbot/forecasting/contracts.py \\
-            weatherbot/forecasting/runtime.py \\
-            weatherbot/forecasting/calibration_build.py \\
-            tests/forecasting/test_calibration_runtime.py \\
-            tests/forecasting/test_bot_source.py \\
-            tests/forecasting/test_calibrated_scanner_gate.py \\
-            tests/test_minimal_import_boundary.py
-          uv run ruff format \\
-'''
-          if anchor not in source:
-              raise SystemExit('format step anchor not found')
-          path.write_text(source.replace(anchor, replacement, 1), encoding='utf-8')
+          needle = '          uv run ruff format ' + chr(92) + '\n'
+          autofix = (
+              '          uv run ruff check --fix '
+              'bot_v3.py weatherbot/forecasting/contracts.py '
+              'weatherbot/forecasting/runtime.py '
+              'weatherbot/forecasting/calibration_build.py '
+              'tests/forecasting/test_calibration_runtime.py '
+              'tests/forecasting/test_bot_source.py '
+              'tests/forecasting/test_calibrated_scanner_gate.py '
+              'tests/test_minimal_import_boundary.py\n'
+          )
+          if needle not in source:
+              raise SystemExit('format command anchor not found')
+          path.write_text(source.replace(needle, autofix + needle, 1), encoding='utf-8')
           PY
 
       - name: Commit verifier update
