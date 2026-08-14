@@ -194,34 +194,27 @@ def test_paper_reset_requires_explicit_confirmation_before_history_mutation() ->
     assert "--confirm-paper-reset" in completed.stderr
 
 
-def test_paper_scanner_bypasses_legacy_kelly_times_max_bet_path() -> None:
+def test_paper_strategy_scanner_is_explicitly_disabled_in_phase_48a() -> None:
     source = Path("bot_v3.py").read_text(encoding="utf-8")
-    scanner = source[source.index("def scan_and_trade") :]
-    recovery_call = scanner.index("recover_paper_runtime(runtime=PAPER_RUNTIME)")
-    city_loop = scanner.index("for city_slug, loc in LOCATIONS.items()")
-    paper_branch = scanner.index("if context.mode is ExecutionMode.PAPER:", city_loop)
-    legacy_sizing = scanner.index("preliminary_kelly = get_adjusted_kelly")
-    paper_continue = scanner.index("\n                continue", paper_branch)
-    paper_block = scanner[paper_branch:paper_continue]
+    scanner = source[source.index("def scan_and_trade") : source.index("\n\ndef show_status")]
 
-    assert recovery_call < city_loop
-    assert paper_branch < legacy_sizing
-    assert "candidate only; simulated fills are implemented in #27" not in scanner
-    assert "submit_scanner_candidate(" in scanner[:legacy_sizing]
-    for live_write_symbol in (
-        "place_buy_order",
-        "get_clob_client",
-        "ensure_approvals",
-        "cancel_market_orders",
-        "PK",
-        "WALLET",
-    ):
-        assert live_write_symbol not in paper_block
+    assert "if context.mode is not ExecutionMode.RESEARCH:" in scanner
+    assert "return _blocked_strategy_scan(context)" in scanner
+    assert "submit_scanner_candidate(" not in scanner
+    assert "recover_paper_runtime(" not in scanner
+    assert "place_buy_order(" not in scanner
+    assert "PAPER_RUNTIME" not in scanner
+    assert "PK" not in scanner
+    assert "WALLET" not in scanner
 
 
-def test_paper_resolution_and_status_select_dedicated_ledger() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
+def test_paper_resolution_and_status_keep_dedicated_ledger_admin_path() -> None:
+    public_source = Path("bot_v3.py").read_text(encoding="utf-8")
+    legacy_source = Path("bot_v3_legacy.py").read_text(encoding="utf-8")
 
-    assert "PAPER_RUNTIME.ledger_path" in source
-    assert "paper_runtime_status(" in source
-    assert 'choices=("scan", "run", "status", "resolve", "cancel", "paper-reset")' in source
+    assert "PAPER_RUNTIME = _legacy.PAPER_RUNTIME" in public_source
+    assert "_legacy.PAPER_RUNTIME = PAPER_RUNTIME" in public_source
+    assert "_legacy.show_status(context)" in public_source
+    assert "PAPER_RUNTIME.ledger_path" in legacy_source
+    assert "paper_runtime_status(" in legacy_source
+    assert 'choices=("scan", "run", "status", "resolve", "cancel", "paper-reset")' in legacy_source
