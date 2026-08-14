@@ -47,3 +47,13 @@ def test_public_scanner_does_not_reexport_quarantined_helpers() -> None:
     assert "zip(" in bot_source and "CALIBRATION_LEAD_DAYS, dates, strict=True" in bot_source
     assert "persist_research_signal(signal)" in bot_source
     assert "_ = signal" not in bot_source
+
+
+def test_scanner_gates_network_work_to_calibrated_decision_window() -> None:
+    source = Path("bot_v3.py").read_text(encoding="utf-8")
+
+    gate = source.index("calibration_runtime_window(")
+    network = source.index("_legacy.get_forecast_snapshot(")
+    assert gate < network
+    assert "decision_start <= now < decision_end" in source
+    assert "CALIBRATION_DECISION_WINDOW.total_seconds()" in source

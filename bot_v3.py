@@ -30,7 +30,11 @@ from weatherbot.forecasting import (
     load_calibrated_probability_runtime,
 )
 from weatherbot.forecasting.calibration import CalibrationError
-from weatherbot.forecasting.contracts import CALIBRATION_LEAD_DAYS
+from weatherbot.forecasting.contracts import (
+    CALIBRATION_DECISION_WINDOW,
+    CALIBRATION_LEAD_DAYS,
+    calibration_runtime_window,
+)
 from weatherbot.markets import (
     BinaryOutcome,
     GammaMarketError,
@@ -150,6 +154,20 @@ def scan_and_trade(context: ExecutionContext):
             candidate.isoformat()
             for candidate in calendar.candidate_dates(now, count=len(CALIBRATION_LEAD_DAYS))
         )
+        try:
+            decision_start, decision_end = calibration_runtime_window(
+                target_date=datetime.strptime(dates[0], "%Y-%m-%d").date(),
+                market_timezone=market_timezone,
+                lead_days=CALIBRATION_LEAD_DAYS[0],
+            )
+        except (ValueError, IndexError) as exc:
+            errors.append(f"{loc['name']}: invalid calibration decision window: {exc}")
+            print("invalid decision window")
+            continue
+        if not decision_start <= now < decision_end:
+            _legacy.skip(f"{loc['name']}: outside calibrated 00:15 market-local decision window")
+            print("outside calibrated decision window")
+            continue
 
         try:
             started = time.time()
@@ -359,9 +377,10 @@ def run_loop(context: ExecutionContext):
         return _blocked_strategy_scan(context)
 
     last_full_scan = 0.0
+    scan_probe_interval = CALIBRATION_DECISION_WINDOW.total_seconds()
     while True:
         now_ts = time.time()
-        if now_ts - last_full_scan >= SCAN_INTERVAL:
+        if now_ts - last_full_scan >= scan_probe_interval:
             scan_and_trade(context)
             last_full_scan = time.time()
             continue

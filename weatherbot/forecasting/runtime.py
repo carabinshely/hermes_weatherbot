@@ -25,6 +25,8 @@ from weatherbot.forecasting.calibration import (
 from weatherbot.forecasting.contracts import (
     CALIBRATION_LEAD_DAYS,
     OBSERVATION_CONTRACT_ID,
+    calibration_runtime_window,
+    expected_calibration_model_run,
 )
 from weatherbot.forecasting.model import WeatherInputSnapshot
 from weatherbot.markets import TemperatureBucket
@@ -153,6 +155,34 @@ class CalibratedProbabilityRuntime:
         if lead_days not in CALIBRATION_LEAD_DAYS:
             raise CalibrationCompatibilityError(
                 f"lead_days={lead_days} is outside calibrated lead set {CALIBRATION_LEAD_DAYS}"
+            )
+        try:
+            decision_start, decision_end = calibration_runtime_window(
+                target_date=weather.forecast.market_date,
+                market_timezone=weather.forecast.market_timezone,
+                lead_days=lead_days,
+            )
+            expected_run = expected_calibration_model_run(
+                target_date=weather.forecast.market_date,
+                lead_days=lead_days,
+            )
+        except (ValueError, KeyError) as exc:
+            raise CalibrationCompatibilityError(
+                "forecast does not satisfy the calibrated decision-time contract"
+            ) from exc
+        retrieved = weather.forecast.retrieved_at_utc
+        if not decision_start <= retrieved < decision_end:
+            raise CalibrationCompatibilityError(
+                "forecast retrieval is outside the calibrated market-local decision window"
+            )
+        model_run = weather.forecast.model_run_initialized_at_utc
+        if model_run is None:
+            raise CalibrationCompatibilityError(
+                "forecast model-run initialization is unavailable; calibrated vintage cannot be proven"
+            )
+        if model_run != expected_run:
+            raise CalibrationCompatibilityError(
+                "forecast model-run initialization differs from the calibrated 18Z vintage"
             )
         estimate = self.model.probability(
             city=city,

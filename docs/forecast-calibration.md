@@ -325,3 +325,13 @@ fields as a unit rather than storing a probability without its model identity.
 The frozen calibration dataset supports only D+0, D+1, and D+2. Runtime probability evaluation rejects any other lead instead of falling through to a broader group trained on a different lead domain. The RESEARCH scanner requests exactly those supported horizons.
 
 Every emitted RESEARCH signal is appended to `state/research-signals.jsonl` before it is reported as an observed signal. Each JSON line retains the weather snapshot metadata, complete calibration provenance (`model_version`, `artifact_sha256`, `forecast_source`, `calibration_group_key`, `fallback_level`, `distribution_type`, `calibration_sample_count`, `training_cutoff`, and `model_probability`), and validated quote metadata. Persistence failure rejects that candidate rather than emitting unauditable research evidence.
+
+
+### Runtime forecast-vintage gate
+
+The calibrated residuals are tied to the frozen market-local decision policy: D+0/D+1/D+2 are sampled from the previous UTC calendar day's 18Z ECMWF IFS 0.25° run at the 00:15 market-local decision point. Runtime therefore accepts probability generation only when the production forecast is retrieved in the narrow 00:15-00:25 market-local decision window for the corresponding decision day. The public scanner checks this window before weather or market network work, and the calibrated probability boundary checks the forecast retrieval timestamp independently. If model-run initialization metadata is available, it must also equal the expected previous-day 18Z run. A later continuously updated forecast cannot silently reuse the frozen residual distribution.
+
+Continuous RESEARCH mode probes on the decision-window cadence so each U.S. timezone can be evaluated near its own market-local decision point; mechanical resolution monitoring continues between probes.
+
+
+The current stitched production forecast parser does not invent model-run identity. If the provider cannot supply `model_run_initialized_at_utc`, calibrated runtime evaluation rejects the candidate even inside the decision window. This is deliberate: Open-Meteo documents the operational Forecast API as a continuously stitched latest-run series, while Single Runs is the exact-run interface. A later provider change may supply provable run identity, but #48A never guesses it from wall-clock time alone.

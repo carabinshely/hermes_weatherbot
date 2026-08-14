@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -20,8 +20,13 @@ from weatherbot.forecasting.calibration import (
 from weatherbot.forecasting.contracts import (
     CALIBRATION_LEAD_DAYS,
     OBSERVATION_CONTRACT_ID,
+    expected_calibration_model_run,
 )
-from weatherbot.forecasting.model import ForecastSource
+from weatherbot.forecasting.model import (
+    DailyHighForecast,
+    ForecastSource,
+    WeatherInputSnapshot,
+)
 from weatherbot.forecasting.runtime import (
     CalibrationApprovalError,
     CalibrationCompatibilityError,
@@ -201,7 +206,12 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
 ) -> None:
     artifact, _ = _approved_repository(tmp_path)
     runtime = load_calibrated_probability_runtime(repository_root=tmp_path)
-    weather = weather_snapshot()
+    weather = weather_snapshot(
+        issued_at=datetime(2026, 8, 6, 4, 16, tzinfo=UTC),
+        model_run_initialized_at_utc=expected_calibration_model_run(
+            target_date=date(2026, 8, 6), lead_days=0
+        ),
+    )
     bucket = TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT)
 
     result = runtime.probability(
@@ -246,7 +256,12 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
 def test_runtime_rejects_lead_days_outside_frozen_dataset(tmp_path: Path) -> None:
     _approved_repository(tmp_path)
     runtime = load_calibrated_probability_runtime(repository_root=tmp_path)
-    weather = weather_snapshot()
+    weather = weather_snapshot(
+        issued_at=datetime(2026, 8, 6, 4, 16, tzinfo=UTC),
+        model_run_initialized_at_utc=expected_calibration_model_run(
+            target_date=date(2026, 8, 6), lead_days=0
+        ),
+    )
     bucket = TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT)
 
     with pytest.raises(CalibrationCompatibilityError, match="outside calibrated lead set"):
@@ -254,6 +269,80 @@ def test_runtime_rejects_lead_days_outside_frozen_dataset(tmp_path: Path) -> Non
             city="chicago",
             climate_region="ohio_valley",
             lead_days=max(CALIBRATION_LEAD_DAYS) + 1,
+            weather=weather,
+            bucket=bucket,
+        )
+
+
+def test_runtime_rejects_forecast_outside_calibrated_decision_window(tmp_path: Path) -> None:
+    _approved_repository(tmp_path)
+    runtime = load_calibrated_probability_runtime(repository_root=tmp_path)
+    weather = weather_snapshot(issued_at=datetime(2026, 8, 6, 14, 0, tzinfo=UTC))
+    bucket = TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT)
+
+    with pytest.raises(CalibrationCompatibilityError, match="decision window"):
+        runtime.probability(
+            city="chicago",
+            climate_region="ohio_valley",
+            lead_days=0,
+            weather=weather,
+            bucket=bucket,
+        )
+
+
+def test_runtime_rejects_mismatched_model_run_vintage(tmp_path: Path) -> None:
+    _approved_repository(tmp_path)
+    runtime = load_calibrated_probability_runtime(repository_root=tmp_path)
+    base = weather_snapshot(
+        issued_at=datetime(2026, 8, 6, 4, 16, tzinfo=UTC),
+        model_run_initialized_at_utc=expected_calibration_model_run(
+            target_date=date(2026, 8, 6), lead_days=0
+        ),
+    )
+    forecast = base.forecast
+    mismatched = DailyHighForecast(
+        temperature_f=forecast.temperature_f,
+        market_date=forecast.market_date,
+        market_timezone=forecast.market_timezone,
+        source=forecast.source,
+        snapshot_issued_at_utc=forecast.snapshot_issued_at_utc,
+        valid_from_utc=forecast.valid_from_utc,
+        valid_until_utc=forecast.valid_until_utc,
+        retrieved_at_utc=forecast.retrieved_at_utc,
+        model_run_initialized_at_utc=expected_calibration_model_run(
+            target_date=forecast.market_date,
+            lead_days=0,
+        )
+        + timedelta(hours=6),
+    )
+    weather = WeatherInputSnapshot(
+        forecast=mismatched,
+        observation=None,
+        assembled_at_utc=base.assembled_at_utc,
+    )
+    bucket = TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT)
+
+    with pytest.raises(CalibrationCompatibilityError, match="18Z vintage"):
+        runtime.probability(
+            city="chicago",
+            climate_region="ohio_valley",
+            lead_days=0,
+            weather=weather,
+            bucket=bucket,
+        )
+
+
+def test_runtime_rejects_missing_model_run_provenance(tmp_path: Path) -> None:
+    _approved_repository(tmp_path)
+    runtime = load_calibrated_probability_runtime(repository_root=tmp_path)
+    weather = weather_snapshot(issued_at=datetime(2026, 8, 6, 4, 16, tzinfo=UTC))
+    bucket = TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT)
+
+    with pytest.raises(CalibrationCompatibilityError, match="cannot be proven"):
+        runtime.probability(
+            city="chicago",
+            climate_region="ohio_valley",
+            lead_days=0,
             weather=weather,
             bucket=bucket,
         )

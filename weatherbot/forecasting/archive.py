@@ -26,6 +26,11 @@ from weatherbot.forecasting.calibration_data import (
     ForecastCalibrationEvidence,
     ForecastCaptureMethod,
 )
+from weatherbot.forecasting.contracts import (
+    CALIBRATION_DECISION_LOCAL_TIME,
+    CALIBRATION_LEAD_DAYS,
+    CALIBRATION_RUN_CYCLE_HOUR_UTC,
+)
 from weatherbot.forecasting.model import DailyHighForecast, ForecastSource
 
 PRODUCTION_FORECAST_CONTRACT_ID = (
@@ -39,7 +44,7 @@ _SINGLE_RUN_HOST = "single-runs-api.open-meteo.com"
 _SINGLE_RUN_PATH = "/v1/forecast"
 _MIN_SAFE_RUN_AGE = timedelta(hours=8, minutes=10)
 _DEFAULT_TIMEOUT_SECONDS = 30.0
-_DEFAULT_HORIZONS = (0, 1, 2)
+_DEFAULT_HORIZONS = CALIBRATION_LEAD_DAYS
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,8 +83,8 @@ class CalibrationLocation:
 
 @dataclass(frozen=True, slots=True)
 class CalibrationForecastSamplingPolicy:
-    run_cycle_hour_utc: int = 18
-    decision_local_time: time = time(hour=0, minute=15)
+    run_cycle_hour_utc: int = CALIBRATION_RUN_CYCLE_HOUR_UTC
+    decision_local_time: time = CALIBRATION_DECISION_LOCAL_TIME
     min_safe_run_age: timedelta = _MIN_SAFE_RUN_AGE
     horizons: tuple[int, ...] = _DEFAULT_HORIZONS
 
