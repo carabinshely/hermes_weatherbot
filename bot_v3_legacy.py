@@ -2003,11 +2003,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.command in {"scan", "run"}:
-    print(
-        "ERROR: legacy strategy scanning is disabled; use bot_v3.py",
-        file=sys.stderr,
-    )
-    return 2
+        print(
+            "ERROR: legacy strategy scanning is disabled; use bot_v3.py",
+            file=sys.stderr,
+        )
+        return 2
 
     print(f"Execution mode: {context.label}")
     if context.mode is ExecutionMode.LIVE:
