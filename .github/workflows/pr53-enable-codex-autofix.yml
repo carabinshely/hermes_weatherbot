@@ -1,0 +1,61 @@
+name: Enable PR 53 Codex autofixes
+
+on:
+  push:
+    branches:
+      - agent/issue-48-calibrated-runtime-boundary
+    paths:
+      - .github/workflows/pr53-enable-codex-autofix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/issue-48-calibrated-runtime-boundary
+
+      - name: Add Ruff safe autofix pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/pr53-codex-fixes.yml')
+          source = path.read_text(encoding='utf-8')
+          anchor = '''      - name: Format and lint changed Python
+        run: |
+          uv run ruff format \\
+'''
+          replacement = '''      - name: Format and lint changed Python
+        run: |
+          uv run ruff check --fix \\
+            bot_v3.py \\
+            weatherbot/forecasting/contracts.py \\
+            weatherbot/forecasting/runtime.py \\
+            weatherbot/forecasting/calibration_build.py \\
+            tests/forecasting/test_calibration_runtime.py \\
+            tests/forecasting/test_bot_source.py \\
+            tests/forecasting/test_calibrated_scanner_gate.py \\
+            tests/test_minimal_import_boundary.py
+          uv run ruff format \\
+'''
+          if anchor not in source:
+              raise SystemExit('format step anchor not found')
+          path.write_text(source.replace(anchor, replacement, 1), encoding='utf-8')
+          PY
+
+      - name: Commit verifier update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/pr53-codex-fixes.yml
+          git commit -m "Let Codex fix verifier apply Ruff autofixes"
+          git push origin HEAD:agent/issue-48-calibrated-runtime-boundary
