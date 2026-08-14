@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import subprocess
 import sys
 
 
@@ -17,3 +18,14 @@ def test_safe_packages_do_not_load_live_modules() -> None:
 
     after = live_modules.intersection(sys.modules)
     assert after == before
+
+
+def test_paper_imports_in_a_cold_process() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-c", "import weatherbot.paper"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 0, completed.stderr

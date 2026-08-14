@@ -28,7 +28,11 @@ CONDITION = ConditionId("0x" + "cd" * 32)
 TOKEN = OutcomeTokenId("12345678901234567890")
 
 
-def weather_snapshot(*, issued_at: datetime | None = None) -> WeatherInputSnapshot:
+def weather_snapshot(
+    *,
+    issued_at: datetime | None = None,
+    model_run_initialized_at_utc: datetime | None = None,
+) -> WeatherInputSnapshot:
     market_date = date(2026, 8, 6)
     timezone = ZoneInfo("America/New_York")
     issued = issued_at or NOW - timedelta(hours=1)
@@ -45,6 +49,7 @@ def weather_snapshot(*, issued_at: datetime | None = None) -> WeatherInputSnapsh
             timezone,
         ).astimezone(UTC),
         retrieved_at_utc=issued,
+        model_run_initialized_at_utc=model_run_initialized_at_utc,
     )
     return WeatherInputSnapshot(
         forecast=forecast,

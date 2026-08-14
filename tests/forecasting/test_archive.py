@@ -152,3 +152,16 @@ def test_sampling_policy_rejects_decision_too_close_to_run() -> None:
 
     with pytest.raises(CalibrationError, match="too close"):
         calibration_decision_time(_MARKET_DAY, "America/New_York", policy=policy)
+
+
+def test_default_archive_policy_matches_dependency_light_runtime_contract() -> None:
+    from weatherbot.forecasting.contracts import (
+        CALIBRATION_DECISION_LOCAL_TIME,
+        CALIBRATION_LEAD_DAYS,
+        CALIBRATION_RUN_CYCLE_HOUR_UTC,
+    )
+
+    policy = CalibrationForecastSamplingPolicy()
+    assert policy.run_cycle_hour_utc == CALIBRATION_RUN_CYCLE_HOUR_UTC
+    assert policy.decision_local_time == CALIBRATION_DECISION_LOCAL_TIME
+    assert policy.horizons == CALIBRATION_LEAD_DAYS

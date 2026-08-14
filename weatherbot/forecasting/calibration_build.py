@@ -39,11 +39,12 @@ from weatherbot.forecasting.calibration_data import (
     build_calibration_dataset,
     write_calibration_dataset,
 )
+from weatherbot.forecasting.contracts import (
+    CALIBRATION_LEAD_DAYS,
+    OBSERVATION_CONTRACT_ID,
+)
 from weatherbot.resolution.wunderground import parse_wunderground_daily_history_html
 
-OBSERVATION_CONTRACT_ID = (
-    "polymarket:wunderground:airport-daily-high:whole-degree-f:finalized-history:v1"
-)
 DEFAULT_PARITY_POLICY = ArchiveParityPolicy(
     min_pairs=18,
     min_reference_coverage=1.0,
@@ -52,7 +53,7 @@ DEFAULT_PARITY_POLICY = ArchiveParityPolicy(
 )
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 _DEFAULT_REQUEST_DELAY_SECONDS = 0.5
-_DEFAULT_HORIZONS = (0, 1, 2)
+_DEFAULT_HORIZONS = CALIBRATION_LEAD_DAYS
 _CACHE_SCHEMA_VERSION = 1
 
 

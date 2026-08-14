@@ -29,15 +29,30 @@ from weatherbot.forecasting.providers import (
     parse_aviation_weather_metar,
     parse_open_meteo_daily_highs,
 )
+from weatherbot.forecasting.runtime import (
+    CalibratedProbability,
+    CalibratedProbabilityRuntime,
+    CalibrationApprovalError,
+    CalibrationCompatibilityError,
+    CalibrationRuntimeError,
+    CalibrationUnavailable,
+    load_calibrated_probability_runtime,
+)
 
 __all__ = [
+    "CalibratedProbability",
+    "CalibratedProbabilityRuntime",
     "CalibratedTemperatureModel",
+    "CalibrationApprovalError",
     "CalibrationArtifact",
+    "CalibrationCompatibilityError",
     "CalibrationDiagnostics",
     "CalibrationError",
     "CalibrationGroup",
     "CalibrationGroupKey",
+    "CalibrationRuntimeError",
     "CalibrationSample",
+    "CalibrationUnavailable",
     "DailyHighForecast",
     "DistributionKind",
     "EmpiricalResidualDistribution",
@@ -51,6 +66,7 @@ __all__ = [
     "WeatherInputError",
     "WeatherInputSnapshot",
     "calibration_artifact_from_json",
+    "load_calibrated_probability_runtime",
     "load_calibration_artifact",
     "parse_aviation_weather_metar",
     "parse_open_meteo_daily_highs",

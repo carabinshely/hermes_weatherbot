@@ -8,7 +8,6 @@
   "max_hours": 72.0,
   "kelly_fraction": 0.25,
   "scan_interval": 3600,
-  "calibration_min": 30,
   "mode": "research",
   "max_slippage": 0.03,
   "max_worst_slippage": 0.05,
