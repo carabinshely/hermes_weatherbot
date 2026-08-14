@@ -354,12 +354,23 @@ def run_resolution_monitor_cycle(ledger_path=None):
 
 
 def run_loop(context: ExecutionContext):
-    """Run repeated calibrated RESEARCH scans; execution modes remain disabled."""
+    """Run calibrated RESEARCH scans while retaining mechanical resolution monitoring."""
     if context.mode is not ExecutionMode.RESEARCH:
         return _blocked_strategy_scan(context)
+
+    last_full_scan = 0.0
     while True:
-        scan_and_trade(context)
-        time.sleep(SCAN_INTERVAL)
+        now_ts = time.time()
+        if now_ts - last_full_scan >= SCAN_INTERVAL:
+            scan_and_trade(context)
+            last_full_scan = time.time()
+            continue
+
+        try:
+            run_resolution_monitor_cycle()
+        except Exception as exc:
+            _legacy.warn(f"Resolution monitor error: {exc}")
+        time.sleep(_legacy.MONITOR_INTERVAL)
 
 
 def main(argv: list[str] | None = None) -> int:

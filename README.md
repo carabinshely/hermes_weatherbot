@@ -7,6 +7,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ---
+
+> **Current #48A activation status:** calibrated strategy scanning is **RESEARCH-only**. `bot_v3.py scan/run --mode paper` and LIVE strategy `scan/run` are intentionally disabled and fail closed. Existing PAPER ledger/status/reset/resolution mechanics remain available. Historical target/legacy architecture sections below do not imply that automated trading is currently enabled.
+
 ![alt text](image-1.png)
 ## 🤖 Why Hermes Agent
 
@@ -57,7 +60,7 @@ Run commands through the selected locked environment, for example:
 
 ```bash
 uv run --no-dev python bot_v3.py scan --mode research
-uv run --no-dev python bot_v3.py scan --mode paper
+uv run --no-dev python bot_v3.py status --mode paper
 uv run --no-dev python -m weatherbot.resolution --help
 ```
 
@@ -109,8 +112,10 @@ TELEGRAM_CHAT_ID=your_telegram_chat_id
 # Read-only market research; no wallet access or orders
 python bot_v3.py scan --mode research
 
-# Paper-mode candidate generation; simulated fills arrive in #27
-python bot_v3.py scan --mode paper
+# PAPER strategy scan/run are intentionally disabled during #48A.
+# Administrative PAPER commands remain available:
+python bot_v3.py status --mode paper
+python bot_v3.py resolve --mode paper
 
 # Live mode is fail-closed and requires the live extra plus all three gates:
 # 1. uv sync --locked --no-dev --extra live
@@ -134,7 +139,7 @@ installation error before credential or wallet access.
 ./stop_bot_v3.sh
 ```
 
-That's it! The bot will continuously scan markets and trade automatically.
+During #48A the public strategy entrypoint is RESEARCH-only; PAPER/LIVE strategy execution remains explicitly disabled until the later integration gate.
 
 ---
 

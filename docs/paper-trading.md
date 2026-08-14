@@ -1,5 +1,7 @@
 # PAPER trading
 
+> **#48A integration state:** the PAPER simulation subsystem remains implemented, testable, and administratively accessible, but `bot_v3.py scan --mode paper` and `bot_v3.py run --mode paper` are intentionally disabled until the calibrated strategy-to-PAPER integration is reviewed. This phase does not generate new PAPER candidates from the public scanner.
+
 PAPER mode is a deterministic **paper simulation**, not live trading and not evidence that the strategy is profitable. It exercises the production market-discovery, forecasting, pricing, sizing, portfolio-risk, accounting, recovery, and settlement contracts without a wallet, private key, signature, allowance, blockchain transaction, or Polymarket write order.
 
 ## Runtime flow
@@ -87,19 +89,18 @@ The starting balance is written exactly once as `AccountOpened`. Reopening an ex
 
 ## Commands
 
-Run one PAPER scan:
+### Strategy scan gate during #48A
+
+The public PAPER strategy commands are intentionally disabled in this phase:
 
 ```bash
 python bot_v3.py scan --mode paper
-```
-
-Run continuously:
-
-```bash
 python bot_v3.py run --mode paper
 ```
 
-Show PAPER account status:
+Both exit with status 2 before strategy/calibration/network work. They are **not** the supported way to generate PAPER candidates until the remaining #48 integration is completed. The deterministic PAPER service, fixtures, ledger, recovery, valuation, risk, and settlement tests remain available.
+
+Administrative/mechanical PAPER commands remain supported. Show PAPER account status:
 
 ```bash
 python bot_v3.py status --mode paper

@@ -147,3 +147,34 @@ def test_research_signal_log_preserves_complete_calibration_provenance(
     bot_v3.persist_research_signal(signal)
 
     assert json.loads(log_path.read_text(encoding="utf-8")) == signal
+
+
+def test_research_run_loop_retains_resolution_monitoring(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    clock = iter((10000.0, 10000.0, 10001.0))
+
+    monkeypatch.setattr(bot_v3.time, "time", lambda: next(clock))
+
+    def record_scan(_context: ExecutionContext) -> tuple[int, list[str]]:
+        events.append("scan")
+        return 0, []
+
+    def record_resolution(*_args: object, **_kwargs: object) -> None:
+        events.append("resolve")
+
+    class StopLoop(Exception):
+        pass
+
+    def stop_after_monitor(_seconds: float) -> None:
+        raise StopLoop
+
+    monkeypatch.setattr(bot_v3, "scan_and_trade", record_scan)
+    monkeypatch.setattr(bot_v3, "run_resolution_monitor_cycle", record_resolution)
+    monkeypatch.setattr(bot_v3.time, "sleep", stop_after_monitor)
+
+    with pytest.raises(StopLoop):
+        bot_v3.run_loop(_context(ExecutionMode.RESEARCH))
+
+    assert events == ["scan", "resolve"]
