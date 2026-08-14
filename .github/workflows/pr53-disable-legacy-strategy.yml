@@ -43,28 +43,22 @@ jobs:
               raise SystemExit("scan_and_trade patch anchor not found")
           source = source.replace(scan_old, scan_new, 1)
 
-          main_old = '''    except ModeConfigurationError as exc:
-              print(f"ERROR: {exc}", file=sys.stderr)
+          execution_mode_line = '    print(f"Execution mode: {context.label}")\n'
+          legacy_cli_guard = '''    if args.command in {"scan", "run"}:
+              print(
+                  "ERROR: legacy strategy scanning is disabled; use bot_v3.py",
+                  file=sys.stderr,
+              )
               return 2
 
-              print(f"Execution mode: {context.label}")
           '''
-          main_new = '''    except ModeConfigurationError as exc:
-              print(f"ERROR: {exc}", file=sys.stderr)
-              return 2
-
-              if args.command in {"scan", "run"}:
-                  print(
-                      "ERROR: legacy strategy scanning is disabled; use bot_v3.py",
-                      file=sys.stderr,
-                  )
-                  return 2
-
-              print(f"Execution mode: {context.label}")
-          '''
-          if main_old not in source:
-              raise SystemExit("main patch anchor not found")
-          source = source.replace(main_old, main_new, 1)
+          if execution_mode_line not in source:
+              raise SystemExit("legacy CLI patch anchor not found")
+          source = source.replace(
+              execution_mode_line,
+              legacy_cli_guard + execution_mode_line,
+              1,
+          )
 
           path.write_text(source, encoding="utf-8")
           PY
