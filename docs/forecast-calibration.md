@@ -335,3 +335,8 @@ Continuous RESEARCH mode probes on the decision-window cadence so each U.S. time
 
 
 The current stitched production forecast parser does not invent model-run identity. If the provider cannot supply `model_run_initialized_at_utc`, calibrated runtime evaluation rejects the candidate even inside the decision window. This is deliberate: Open-Meteo documents the operational Forecast API as a continuously stitched latest-run series, while Single Runs is the exact-run interface. A later provider change may supply provable run identity, but #48A never guesses it from wall-clock time alone.
+
+
+Continuous RESEARCH does not sleep for an entire decision window between probes. It probes at most once per minute (and therefore at least four times faster than the 10-minute eligibility window) while scheduling resolution monitoring independently. This prevents monitor sleep/overhead from skipping a city's daily decision window.
+
+Durable RESEARCH records also preserve the probability-call dimensions `city_slug`, `climate_region`, and `lead_days` in addition to the selected calibration group/fallback metadata. This keeps historical probabilities reproducible even if location-to-region mappings change later.

@@ -64,3 +64,19 @@ def test_candidate_runtime_calibration_rejections_are_local() -> None:
 
     assert "except (CalibrationError, CalibrationRuntimeError) as exc:" in source
     assert "calibration rejected candidate" in source
+
+
+def test_persisted_signal_includes_probability_input_dimensions() -> None:
+    source = Path("bot_v3.py").read_text(encoding="utf-8")
+
+    assert '"city_slug": city_slug' in source
+    assert '"climate_region": str(loc["climate_region"])' in source
+    assert '"lead_days": horizon_index' in source
+
+
+def test_continuous_probe_interval_is_shorter_than_decision_window() -> None:
+    source = Path("bot_v3.py").read_text(encoding="utf-8")
+
+    assert "CALIBRATION_DECISION_WINDOW.total_seconds() / 4.0" in source
+    assert "scan_probe_interval = min(" in source
+    assert "sleep_interval = min(scan_probe_interval, resolution_interval)" in source

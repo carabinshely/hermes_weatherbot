@@ -308,6 +308,9 @@ def scan_and_trade(context: ExecutionContext):
                 "all_in_price": all_in_price,
                 "ev": round(ev, 4),
                 "forecast_temp": forecast_temp,
+                "city_slug": city_slug,
+                "climate_region": str(loc["climate_region"]),
+                "lead_days": horizon_index,
                 "market_date": market_date,
                 "market_timezone": market_timezone,
                 "signal_generated_at_utc": signal_generated_at.isoformat(),
@@ -376,20 +379,29 @@ def run_loop(context: ExecutionContext):
     if context.mode is not ExecutionMode.RESEARCH:
         return _blocked_strategy_scan(context)
 
-    last_full_scan = 0.0
-    scan_probe_interval = CALIBRATION_DECISION_WINDOW.total_seconds()
+    last_scan_probe = 0.0
+    last_resolution = 0.0
+    scan_probe_interval = min(
+        60.0,
+        CALIBRATION_DECISION_WINDOW.total_seconds() / 4.0,
+    )
+    resolution_interval = max(1.0, float(_legacy.MONITOR_INTERVAL))
+    sleep_interval = min(scan_probe_interval, resolution_interval)
+
     while True:
         now_ts = time.time()
-        if now_ts - last_full_scan >= scan_probe_interval:
+        if now_ts - last_scan_probe >= scan_probe_interval:
             scan_and_trade(context)
-            last_full_scan = time.time()
-            continue
+            last_scan_probe = now_ts
 
-        try:
-            run_resolution_monitor_cycle()
-        except Exception as exc:
-            _legacy.warn(f"Resolution monitor error: {exc}")
-        time.sleep(_legacy.MONITOR_INTERVAL)
+        if now_ts - last_resolution >= resolution_interval:
+            try:
+                run_resolution_monitor_cycle()
+            except Exception as exc:
+                _legacy.warn(f"Resolution monitor error: {exc}")
+            last_resolution = now_ts
+
+        time.sleep(sleep_interval)
 
 
 def main(argv: list[str] | None = None) -> int:

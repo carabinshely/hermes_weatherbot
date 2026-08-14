@@ -142,6 +142,9 @@ def test_research_signal_log_preserves_complete_calibration_provenance(
         "distribution_type": "normal",
         "calibration_sample_count": 60,
         "training_cutoff": "2026-08-10",
+        "city_slug": "chicago",
+        "climate_region": "ohio_valley",
+        "lead_days": 0,
     }
 
     bot_v3.persist_research_signal(signal)
