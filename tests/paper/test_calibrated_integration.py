@@ -219,3 +219,40 @@ def test_scanner_facade_rejects_bucket_mismatch_before_ledger_mutation(tmp_path:
         )
 
     assert not runtime.ledger_path.exists()
+
+
+def test_scanner_facade_rejects_normalized_duplicate_bucket_key(tmp_path: Path) -> None:
+    runtime = PaperRuntimeConfig.from_mapping(
+        {"paper_ledger_path": "paper.sqlite3"}, base_dir=tmp_path
+    )
+    calibrated = calibrated_probability()
+    weather = weather_snapshot()
+    event = event_snapshot()
+    decision_book = paper_book(book_hash="duplicate-bucket-key-book")
+
+    def forbidden_fetch(_condition_id: ConditionId, _token_id: OutcomeTokenId):
+        raise AssertionError("duplicate normalized key must fail before PAPER book work")
+
+    with pytest.raises(ValueError, match="duplicate normalized key"):
+        submit_scanner_candidate(
+            runtime=runtime,
+            strategy_id="bot-v3-weather",
+            calibrated=calibrated,
+            scope=scope(),
+            weather=weather,
+            event=event,
+            decision_book=decision_book,
+            condition_id=decision_book.condition_id,
+            token_id=decision_book.token_id,
+            evaluated_at=NOW,
+            freshness_policy=freshness_policy(),
+            cost_policy=cost_policy(),
+            fetch_book=forbidden_fetch,
+            audit_metadata={
+                "bucket_key": calibrated.bucket_key,
+                "bucket_key ": "F:90:91",
+            },
+            owner_id="duplicate-bucket-key",
+        )
+
+    assert not runtime.ledger_path.exists()

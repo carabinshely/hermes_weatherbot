@@ -57,11 +57,20 @@ def _scanner_audit_metadata(
     calibrated: CalibratedProbability,
     audit_metadata: Mapping[str, object],
 ) -> Mapping[str, object]:
+    normalized_keys: dict[str, str] = {}
+    for raw_key in audit_metadata:
+        normalized = str(raw_key).strip()
+        if normalized in normalized_keys:
+            raise ValueError(
+                f"PAPER caller audit metadata contains duplicate normalized key: {normalized}"
+            )
+        normalized_keys[normalized] = str(raw_key)
+    if normalized_keys.get("bucket_key") != "bucket_key":
+        raise ValueError("PAPER caller audit metadata requires one exact bucket_key")
     bucket_key = audit_metadata.get("bucket_key")
     if bucket_key != calibrated.bucket_key:
         raise ValueError("PAPER bucket_key must match calibrated bucket identity")
-    normalized_keys = {str(key).strip() for key in audit_metadata}
-    collisions = sorted(normalized_keys & _CALIBRATION_AUDIT_KEYS)
+    collisions = sorted(set(normalized_keys) & _CALIBRATION_AUDIT_KEYS)
     if collisions:
         raise ValueError(
             f"PAPER caller audit metadata cannot override calibration-owned keys: {collisions}"
