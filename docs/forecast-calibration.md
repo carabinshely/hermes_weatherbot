@@ -235,3 +235,86 @@ model_probability
 
 Research and paper modes must use the same probability boundary. A future live backend
 must reuse it rather than implementing separate probability math.
+
+## Runtime approval boundary
+
+A calibration artifact has three distinct states and they must not be conflated:
+
+```text
+mechanically valid
+      ↓
+scientifically accepted
+      ↓
+execution enabled
+```
+
+A mechanically valid artifact has a supported schema, a valid internal checksum, and
+compatible source contracts. That is necessary but not sufficient for runtime use.
+Scientific acceptance is a separate review decision made from the frozen validation
+protocol. Runtime records that decision in exactly one repository-controlled manifest:
+
+```text
+config/calibration-approval.json
+```
+
+The normal runtime path never scans an artifact directory, selects a newest file, accepts
+an arbitrary CLI path, or follows an environment-variable override. The approval manifest
+pins one content-addressed artifact under:
+
+```text
+artifacts/calibration/accepted/<artifact_sha256>.json
+```
+
+The manifest must record the accepted model version, artifact SHA-256, forecast and
+observation contracts, acceptance reference, and UTC acceptance time. The loader verifies
+those claims again against the artifact before constructing the calibrated runtime model.
+An artifact therefore cannot authorize itself merely by containing valid metadata.
+
+The two rejected development artifacts are additionally denied by exact SHA-256 as a
+defense-in-depth regression guard. The approval allowlist remains the actual activation
+mechanism.
+
+## Fail-closed activation semantics
+
+Until an accepted manifest and artifact are committed, calibrated probability loading
+fails before weather or market collection. Missing, malformed, rejected, corrupt,
+path-escaping, checksum-mismatched, or source-incompatible approval evidence never falls
+back to a global uncertainty constant.
+
+Issue #48A intentionally activates only the research probability boundary. During this
+phase:
+
+```text
+RESEARCH strategy probability  = calibrated artifact when separately accepted
+PAPER strategy scanning         = disabled
+LIVE strategy scanning          = disabled
+fixed 2°F fallback              = absent
+```
+
+Adding an accepted artifact after the untouched V3 holdout must therefore not enable
+PAPER or LIVE execution implicitly. Those modes require a separate explicit integration
+change. Mechanical PAPER ledger, recovery, sizing, risk, and status tests remain valid
+independently of whether the weather strategy is permitted to feed them a probability.
+
+## Scanner-facing probability object
+
+Runtime callers consume one immutable probability result containing both the number and
+its calibration provenance. The scanner does not separately reconstruct the forecast
+source, market date, or signal temperature; those are taken from the authoritative
+`WeatherInputSnapshot` used for the decision.
+
+This gives one decision-time identity:
+
+```text
+WeatherInputSnapshot
++ city / climate region / lead
++ TemperatureBucket
++ accepted artifact
+        ↓
+CalibratedProbability
+```
+
+The resulting object carries `model_probability` together with the model version,
+artifact SHA-256, forecast source, selected calibration group and fallback level,
+distribution type, sample count, and training cutoff. Research output persists these
+fields as a unit rather than storing a probability without its model identity.
