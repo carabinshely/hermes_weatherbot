@@ -1911,6 +1911,9 @@ def run_resolution_monitor_cycle(ledger_path=LEDGER_PATH):
 
 
 def run_loop(context: ExecutionContext):
+    raise RuntimeError(
+        "legacy strategy loop is disabled; use bot_v3.py calibrated RESEARCH entrypoint"
+    )
     print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
     print("=" * 60)
     print(f"  Mode:     {context.label}")
