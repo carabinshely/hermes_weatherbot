@@ -182,6 +182,7 @@ def test_non_live_run_loop_retains_resolution_monitoring(
     mode: ExecutionMode,
 ) -> None:
     events: list[str] = []
+    resolved_ledgers: list[object] = []
     clock = iter((10000.0,))
 
     monkeypatch.setattr(bot_v3.time, "time", lambda: next(clock))
@@ -190,8 +191,9 @@ def test_non_live_run_loop_retains_resolution_monitoring(
         events.append(f"scan:{context.mode.value}")
         return 0, []
 
-    def record_resolution(*_args: object, **_kwargs: object) -> None:
+    def record_resolution(ledger_path: object = None) -> None:
         events.append("resolve")
+        resolved_ledgers.append(ledger_path)
 
     class StopLoop(Exception):
         pass
@@ -207,6 +209,8 @@ def test_non_live_run_loop_retains_resolution_monitoring(
         bot_v3.run_loop(_context(mode))
 
     assert events == [f"scan:{mode.value}", "resolve"]
+    expected_ledger = bot_v3.PAPER_RUNTIME.ledger_path if mode is ExecutionMode.PAPER else None
+    assert resolved_ledgers == [expected_ledger]
 
 
 def test_scanner_has_one_shared_calibration_call_and_paper_bypasses_legacy_sizing() -> None:

@@ -268,6 +268,29 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
     assert replace(result, lead_days=1).calibration_fingerprint() != fingerprint
 
 
+def test_runtime_rejects_endpoint_probability_as_candidate_local_compatibility_error(
+    tmp_path: Path,
+) -> None:
+    _approved_repository(tmp_path)
+    runtime = load_calibrated_probability_runtime(repository_root=tmp_path)
+    weather = weather_snapshot(
+        issued_at=datetime(2026, 8, 6, 4, 16, tzinfo=UTC),
+        model_run_initialized_at_utc=expected_calibration_model_run(
+            target_date=date(2026, 8, 6), lead_days=0
+        ),
+    )
+    extreme_bucket = TemperatureBucket.bounded(1000, 1000, TemperatureUnit.FAHRENHEIT)
+
+    with pytest.raises(CalibrationCompatibilityError, match="endpoint probability"):
+        runtime.probability(
+            city="chicago",
+            climate_region="ohio_valley",
+            lead_days=0,
+            weather=weather,
+            bucket=extreme_bucket,
+        )
+
+
 def test_runtime_rejects_lead_days_outside_frozen_dataset(tmp_path: Path) -> None:
     _approved_repository(tmp_path)
     runtime = load_calibrated_probability_runtime(repository_root=tmp_path)

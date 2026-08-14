@@ -146,8 +146,8 @@ class CalibratedProbability:
             )
         if self.calibration_sample_count <= 0:
             raise ValueError("calibration_sample_count must be positive")
-        if self.model_probability <= 0 or self.model_probability >= 1:
-            raise ValueError("model_probability must be between zero and one")
+        if self.model_probability < 0 or self.model_probability > 1:
+            raise ValueError("model_probability must be between zero and one inclusive")
 
     def audit_metadata(self) -> Mapping[str, object]:
         return {
@@ -232,8 +232,13 @@ class CalibratedProbabilityRuntime:
             forecast_temperature_f=weather.signal_temperature_f,
             bucket=bucket,
         )
+        probability = Decimal(str(estimate.probability))
+        if probability <= 0 or probability >= 1:
+            raise CalibrationCompatibilityError(
+                "calibrated endpoint probability is not scanner-eligible"
+            )
         return CalibratedProbability(
-            model_probability=Decimal(str(estimate.probability)),
+            model_probability=probability,
             model_version=estimate.model_version,
             artifact_sha256=estimate.artifact_sha256,
             city_slug=city,

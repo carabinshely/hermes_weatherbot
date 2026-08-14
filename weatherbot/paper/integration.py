@@ -54,7 +54,8 @@ def _scanner_audit_metadata(
     calibrated: CalibratedProbability,
     audit_metadata: Mapping[str, object],
 ) -> Mapping[str, object]:
-    collisions = sorted(set(audit_metadata) & _CALIBRATION_AUDIT_KEYS)
+    normalized_keys = {str(key).strip() for key in audit_metadata}
+    collisions = sorted(normalized_keys & _CALIBRATION_AUDIT_KEYS)
     if collisions:
         raise ValueError(
             f"PAPER caller audit metadata cannot override calibration-owned keys: {collisions}"
@@ -98,7 +99,6 @@ def submit_scanner_candidate(
     *,
     runtime: PaperRuntimeConfig,
     strategy_id: str,
-    decision_id: str,
     calibrated: CalibratedProbability,
     scope: RiskScope,
     weather: WeatherInputSnapshot,
@@ -115,6 +115,13 @@ def submit_scanner_candidate(
 ) -> PaperEntryResult:
     """Execute one calibrated PAPER candidate using durable state and a fresh submit-time book."""
     _validate_calibrated_context(calibrated=calibrated, scope=scope, weather=weather)
+    decision_id = paper_scan_decision_id(
+        calibrated=calibrated,
+        scope=scope,
+        weather=weather,
+        event=event,
+        decision_book=decision_book,
+    )
     caller_audit = _scanner_audit_metadata(
         calibrated=calibrated,
         audit_metadata=audit_metadata,

@@ -51,7 +51,6 @@ def _submit(
     result = submit_scanner_candidate(
         runtime=runtime,
         strategy_id="bot-v3-weather",
-        decision_id=decision_id,
         calibrated=calibrated,
         scope=paper_scope,
         weather=weather,
@@ -82,6 +81,7 @@ def test_scanner_facade_accepts_only_typed_calibration_identity() -> None:
     assert "calibrated" in parameters
     assert "model_version" not in parameters
     assert "probability" not in parameters
+    assert "decision_id" not in parameters
     assert "calibrated" in decision_parameters
     assert "model_version" not in decision_parameters
 
@@ -124,13 +124,6 @@ def test_scanner_facade_rejects_calibration_metadata_spoof_before_ledger_mutatio
     weather = weather_snapshot()
     event = event_snapshot()
     decision_book = paper_book(book_hash="spoof-decision-book")
-    decision_id = paper_scan_decision_id(
-        calibrated=calibrated,
-        scope=scope(),
-        weather=weather,
-        event=event,
-        decision_book=decision_book,
-    )
 
     def forbidden_fetch(_condition_id: ConditionId, _token_id: OutcomeTokenId):
         raise AssertionError("spoof rejection must occur before PAPER network/book work")
@@ -139,7 +132,6 @@ def test_scanner_facade_rejects_calibration_metadata_spoof_before_ledger_mutatio
         submit_scanner_candidate(
             runtime=runtime,
             strategy_id="bot-v3-weather",
-            decision_id=decision_id,
             calibrated=calibrated,
             scope=scope(),
             weather=weather,
@@ -153,7 +145,7 @@ def test_scanner_facade_rejects_calibration_metadata_spoof_before_ledger_mutatio
             fetch_book=forbidden_fetch,
             audit_metadata={
                 "bucket_key": "F:85:86",
-                "artifact_sha256": "spoof",
+                "artifact_sha256 ": "spoof",
             },
             owner_id="calibrated-paper-test",
         )

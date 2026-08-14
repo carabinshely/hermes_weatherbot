@@ -45,7 +45,6 @@ from weatherbot.markets import (
 )
 from weatherbot.paper import (
     PaperEntryStatus,
-    paper_scan_decision_id,
     recover_paper_runtime,
     submit_scanner_candidate,
 )
@@ -299,18 +298,10 @@ def scan_and_trade(context: ExecutionContext):
                     city_key=city_slug,
                     market_date=weather.forecast.market_date,
                 )
-                decision_id = paper_scan_decision_id(
-                    calibrated=calibrated,
-                    scope=paper_scope,
-                    weather=weather,
-                    event=event_snapshot,
-                    decision_book=book,
-                )
                 try:
                     paper_result = submit_scanner_candidate(
                         runtime=PAPER_RUNTIME,
                         strategy_id="bot-v3-weather",
-                        decision_id=decision_id,
                         calibrated=calibrated,
                         scope=paper_scope,
                         weather=weather,
@@ -524,7 +515,10 @@ def run_loop(context: ExecutionContext):
 
         if now_ts - last_resolution >= resolution_interval:
             try:
-                run_resolution_monitor_cycle()
+                resolution_ledger = (
+                    PAPER_RUNTIME.ledger_path if context.mode is ExecutionMode.PAPER else None
+                )
+                run_resolution_monitor_cycle(resolution_ledger)
             except Exception as exc:
                 _legacy.warn(f"Resolution monitor error: {exc}")
             last_resolution = now_ts
