@@ -14,6 +14,7 @@ def test_runtime_sources_do_not_import_archived_client() -> None:
         ROOT / "bot_v1.py",
         ROOT / "bot_v2.py",
         ROOT / "bot_v3.py",
+        ROOT / "bot_v3_legacy.py",
         *(ROOT / "weatherbot").rglob("*.py"),
     ]
     offenders = [
@@ -34,8 +35,8 @@ def test_official_sdk_is_live_optional_not_base_runtime() -> None:
     assert OFFICIAL_PACKAGE in project["optional-dependencies"]["live"]
 
 
-def test_legacy_bot_uses_fail_closed_repository_adapter() -> None:
-    source = (ROOT / "bot_v3.py").read_text(encoding="utf-8")
+def test_quarantined_legacy_bot_uses_fail_closed_repository_adapter() -> None:
+    source = (ROOT / "bot_v3_legacy.py").read_text(encoding="utf-8")
 
     assert "UnsupportedTradingClient" in source
     assert ARCHIVED_IMPORT not in source
