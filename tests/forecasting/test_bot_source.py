@@ -5,9 +5,11 @@ from pathlib import Path
 
 def test_scanner_keeps_forecast_and_observation_separate() -> None:
     bot_source = Path("bot_v3.py").read_text(encoding="utf-8")
+    runtime_source = Path("weatherbot/forecasting/runtime.py").read_text(encoding="utf-8")
     model_source = Path("weatherbot/forecasting/model.py").read_text(encoding="utf-8")
 
-    assert "WeatherInputSnapshot" in bot_source
+    assert "WeatherInputSnapshot" in runtime_source
+    assert "weather.signal_temperature_f" in runtime_source
     assert "weather.signal_temperature_f" in bot_source
     assert "**weather_metadata" in bot_source
     assert '"forecast_temperature_f"' in model_source
