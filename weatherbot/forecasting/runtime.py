@@ -85,9 +85,10 @@ def _accepted_timestamp(value: object) -> datetime:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
         raise CalibrationApprovalError("accepted_at_utc must be ISO-8601") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
+    offset = parsed.utcoffset()
+    if parsed.tzinfo is None or offset is None:
         raise CalibrationApprovalError("accepted_at_utc must be timezone-aware")
-    if parsed.utcoffset().total_seconds() != 0:
+    if offset.total_seconds() != 0:
         raise CalibrationApprovalError("accepted_at_utc must use UTC")
     return parsed
 
