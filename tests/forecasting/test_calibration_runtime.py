@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -234,6 +235,9 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
     assert result.model_probability == Decimal(str(direct.probability))
     assert result.model_version == artifact.model_version
     assert result.artifact_sha256 == artifact.artifact_sha256
+    assert result.city_slug == "chicago"
+    assert result.climate_region == "ohio_valley"
+    assert result.lead_days == 0
     assert result.forecast_source == weather.forecast.source.value
     assert result.calibration_group_key == direct.calibration_group_key
     assert result.fallback_level == GroupLevel.SOURCE.value
@@ -244,6 +248,11 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
         "model_probability": format(result.model_probability, "f"),
         "model_version": result.model_version,
         "artifact_sha256": result.artifact_sha256,
+        "city_slug": "chicago",
+        "climate_region": "ohio_valley",
+        "lead_days": 0,
+        "weather_fingerprint": result.weather_fingerprint,
+        "bucket_key": result.bucket_key,
         "forecast_source": result.forecast_source,
         "calibration_group_key": result.calibration_group_key,
         "fallback_level": result.fallback_level,
@@ -251,6 +260,37 @@ def test_valid_approval_loads_one_runtime_and_preserves_probability_provenance(
         "calibration_sample_count": 60,
         "training_cutoff": "2026-08-10",
     }
+
+    fingerprint = result.calibration_fingerprint()
+    assert fingerprint == result.calibration_fingerprint()
+    assert replace(result, artifact_sha256="f" * 64).calibration_fingerprint() != fingerprint
+    assert (
+        replace(result, model_probability=Decimal("0.5")).calibration_fingerprint() != fingerprint
+    )
+    assert replace(result, lead_days=1).calibration_fingerprint() != fingerprint
+
+
+def test_runtime_rejects_endpoint_probability_as_candidate_local_compatibility_error(
+    tmp_path: Path,
+) -> None:
+    _approved_repository(tmp_path)
+    runtime = load_calibrated_probability_runtime(repository_root=tmp_path)
+    weather = weather_snapshot(
+        issued_at=datetime(2026, 8, 6, 4, 16, tzinfo=UTC),
+        model_run_initialized_at_utc=expected_calibration_model_run(
+            target_date=date(2026, 8, 6), lead_days=0
+        ),
+    )
+    extreme_bucket = TemperatureBucket.bounded(1000, 1000, TemperatureUnit.FAHRENHEIT)
+
+    with pytest.raises(CalibrationCompatibilityError, match="endpoint probability"):
+        runtime.probability(
+            city="chicago",
+            climate_region="ohio_valley",
+            lead_days=0,
+            weather=weather,
+            bucket=extreme_bucket,
+        )
 
 
 def test_runtime_rejects_lead_days_outside_frozen_dataset(tmp_path: Path) -> None:

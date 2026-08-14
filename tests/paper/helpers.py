@@ -17,7 +17,8 @@ from tests.quoting.helpers import (
 )
 from tests.risk.helpers import policy as sizing_policy
 from tests.risk.portfolio_helpers import policy as portfolio_policy
-from weatherbot.domain import MarketId, OutcomeId, PositionKey, RiskScope
+from weatherbot.domain import MarketId, OutcomeId, PositionKey, RiskScope, fingerprint
+from weatherbot.forecasting import CalibratedProbability
 from weatherbot.markets import OrderBookSnapshot, parse_order_book
 from weatherbot.paper import PaperEntryRequest
 
@@ -34,6 +35,34 @@ def scope() -> RiskScope:
         city_key="chicago",
         market_date=date(2026, 8, 6),
         correlation_groups=("weather-system:midwest",),
+    )
+
+
+def calibrated_probability(
+    *,
+    probability: str = "0.65",
+    model_version: str = "fixture-model-1",
+    artifact_sha256: str = "a" * 64,
+    city_slug: str = "chicago",
+    climate_region: str = "ohio_valley",
+    lead_days: int = 0,
+    calibration_group_key: str = "source|open_meteo_ecmwf_ifs025",
+) -> CalibratedProbability:
+    return CalibratedProbability(
+        model_probability=Decimal(probability),
+        model_version=model_version,
+        artifact_sha256=artifact_sha256,
+        city_slug=city_slug,
+        climate_region=climate_region,
+        lead_days=lead_days,
+        weather_fingerprint=fingerprint(weather_snapshot()),
+        bucket_key="F:85:86",
+        forecast_source="open_meteo_ecmwf_ifs025",
+        calibration_group_key=calibration_group_key,
+        fallback_level="source",
+        distribution_type="normal",
+        calibration_sample_count=60,
+        training_cutoff=date(2026, 8, 10),
     )
 
 

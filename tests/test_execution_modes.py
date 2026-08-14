@@ -194,16 +194,18 @@ def test_paper_reset_requires_explicit_confirmation_before_history_mutation() ->
     assert "--confirm-paper-reset" in completed.stderr
 
 
-def test_paper_strategy_scanner_is_explicitly_disabled_in_phase_48a() -> None:
+def test_public_scanner_supports_calibrated_paper_but_keeps_live_blocked() -> None:
     source = Path("bot_v3.py").read_text(encoding="utf-8")
     scanner = source[source.index("def scan_and_trade") : source.index("\n\ndef show_status")]
 
-    assert "if context.mode is not ExecutionMode.RESEARCH:" in scanner
-    assert "return _blocked_strategy_scan(context)" in scanner
-    assert "submit_scanner_candidate(" not in scanner
-    assert "recover_paper_runtime(" not in scanner
+    assert "if context.mode is ExecutionMode.LIVE:" in scanner
+    assert "recover_paper_runtime(runtime=PAPER_RUNTIME)" in scanner
+    assert "load_calibrated_probability_runtime(" in scanner
+    assert "submit_scanner_candidate(" in scanner
+    assert "calibrated=calibrated" in scanner
+    assert "PAPER_RUNTIME" in scanner
     assert "place_buy_order(" not in scanner
-    assert "PAPER_RUNTIME" not in scanner
+    assert "require_live(" not in scanner
     assert "PK" not in scanner
     assert "WALLET" not in scanner
 

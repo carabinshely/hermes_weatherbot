@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
-from tests.paper.helpers import entry_request, paper_book, scope
+from tests.paper.helpers import calibrated_probability, entry_request, paper_book, scope
 from tests.quoting.helpers import NOW, cost_policy, freshness_policy
 from weatherbot.domain import Money
 from weatherbot.markets import ConditionId, OutcomeTokenId
@@ -31,34 +33,66 @@ def test_runtime_config_uses_separate_durable_paper_ledger_and_fixed_limits(tmp_
     assert config.portfolio_policy.maximum_open_positions == 10
 
 
-def test_scanner_decision_id_is_stable_for_same_snapshot_and_changes_with_book() -> None:
+def test_scanner_decision_id_is_stable_and_changes_with_calibration_or_book() -> None:
     request = entry_request()
+    calibrated = calibrated_probability()
     first = paper_scan_decision_id(
-        model_version=request.model_version,
+        calibrated=calibrated,
         scope=request.scope,
         weather=request.weather,
         event=request.event,
         decision_book=request.decision_order_book,
     )
     second = paper_scan_decision_id(
-        model_version=request.model_version,
+        calibrated=calibrated,
         scope=request.scope,
         weather=request.weather,
         event=request.event,
         decision_book=request.decision_order_book,
     )
-    changed_book = paper_book(book_hash="changed-decision-book")
-    changed = paper_scan_decision_id(
-        model_version=request.model_version,
+    changed_book = paper_scan_decision_id(
+        calibrated=calibrated,
         scope=request.scope,
         weather=request.weather,
         event=request.event,
-        decision_book=changed_book,
+        decision_book=paper_book(book_hash="changed-decision-book"),
+    )
+    changed_artifact = paper_scan_decision_id(
+        calibrated=replace(calibrated, artifact_sha256="b" * 64),
+        scope=request.scope,
+        weather=request.weather,
+        event=request.event,
+        decision_book=request.decision_order_book,
+    )
+    changed_probability = paper_scan_decision_id(
+        calibrated=replace(calibrated, model_probability=Decimal("0.66")),
+        scope=request.scope,
+        weather=request.weather,
+        event=request.event,
+        decision_book=request.decision_order_book,
+    )
+    changed_group = paper_scan_decision_id(
+        calibrated=replace(calibrated, calibration_group_key="source+lead|D+0"),
+        scope=request.scope,
+        weather=request.weather,
+        event=request.event,
+        decision_book=request.decision_order_book,
+    )
+    changed_lead = paper_scan_decision_id(
+        calibrated=replace(calibrated, lead_days=1),
+        scope=request.scope,
+        weather=request.weather,
+        event=request.event,
+        decision_book=request.decision_order_book,
     )
 
     assert first == second
     assert first.startswith("paper_scan_")
-    assert changed != first
+    assert changed_book != first
+    assert changed_artifact != first
+    assert changed_probability != first
+    assert changed_group != first
+    assert changed_lead != first
 
 
 def test_restart_reconstructs_open_position_public_book_identity(tmp_path: Path) -> None:
