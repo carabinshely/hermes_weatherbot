@@ -1,0 +1,61 @@
+name: Verify PR 56 Codex fixes
+
+on:
+  push:
+    branches:
+      - agent/issue-48b-calibrated-paper
+    paths:
+      - .github/workflows/pr56-codex-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/issue-48b-calibrated-paper
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked development environment
+        run: uv sync --locked --all-groups
+
+      - name: Apply Codex fixes
+        run: python scripts/pr56_codex_fix_patch.py
+
+      - name: Format and lint
+        run: |
+          uv run ruff check --fix bot_v3.py weatherbot/forecasting/runtime.py weatherbot/paper/integration.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py
+          uv run ruff format bot_v3.py weatherbot/forecasting/runtime.py weatherbot/paper/integration.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py
+          uv run ruff check execution_modes.py runtime_security.py weatherbot tests
+
+      - name: Type-check
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
+
+      - name: Focused Codex regressions
+        run: PYTHONPATH=. uv run pytest -q tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py tests/paper/test_runtime.py tests/paper/test_service.py tests/test_execution_modes.py
+
+      - name: Full suite
+        run: PYTHONPATH=. uv run pytest -q
+
+      - name: Commit verified fixes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add bot_v3.py weatherbot/forecasting/runtime.py weatherbot/paper/integration.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Address Codex review findings for calibrated PAPER"
+          git push origin HEAD:agent/issue-48b-calibrated-paper
