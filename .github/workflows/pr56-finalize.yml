@@ -1,0 +1,63 @@
+name: Finalize PR 56 calibrated PAPER integration
+
+on:
+  push:
+    branches:
+      - agent/issue-48b-calibrated-paper
+    paths:
+      - .github/workflows/pr56-finalize.yml
+
+permissions:
+  contents: write
+
+jobs:
+  finalize-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/issue-48b-calibrated-paper
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked development environment
+        run: uv sync --locked --all-groups
+
+      - name: Apply documentation cleanup
+        run: python scripts/pr56_finalize_patch.py
+
+      - name: Apply exact Ruff formatting
+        run: |
+          uv run ruff check --fix bot_v3.py weatherbot/forecasting/runtime.py weatherbot/paper/integration.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py tests/paper/test_runtime.py tests/paper/helpers.py tests/quoting/test_scanner_integration.py tests/test_execution_modes.py tests/forecasting/test_bot_source.py
+          uv run ruff format bot_v3.py weatherbot/forecasting/runtime.py weatherbot/paper/integration.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py tests/paper/test_runtime.py tests/paper/helpers.py tests/quoting/test_scanner_integration.py tests/test_execution_modes.py tests/forecasting/test_bot_source.py
+
+      - name: Lint maintained code
+        run: uv run ruff check execution_modes.py runtime_security.py weatherbot tests
+
+      - name: Type-check maintained code
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
+
+      - name: Focused calibrated PAPER regressions
+        run: PYTHONPATH=. uv run pytest -q tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py tests/paper/test_runtime.py tests/paper/test_service.py tests/quoting/test_scanner_integration.py tests/test_execution_modes.py tests/forecasting/test_bot_source.py
+
+      - name: Full suite
+        run: PYTHONPATH=. uv run pytest -q
+
+      - name: Commit verified permanent changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md docs/forecast-calibration.md bot_v3.py weatherbot/forecasting/runtime.py weatherbot/paper/integration.py tests/forecasting/test_calibration_runtime.py tests/forecasting/test_calibrated_scanner_gate.py tests/paper/test_calibrated_integration.py tests/paper/test_runtime.py tests/paper/helpers.py tests/quoting/test_scanner_integration.py tests/test_execution_modes.py tests/forecasting/test_bot_source.py
+          git diff --cached --quiet && exit 0
+          git commit -m "Finalize calibrated PAPER integration"
+          git push origin HEAD:agent/issue-48b-calibrated-paper
