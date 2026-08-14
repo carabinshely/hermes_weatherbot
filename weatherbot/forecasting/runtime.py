@@ -74,9 +74,7 @@ def _nonblank(value: object, *, label: str) -> str:
 
 def _sha256(value: object, *, label: str) -> str:
     digest = _nonblank(value, label=label).lower()
-    if len(digest) != 64 or any(
-        character not in "0123456789abcdef" for character in digest
-    ):
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
         raise CalibrationApprovalError(f"{label} must be a SHA-256 hex digest")
     return digest
 
@@ -179,9 +177,7 @@ def _load_approval(repository_root: Path) -> CalibrationApproval:
     try:
         decoded: object = json.loads(approval_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
-        raise CalibrationApprovalError(
-            "calibration approval manifest is not valid JSON"
-        ) from exc
+        raise CalibrationApprovalError("calibration approval manifest is not valid JSON") from exc
     if not isinstance(decoded, dict):
         raise CalibrationApprovalError("calibration approval manifest must be an object")
     raw = cast(dict[str, object], decoded)
@@ -203,9 +199,7 @@ def _load_approval(repository_root: Path) -> CalibrationApproval:
     artifact_path_text = _nonblank(raw["artifact_path"], label="artifact_path")
     relative_artifact = Path(artifact_path_text)
     if relative_artifact.is_absolute() or ".." in relative_artifact.parts:
-        raise CalibrationApprovalError(
-            "artifact_path must be a repository-relative safe path"
-        )
+        raise CalibrationApprovalError("artifact_path must be a repository-relative safe path")
     accepted_directory = (repository_root / _ACCEPTED_ARTIFACT_DIRECTORY).resolve()
     artifact_path = (repository_root / relative_artifact).resolve()
     if not artifact_path.is_relative_to(accepted_directory):
@@ -215,9 +209,7 @@ def _load_approval(repository_root: Path) -> CalibrationApproval:
 
     artifact_sha = _sha256(raw["artifact_sha256"], label="artifact_sha256")
     if artifact_sha in _REJECTED_ARTIFACT_SHA256:
-        raise CalibrationApprovalError(
-            "known rejected calibration artifact cannot be approved"
-        )
+        raise CalibrationApprovalError("known rejected calibration artifact cannot be approved")
     if artifact_path.name != f"{artifact_sha}.json":
         raise CalibrationApprovalError("accepted artifact filename must equal its SHA-256")
 
@@ -225,15 +217,11 @@ def _load_approval(repository_root: Path) -> CalibrationApproval:
         model_version=_nonblank(raw["model_version"], label="model_version"),
         artifact_path=artifact_path,
         artifact_sha256=artifact_sha,
-        forecast_contract_id=_nonblank(
-            raw["forecast_contract_id"], label="forecast_contract_id"
-        ),
+        forecast_contract_id=_nonblank(raw["forecast_contract_id"], label="forecast_contract_id"),
         observation_contract_id=_nonblank(
             raw["observation_contract_id"], label="observation_contract_id"
         ),
-        acceptance_reference=_nonblank(
-            raw["acceptance_reference"], label="acceptance_reference"
-        ),
+        acceptance_reference=_nonblank(raw["acceptance_reference"], label="acceptance_reference"),
         accepted_at_utc=_accepted_timestamp(raw["accepted_at_utc"]),
     )
 

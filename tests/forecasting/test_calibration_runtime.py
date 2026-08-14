@@ -68,8 +68,7 @@ def _approval(
         "schema_version": 1,
         "decision": decision,
         "model_version": model_version,
-        "artifact_path": artifact_path
-        or f"artifacts/calibration/accepted/{artifact_sha256}.json",
+        "artifact_path": artifact_path or f"artifacts/calibration/accepted/{artifact_sha256}.json",
         "artifact_sha256": artifact_sha256,
         "forecast_contract_id": forecast_contract_id,
         "observation_contract_id": observation_contract_id,
@@ -86,9 +85,7 @@ def _write_approval(root: Path, payload: object) -> None:
 
 def _approved_repository(root: Path) -> tuple[CalibrationArtifact, Path]:
     artifact = _artifact()
-    artifact_path = (
-        root / f"artifacts/calibration/accepted/{artifact.artifact_sha256}.json"
-    )
+    artifact_path = root / f"artifacts/calibration/accepted/{artifact.artifact_sha256}.json"
     artifact_path.parent.mkdir(parents=True, exist_ok=True)
     artifact_path.write_text(artifact.to_json(), encoding="utf-8")
     _write_approval(root, _approval(artifact_sha256=artifact.artifact_sha256))
@@ -119,9 +116,7 @@ def test_unaccepted_decision_fails_closed(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("digest", (_REJECTED_V1, _REJECTED_V2))
-def test_known_rejected_artifacts_cannot_be_approved(
-    tmp_path: Path, digest: str
-) -> None:
+def test_known_rejected_artifacts_cannot_be_approved(tmp_path: Path, digest: str) -> None:
     _write_approval(tmp_path, _approval(artifact_sha256=digest))
     with pytest.raises(CalibrationApprovalError, match="known rejected"):
         load_calibrated_probability_runtime(repository_root=tmp_path)
