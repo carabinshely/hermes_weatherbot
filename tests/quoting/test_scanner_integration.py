@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def research_scanner_source() -> str:
+def public_scanner_source() -> str:
     source = (ROOT / "bot_v3.py").read_text(encoding="utf-8")
     start = source.index("def scan_and_trade")
     end = source.index("\n\ndef show_status", start)
@@ -20,24 +20,39 @@ def legacy_scanner_source() -> str:
     return source[start:end]
 
 
-def test_research_scanner_uses_calibrated_validated_quote_contract() -> None:
-    source = research_scanner_source()
-    assert "if context.mode is not ExecutionMode.RESEARCH:" in source
+def test_public_scanner_uses_one_calibrated_probability_boundary() -> None:
+    source = public_scanner_source()
     assert "load_calibrated_probability_runtime(" in source
-    assert "calibration_runtime.probability(" in source
+    assert source.count("calibration_runtime.probability(") == 1
+    assert "ExecutionMode.PAPER" in source
+    assert "submit_scanner_candidate(" in source
+    assert "calibrated=calibrated" in source
     assert "evaluate_executable_buy(" in source
     assert "probability=calibrated.model_probability" in source
     assert "validated_quote = evaluation.quote" in source
     assert "**calibrated.audit_metadata()" in source
     assert "**validated_quote.metadata()" in source
     assert '"all_in_price": all_in_price' in source
-    assert "ExecutionMode.PAPER" not in source
     assert 'require_live(context, operation="place order")' not in source
     assert "place_buy_order(" not in source
 
 
+def test_paper_branch_uses_durable_service_before_research_reference_sizing() -> None:
+    source = public_scanner_source()
+    paper = source.index("if context.mode is ExecutionMode.PAPER:", source.index("calibrated ="))
+    submission = source.index("submit_scanner_candidate(", paper)
+    research_sizing = source.index("preliminary_kelly =", paper)
+    block = source[paper:research_sizing]
+
+    assert paper < submission < research_sizing
+    assert "continue" in block
+    assert "calc_kelly(" not in block
+    assert "get_adjusted_kelly(" not in block
+    assert "bet_size(" not in block
+
+
 def test_research_scanner_does_not_reconstruct_final_edge_from_best_ask() -> None:
-    source = research_scanner_source()
+    source = public_scanner_source()
     assert "book.quote_buy_budget" not in source
     assert "preliminary_ev" not in source
     assert "calc_ev(probability, entry_price)" not in source
