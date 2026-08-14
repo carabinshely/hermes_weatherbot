@@ -1,6 +1,6 @@
 """Fail-closed runtime boundary for accepted calibrated temperature probabilities.
 
-A mechanically valid calibration artifact is not sufficient for runtime use.  Runtime
+A mechanically valid calibration artifact is not sufficient for runtime use. Runtime
 loading requires a separate, reviewed approval manifest at one fixed repository location.
 This module is intentionally execution-agnostic: it produces model probabilities and
 provenance only.
@@ -8,6 +8,7 @@ provenance only.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -111,11 +112,14 @@ class CalibrationApproval:
 
 @dataclass(frozen=True, slots=True)
 class CalibratedProbability:
-    """One model probability bundled with the provenance required to reproduce it."""
+    """One model probability bundled with every input/provenance field needed to replay it."""
 
     model_probability: Decimal
     model_version: str
     artifact_sha256: str
+    city_slug: str
+    climate_region: str
+    lead_days: int
     forecast_source: str
     calibration_group_key: str
     fallback_level: str
@@ -123,11 +127,36 @@ class CalibratedProbability:
     calibration_sample_count: int
     training_cutoff: date
 
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("model_version", self.model_version),
+            ("artifact_sha256", self.artifact_sha256),
+            ("city_slug", self.city_slug),
+            ("climate_region", self.climate_region),
+            ("forecast_source", self.forecast_source),
+            ("calibration_group_key", self.calibration_group_key),
+            ("fallback_level", self.fallback_level),
+            ("distribution_type", self.distribution_type),
+        ):
+            if not value.strip():
+                raise ValueError(f"{label} must not be blank")
+        if self.lead_days not in CALIBRATION_LEAD_DAYS:
+            raise ValueError(
+                f"lead_days={self.lead_days} is outside calibrated lead set {CALIBRATION_LEAD_DAYS}"
+            )
+        if self.calibration_sample_count <= 0:
+            raise ValueError("calibration_sample_count must be positive")
+        if self.model_probability <= 0 or self.model_probability >= 1:
+            raise ValueError("model_probability must be between zero and one")
+
     def audit_metadata(self) -> Mapping[str, object]:
         return {
             "model_probability": format(self.model_probability, "f"),
             "model_version": self.model_version,
             "artifact_sha256": self.artifact_sha256,
+            "city_slug": self.city_slug,
+            "climate_region": self.climate_region,
+            "lead_days": self.lead_days,
             "forecast_source": self.forecast_source,
             "calibration_group_key": self.calibration_group_key,
             "fallback_level": self.fallback_level,
@@ -135,6 +164,16 @@ class CalibratedProbability:
             "calibration_sample_count": self.calibration_sample_count,
             "training_cutoff": self.training_cutoff.isoformat(),
         }
+
+    def calibration_fingerprint(self) -> str:
+        """Content identity for the exact probability and calibration evidence used."""
+        encoded = json.dumps(
+            dict(self.audit_metadata()),
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +236,9 @@ class CalibratedProbabilityRuntime:
             model_probability=Decimal(str(estimate.probability)),
             model_version=estimate.model_version,
             artifact_sha256=estimate.artifact_sha256,
+            city_slug=city,
+            climate_region=climate_region,
+            lead_days=lead_days,
             forecast_source=weather.forecast.source.value,
             calibration_group_key=estimate.calibration_group_key,
             fallback_level=estimate.fallback_level.value,
