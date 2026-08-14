@@ -18,7 +18,9 @@ def _context(mode: ExecutionMode) -> ExecutionContext:
 
 def _forbid_network(monkeypatch: pytest.MonkeyPatch) -> None:
     def forbidden(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("strategy gate should run before weather/market network work")
+        raise AssertionError(
+            "strategy gate should run before weather/market network work"
+        )
 
     monkeypatch.setattr(bot_v3._legacy, "get_forecast_snapshot", forbidden)
     monkeypatch.setattr(bot_v3._legacy, "get_polymarket_event", forbidden)
@@ -53,7 +55,9 @@ def test_execution_strategy_scans_are_disabled_before_network(
     def forbidden_loader(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("disabled execution modes must not load calibration")
 
-    monkeypatch.setattr(bot_v3, "load_calibrated_probability_runtime", forbidden_loader)
+    monkeypatch.setattr(
+        bot_v3, "load_calibrated_probability_runtime", forbidden_loader
+    )
 
     new_trades, errors = bot_v3.scan_and_trade(_context(mode))
 
