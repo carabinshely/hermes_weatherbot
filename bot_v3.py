@@ -18,7 +18,12 @@ import requests
 
 import bot_v3_legacy as _legacy
 from bot_v3_legacy import *  # noqa: F403
-from execution_modes import ExecutionContext, ExecutionMode, ModeConfigurationError, resolve_execution_context
+from execution_modes import (
+    ExecutionContext,
+    ExecutionMode,
+    ModeConfigurationError,
+    resolve_execution_context,
+)
 from weatherbot.forecasting import (
     CalibrationRuntimeError,
     load_calibrated_probability_runtime,
@@ -56,6 +61,7 @@ MIN_HOURS = _legacy.MIN_HOURS
 MAX_HOURS = _legacy.MAX_HOURS
 MAX_BET = _legacy.MAX_BET
 MIN_EV = _legacy.MIN_EV
+PAPER_RUNTIME = _legacy.PAPER_RUNTIME
 C = _legacy.C
 
 
@@ -122,7 +128,9 @@ def scan_and_trade(context: ExecutionContext):
         print(f"  -> {loc['name']}...", end=" ", flush=True)
         market_timezone = TIMEZONES[city_slug]
         calendar = _legacy.MarketCalendar(market_timezone)
-        dates = tuple(candidate.isoformat() for candidate in calendar.candidate_dates(now, count=4))
+        dates = tuple(
+            candidate.isoformat() for candidate in calendar.candidate_dates(now, count=4)
+        )
 
         try:
             started = time.time()
@@ -309,6 +317,19 @@ def scan_and_trade(context: ExecutionContext):
     return 0, errors
 
 
+def show_status(context: ExecutionContext):
+    """Preserve administrative PAPER status while strategy scanning stays disabled."""
+    _legacy.PAPER_RUNTIME = PAPER_RUNTIME
+    return _legacy.show_status(context)
+
+
+def run_resolution_monitor_cycle(ledger_path=None):
+    """Delegate resolution monitoring without exposing the quarantined strategy scanner."""
+    if ledger_path is None:
+        ledger_path = _legacy.LEDGER_PATH
+    return _legacy.run_resolution_monitor_cycle(ledger_path)
+
+
 def run_loop(context: ExecutionContext):
     """Run repeated calibrated RESEARCH scans; execution modes remain disabled."""
     if context.mode is not ExecutionMode.RESEARCH:
@@ -344,6 +365,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Administrative/mechanical commands retain the existing implementation. The
     # quarantined module is never delegated a strategy scan or run command here.
+    _legacy.PAPER_RUNTIME = PAPER_RUNTIME
     return _legacy.main(argv)
 
 
