@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,38 @@ from execution_modes import (
     run_live_operation,
 )
 from weatherbot.paper import PaperRuntimeConfig
+from weatherbot.paper.config import PaperResearchConfig
+from weatherbot.quoting import CostPolicy, DepthPolicy, FreshnessPolicy
+
+
+def _paper_research_config(tmp_path: Path) -> PaperResearchConfig:
+    runtime = PaperRuntimeConfig.from_mapping(
+        {
+            "paper_ledger_path": str(tmp_path / "paper.sqlite3"),
+            "paper_archive_directory": str(tmp_path / "archive"),
+        },
+        base_dir=tmp_path,
+    )
+    return PaperResearchConfig(
+        runtime=runtime,
+        freshness_policy=FreshnessPolicy(
+            maximum_forecast_age=timedelta(hours=6),
+            maximum_event_age=timedelta(minutes=2),
+            maximum_order_book_age=timedelta(seconds=30),
+            maximum_balance_age=timedelta(seconds=30),
+        ),
+        cost_policy=CostPolicy(
+            platform_fee_rate=Decimal("0.01"),
+            transaction_cost=Decimal("0.01"),
+            safety_margin_rate=Decimal("0.02"),
+            maximum_average_slippage=Decimal("0.03"),
+            maximum_worst_slippage=Decimal("0.05"),
+            maximum_all_in_price=Decimal("0.45"),
+            minimum_expected_return=Decimal("0.10"),
+            depth_policy=DepthPolicy.REJECT,
+        ),
+        scan_interval_seconds=3600,
+    )
 
 
 @pytest.mark.parametrize("value", [None, "", "disabled", "automatic", 1])
@@ -112,17 +146,10 @@ def test_paper_status_uses_isolated_ledger_without_wallet_credentials(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    import bot_v3_legacy as legacy
     from weatherbot.paper import cli as paper_cli
 
-    environment_runtime = PaperRuntimeConfig.from_mapping(
-        {
-            "paper_ledger_path": str(tmp_path / "paper.sqlite3"),
-            "paper_archive_directory": str(tmp_path / "archive"),
-        },
-        base_dir=tmp_path,
-    )
-    monkeypatch.setattr(legacy, "PAPER_RUNTIME", environment_runtime)
+    research = _paper_research_config(tmp_path)
+    monkeypatch.setattr(paper_cli, "_load_research_config", lambda: research)
     monkeypatch.delenv("PK", raising=False)
     monkeypatch.delenv("WALLET", raising=False)
 
@@ -130,14 +157,14 @@ def test_paper_status_uses_isolated_ledger_without_wallet_credentials(
     output = capsys.readouterr().out
 
     assert "Hermes internal PAPER R&D" in output
-    assert f"ledger: {environment_runtime.ledger_path}" in output
+    assert f"ledger: {research.runtime.ledger_path}" in output
     assert "starting cash:" in output
     assert "available cash:" in output
     assert "exposure:" in output
     assert "realized P/L:" in output
     assert "unrealized P/L:" in output
     assert "open positions:" in output
-    assert not environment_runtime.ledger_path.exists()
+    assert not research.runtime.ledger_path.exists()
 
 
 @pytest.mark.parametrize("command", ["cancel", "resolve", "paper-reset"])
@@ -201,12 +228,13 @@ def test_public_entrypoint_is_only_the_signal_producer() -> None:
         assert forbidden not in source
 
 
-def test_internal_paper_cli_owns_paper_admin_path() -> None:
+def test_internal_paper_cli_owns_paper_admin_path_without_legacy_execution() -> None:
     public_source = Path("bot_v3.py").read_text(encoding="utf-8")
     paper_source = Path("weatherbot/paper/cli.py").read_text(encoding="utf-8")
 
     assert "PAPER_RUNTIME" not in public_source
     assert 'choices=("scan", "run", "status", "resolve", "reset")' in paper_source
-    assert "_legacy.PAPER_RUNTIME" in paper_source
-    assert "run_resolution_monitor_cycle" in paper_source
+    assert "_legacy" not in paper_source
+    assert "bot_v3_legacy" not in paper_source
+    assert "run_resolution_cycle" in paper_source
     assert "reset_paper_runtime" in paper_source
