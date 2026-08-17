@@ -1,7 +1,11 @@
 """Internal PAPER Research and Development CLI entry point."""
 
-from weatherbot.paper.cli import main
+
+def _main() -> int:
+    from weatherbot.paper.cli import main
+
+    return main()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(_main())
