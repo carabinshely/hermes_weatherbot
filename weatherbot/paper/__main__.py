@@ -63,13 +63,17 @@ def _build(
     arguments: Mapping[str, object],
 ) -> tuple[PaperExperimentSpec, StrategyEvaluator]:
     built: object = _factory(factory_path)(**dict(arguments))
-    if not isinstance(built, tuple) or len(built) != 2:
+    if not isinstance(built, tuple):
         raise ValueError(
             "PAPER experiment factory must return (PaperExperimentSpec, StrategyEvaluator)"
         )
-    pair = cast(tuple[object, object], built)
-    spec = pair[0]
-    evaluator = pair[1]
+    values = cast(tuple[object, ...], built)
+    if len(values) != 2:
+        raise ValueError(
+            "PAPER experiment factory must return (PaperExperimentSpec, StrategyEvaluator)"
+        )
+    spec = values[0]
+    evaluator = values[1]
     if not isinstance(spec, PaperExperimentSpec):
         raise ValueError("PAPER experiment factory returned an invalid spec")
     if not callable(evaluator):
