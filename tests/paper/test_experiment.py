@@ -6,7 +6,13 @@ from decimal import Decimal
 from pathlib import Path
 
 from tests.paper.helpers import calibrated_probability, paper_book, scope
-from tests.quoting.helpers import NOW, cost_policy, event_snapshot, freshness_policy, weather_snapshot
+from tests.quoting.helpers import (
+    NOW,
+    cost_policy,
+    event_snapshot,
+    freshness_policy,
+    weather_snapshot,
+)
 from tests.risk.helpers import policy as sizing_policy
 from tests.risk.portfolio_helpers import policy as portfolio_policy
 from weatherbot.domain import Money
@@ -32,7 +38,9 @@ def _case(*, execution: bool = True) -> PaperEvidenceCase:
         weather=weather_snapshot(),
         event=event_snapshot(),
         decision_book=decision_book,
-        execution_book=(paper_book(book_hash="experiment-execution") if execution else None),
+        execution_book=(
+            paper_book(book_hash="experiment-execution") if execution else None
+        ),
         metadata={"bucket_key": calibrated.bucket_key, "fixture": "issue-59"},
     )
 
@@ -70,7 +78,9 @@ def _strategy(
         market_reference_price=market,
         expected_edge=edge,
         reason=(
-            "candidate threshold satisfied" if edge >= threshold else "candidate threshold not met"
+            "candidate threshold satisfied"
+            if edge >= threshold
+            else "candidate threshold not met"
         ),
         metadata={"threshold": format(threshold, "f")},
     )
