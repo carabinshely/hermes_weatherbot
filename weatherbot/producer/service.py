@@ -87,6 +87,8 @@ def evaluate_candidate(
         question=candidate.question,
         city_slug=candidate.city_slug,
         city_name=candidate.city_name,
+        climate_region=candidate.calibrated.climate_region,
+        lead_days=candidate.calibrated.lead_days,
         market_date=candidate.market_date,
         market_timezone=candidate.market_timezone,
         bucket_key=candidate.bucket.key,
