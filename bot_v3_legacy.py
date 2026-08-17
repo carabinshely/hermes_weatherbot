@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Quarantined compatibility facade for historical Hermes execution code.
 
-The implementation is retained in ``bot_v3_legacy_impl.py`` for internal PAPER mechanics
-and historical tests. This facade never exposes a supported LIVE command path.
+The implementation is retained in ``bot_v3_legacy_impl.py`` only for historical
+compatibility and regression evidence. Supported public and PAPER runtimes do not import
+this facade, and it never exposes a supported LIVE command path.
 """
 
 from __future__ import annotations
