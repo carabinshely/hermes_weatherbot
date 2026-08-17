@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from datetime import timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -18,6 +20,38 @@ from execution_modes import (
     run_live_operation,
 )
 from weatherbot.paper import PaperRuntimeConfig
+from weatherbot.paper.config import PaperResearchConfig
+from weatherbot.quoting import CostPolicy, DepthPolicy, FreshnessPolicy
+
+
+def _paper_research_config(tmp_path: Path) -> PaperResearchConfig:
+    runtime = PaperRuntimeConfig.from_mapping(
+        {
+            "paper_ledger_path": str(tmp_path / "paper.sqlite3"),
+            "paper_archive_directory": str(tmp_path / "archive"),
+        },
+        base_dir=tmp_path,
+    )
+    return PaperResearchConfig(
+        runtime=runtime,
+        freshness_policy=FreshnessPolicy(
+            maximum_forecast_age=timedelta(hours=6),
+            maximum_event_age=timedelta(minutes=2),
+            maximum_order_book_age=timedelta(seconds=30),
+            maximum_balance_age=timedelta(seconds=30),
+        ),
+        cost_policy=CostPolicy(
+            platform_fee_rate=Decimal("0.01"),
+            transaction_cost=Decimal("0.01"),
+            safety_margin_rate=Decimal("0.02"),
+            maximum_average_slippage=Decimal("0.03"),
+            maximum_worst_slippage=Decimal("0.05"),
+            maximum_all_in_price=Decimal("0.45"),
+            minimum_expected_return=Decimal("0.10"),
+            depth_policy=DepthPolicy.REJECT,
+        ),
+        scan_interval_seconds=3600,
+    )
 
 
 @pytest.mark.parametrize("value", [None, "", "disabled", "automatic", 1])
@@ -86,62 +120,7 @@ def test_non_live_gate_never_calls_live_callback(mode: ExecutionMode) -> None:
         require_live(context, operation="test live call")
 
 
-def test_research_status_runs_without_wallet_credentials() -> None:
-    environment = os.environ.copy()
-    environment.pop("PK", None)
-    environment.pop("WALLET", None)
-    completed = subprocess.run(
-        [sys.executable, "bot_v3.py", "status", "--mode", "research"],
-        cwd=Path.cwd(),
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert completed.returncode == 0, completed.stderr
-    assert "Execution mode: RESEARCH" in completed.stdout
-    assert "Wallet access: disabled" in completed.stdout
-
-
-def test_paper_status_uses_isolated_ledger_without_wallet_credentials(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    import bot_v3
-
-    environment_runtime = PaperRuntimeConfig.from_mapping(
-        {
-            "paper_ledger_path": str(tmp_path / "paper.sqlite3"),
-            "paper_archive_directory": str(tmp_path / "archive"),
-        },
-        base_dir=tmp_path,
-    )
-    monkeypatch.setattr(bot_v3, "PAPER_RUNTIME", environment_runtime)
-    monkeypatch.delenv("PK", raising=False)
-    monkeypatch.delenv("WALLET", raising=False)
-
-    bot_v3.show_status(
-        ExecutionContext(mode=ExecutionMode.PAPER, configured_mode=ExecutionMode.PAPER)
-    )
-    output = capsys.readouterr().out
-
-    assert "Wallet access: disabled" in output
-    assert "Paper ledger:" in output
-    assert str(environment_runtime.ledger_path) in output
-    assert "Starting cash:" in output
-    assert "Available cash:" in output
-    assert "Market value:" in output
-    assert "Realized P/L:" in output
-    assert "Unrealized P/L:" in output
-    assert "Fees:" in output
-    assert "Exposure:" in output
-    assert "Drawdown:" in output
-    assert not environment_runtime.ledger_path.exists()
-
-
-def test_default_status_is_research_and_wallet_free() -> None:
+def test_public_status_runs_without_wallet_credentials() -> None:
     environment = os.environ.copy()
     environment.pop("PK", None)
     environment.pop("WALLET", None)
@@ -155,25 +134,64 @@ def test_default_status_is_research_and_wallet_free() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stderr
-    assert "Execution mode: RESEARCH" in completed.stdout
-    assert "Wallet access: disabled" in completed.stdout
+    assert "Hermes public producer" in completed.stdout
+    assert "strategy:" in completed.stdout
+    assert "policy fingerprint:" in completed.stdout
+    assert "signal log:" in completed.stdout
+    assert "Wallet" not in completed.stdout
 
 
-def test_non_live_cancel_is_blocked_before_live_client_access() -> None:
-    environment = os.environ.copy()
-    environment.pop("PK", None)
-    environment.pop("WALLET", None)
+def test_paper_status_uses_isolated_ledger_without_wallet_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from weatherbot.paper import cli as paper_cli
+
+    research = _paper_research_config(tmp_path)
+    monkeypatch.setattr(paper_cli, "_load_research_config", lambda: research)
+    monkeypatch.delenv("PK", raising=False)
+    monkeypatch.delenv("WALLET", raising=False)
+
+    assert paper_cli.show_status() == 0
+    output = capsys.readouterr().out
+
+    assert "Hermes internal PAPER R&D" in output
+    assert f"ledger: {research.runtime.ledger_path}" in output
+    assert "starting cash:" in output
+    assert "available cash:" in output
+    assert "exposure:" in output
+    assert "realized P/L:" in output
+    assert "unrealized P/L:" in output
+    assert "open positions:" in output
+    assert not research.runtime.ledger_path.exists()
+
+
+@pytest.mark.parametrize("command", ["cancel", "resolve", "paper-reset"])
+def test_public_cli_rejects_execution_and_paper_admin_commands(command: str) -> None:
     completed = subprocess.run(
-        [sys.executable, "bot_v3.py", "cancel", "--mode", "research"],
+        [sys.executable, "bot_v3.py", command],
         cwd=Path.cwd(),
-        env=environment,
         check=False,
         capture_output=True,
         text=True,
         timeout=30,
     )
     assert completed.returncode == 2
-    assert "order cancellation is blocked in research mode" in completed.stderr
+    assert "invalid choice" in completed.stderr
+
+
+def test_public_cli_has_no_execution_mode_flag() -> None:
+    completed = subprocess.run(
+        [sys.executable, "bot_v3.py", "status", "--mode", "research"],
+        cwd=Path.cwd(),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 2
+    assert "unrecognized arguments" in completed.stderr
 
 
 def test_paper_reset_requires_explicit_confirmation_before_history_mutation() -> None:
@@ -181,7 +199,7 @@ def test_paper_reset_requires_explicit_confirmation_before_history_mutation() ->
     environment.pop("PK", None)
     environment.pop("WALLET", None)
     completed = subprocess.run(
-        [sys.executable, "bot_v3.py", "paper-reset", "--mode", "paper"],
+        [sys.executable, "-m", "weatherbot.paper", "reset"],
         cwd=Path.cwd(),
         env=environment,
         check=False,
@@ -191,32 +209,32 @@ def test_paper_reset_requires_explicit_confirmation_before_history_mutation() ->
     )
 
     assert completed.returncode == 2
-    assert "--confirm-paper-reset" in completed.stderr
+    assert "reset requires --confirm-reset" in completed.stderr
 
 
-def test_public_scanner_supports_calibrated_paper_but_keeps_live_blocked() -> None:
+def test_public_entrypoint_is_only_the_signal_producer() -> None:
     source = Path("bot_v3.py").read_text(encoding="utf-8")
-    scanner = source[source.index("def scan_and_trade") : source.index("\n\ndef show_status")]
 
-    assert "if context.mode is ExecutionMode.LIVE:" in scanner
-    assert "recover_paper_runtime(runtime=PAPER_RUNTIME)" in scanner
-    assert "load_calibrated_probability_runtime(" in scanner
-    assert "submit_scanner_candidate(" in scanner
-    assert "calibrated=calibrated" in scanner
-    assert "PAPER_RUNTIME" in scanner
-    assert "place_buy_order(" not in scanner
-    assert "require_live(" not in scanner
-    assert "PK" not in scanner
-    assert "WALLET" not in scanner
+    assert "from weatherbot.producer.cli import main" in source
+    for forbidden in (
+        "bot_v3_legacy",
+        "ExecutionMode",
+        "PAPER_RUNTIME",
+        "place_buy_order",
+        "cancel_all_orders",
+        "PK",
+        "WALLET",
+    ):
+        assert forbidden not in source
 
 
-def test_paper_resolution_and_status_keep_dedicated_ledger_admin_path() -> None:
+def test_internal_paper_cli_owns_paper_admin_path_without_legacy_execution() -> None:
     public_source = Path("bot_v3.py").read_text(encoding="utf-8")
-    legacy_source = Path("bot_v3_legacy.py").read_text(encoding="utf-8")
+    paper_source = Path("weatherbot/paper/cli.py").read_text(encoding="utf-8")
 
-    assert "PAPER_RUNTIME = _legacy.PAPER_RUNTIME" in public_source
-    assert "_legacy.PAPER_RUNTIME = PAPER_RUNTIME" in public_source
-    assert "_legacy.show_status(context)" in public_source
-    assert "PAPER_RUNTIME.ledger_path" in legacy_source
-    assert "paper_runtime_status(" in legacy_source
-    assert 'choices=("scan", "run", "status", "resolve", "cancel", "paper-reset")' in legacy_source
+    assert "PAPER_RUNTIME" not in public_source
+    assert 'choices=("scan", "run", "status", "resolve", "reset")' in paper_source
+    assert "_legacy" not in paper_source
+    assert "bot_v3_legacy" not in paper_source
+    assert "run_resolution_cycle" in paper_source
+    assert "reset_paper_runtime" in paper_source

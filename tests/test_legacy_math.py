@@ -6,7 +6,7 @@ import pytest
 
 from tests.legacy_loader import load_legacy_math
 
-LEGACY = load_legacy_math(Path("bot_v3_legacy.py"))
+LEGACY = load_legacy_math(Path("bot_v3_legacy_impl.py"))
 
 
 def test_expected_value_matches_binary_contract_return() -> None:

@@ -4,81 +4,76 @@ from pathlib import Path
 
 
 def test_scanner_keeps_forecast_and_observation_separate() -> None:
-    bot_source = Path("bot_v3.py").read_text(encoding="utf-8")
+    source = Path("weatherbot/producer/sources.py").read_text(encoding="utf-8")
     runtime_source = Path("weatherbot/forecasting/runtime.py").read_text(encoding="utf-8")
     model_source = Path("weatherbot/forecasting/model.py").read_text(encoding="utf-8")
 
     assert "WeatherInputSnapshot" in runtime_source
     assert "weather.signal_temperature_f" in runtime_source
-    assert "weather.signal_temperature_f" in bot_source
-    assert "**weather_metadata" in bot_source
+    assert "matching_observation" in source
     assert '"forecast_temperature_f"' in model_source
     assert '"observation_temperature_f"' in model_source
-    assert "best = metar" not in bot_source
-    assert 'best_source = "metar"' not in bot_source
+    assert "best = metar" not in source
 
 
-def test_public_scanner_has_no_fixed_sigma_probability_path() -> None:
+def test_public_scanner_has_no_fixed_sigma_or_learning_probability_path() -> None:
+    scanner = Path("weatherbot/producer/scanner.py").read_text(encoding="utf-8")
+    service = Path("weatherbot/producer/service.py").read_text(encoding="utf-8")
+    combined = scanner + service
+
+    assert "SIGMA_F" not in combined
+    assert "get_sigma(" not in combined
+    assert "sigma=2.0" not in combined
+    assert '"true_prob"' not in combined
+    assert "calc_kelly" not in combined
+    assert "get_adjusted_kelly" not in combined
+    assert "get_adjusted_ev_floor" not in combined
+    assert "model_probability" in service
+    assert "calibration_runtime.probability(" in scanner
+
+
+def test_precalibration_scanner_is_not_imported_by_public_entrypoint() -> None:
     bot_source = Path("bot_v3.py").read_text(encoding="utf-8")
+    producer_sources = "\n".join(
+        path.read_text(encoding="utf-8") for path in Path("weatherbot/producer").glob("*.py")
+    )
 
-    assert "SIGMA_F" not in bot_source
-    assert "get_sigma(" not in bot_source
-    assert "sigma=2.0" not in bot_source
-    assert "bot-v3-normal-cdf-sigma-v1" not in bot_source
-    assert '"true_prob"' not in bot_source
-    assert "load_calibrated_probability_runtime" in bot_source
-    assert "model_probability" in bot_source
-    assert "climate_region" in bot_source
-
-
-def test_precalibration_scanner_is_quarantined_from_public_entrypoint() -> None:
-    bot_source = Path("bot_v3.py").read_text(encoding="utf-8")
-
-    assert "import bot_v3_legacy as _legacy" in bot_source
-    assert "_legacy.scan_and_trade(" not in bot_source
-    assert "_legacy.run_loop(" not in bot_source
-
-
-def test_public_scanner_does_not_reexport_quarantined_helpers() -> None:
-    bot_source = Path("bot_v3.py").read_text(encoding="utf-8")
-
-    assert "from bot_v3_legacy import *" not in bot_source
-    assert "count=len(CALIBRATION_LEAD_DAYS)" in bot_source
-    assert "zip(" in bot_source and "CALIBRATION_LEAD_DAYS, dates, strict=True" in bot_source
-    assert "persist_research_signal(signal)" in bot_source
-    assert "_ = signal" not in bot_source
+    assert "bot_v3_legacy" not in bot_source
+    assert "bot_v3_legacy" not in producer_sources
+    assert "weatherbot.paper" not in producer_sources
 
 
 def test_scanner_gates_network_work_to_calibrated_decision_window() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
+    source = Path("weatherbot/producer/scanner.py").read_text(encoding="utf-8")
 
     gate = source.index("calibration_runtime_window(")
-    network = source.index("_legacy.get_forecast_snapshot(")
+    network = source.index("weather_fetcher(")
     assert gate < network
-    assert "decision_start <= now < decision_end" in source
-    assert "CALIBRATION_DECISION_WINDOW.total_seconds()" in source
+    assert "decision_start <= current < decision_end" in source
 
 
 def test_candidate_runtime_calibration_rejections_are_local() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
+    source = Path("weatherbot/producer/scanner.py").read_text(encoding="utf-8")
 
     assert "except (CalibrationError, CalibrationRuntimeError) as exc:" in source
     assert "calibration rejected candidate" in source
 
 
-def test_probability_input_dimensions_come_from_typed_calibrated_metadata() -> None:
-    bot_source = Path("bot_v3.py").read_text(encoding="utf-8")
-    runtime_source = Path("weatherbot/forecasting/runtime.py").read_text(encoding="utf-8")
+def test_probability_provenance_flows_into_typed_signal() -> None:
+    model = Path("weatherbot/producer/model.py").read_text(encoding="utf-8")
+    service = Path("weatherbot/producer/service.py").read_text(encoding="utf-8")
 
-    assert "**calibrated.audit_metadata()" in bot_source
-    assert '"city_slug": self.city_slug' in runtime_source
-    assert '"climate_region": self.climate_region' in runtime_source
-    assert '"lead_days": self.lead_days' in runtime_source
-
-
-def test_continuous_probe_interval_is_shorter_than_decision_window() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
-
-    assert "CALIBRATION_DECISION_WINDOW.total_seconds() / 4.0" in source
-    assert "scan_probe_interval = min(" in source
-    assert "sleep_interval = min(scan_probe_interval, resolution_interval)" in source
+    for field in (
+        "model_version",
+        "artifact_sha256",
+        "calibration_fingerprint",
+        "weather_fingerprint",
+        "forecast_source",
+        "calibration_group_key",
+        "fallback_level",
+        "distribution_type",
+        "calibration_sample_count",
+        "training_cutoff",
+    ):
+        assert field in model
+        assert field in service
