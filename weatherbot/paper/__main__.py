@@ -39,9 +39,7 @@ def _load_manifest(path: Path) -> tuple[str, Mapping[str, object]]:
     raw = cast(dict[str, object], decoded)
     unknown = set(raw) - {"factory", "arguments"}
     if unknown:
-        raise ValueError(
-            f"PAPER experiment manifest has unsupported fields: {sorted(unknown)}"
-        )
+        raise ValueError(f"PAPER experiment manifest has unsupported fields: {sorted(unknown)}")
     factory = raw.get("factory")
     if not isinstance(factory, str) or not factory.strip() or ":" not in factory:
         raise ValueError("PAPER manifest factory must be 'module:function'")

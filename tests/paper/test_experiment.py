@@ -38,9 +38,7 @@ def _case(*, execution: bool = True) -> PaperEvidenceCase:
         weather=weather_snapshot(),
         event=event_snapshot(),
         decision_book=decision_book,
-        execution_book=(
-            paper_book(book_hash="experiment-execution") if execution else None
-        ),
+        execution_book=(paper_book(book_hash="experiment-execution") if execution else None),
         metadata={"bucket_key": calibrated.bucket_key, "fixture": "issue-59"},
     )
 
@@ -78,9 +76,7 @@ def _strategy(
         market_reference_price=market,
         expected_edge=edge,
         reason=(
-            "candidate threshold satisfied"
-            if edge >= threshold
-            else "candidate threshold not met"
+            "candidate threshold satisfied" if edge >= threshold else "candidate threshold not met"
         ),
         metadata={"threshold": format(threshold, "f")},
     )

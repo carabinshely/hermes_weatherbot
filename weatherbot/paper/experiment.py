@@ -84,10 +84,7 @@ class PaperEvidenceCase:
             raise ValueError("paper evidence decision_at must be timezone-aware")
         if self.calibrated.city_slug != self.scope.city_key:
             raise ValueError("calibrated city_slug must match evidence risk scope")
-        if (
-            self.calibrated.model_probability <= 0
-            or self.calibrated.model_probability >= 1
-        ):
+        if self.calibrated.model_probability <= 0 or self.calibrated.model_probability >= 1:
             raise ValueError("paper evidence requires scanner-eligible calibrated probability")
         if str(self.scope.outcome_id) != str(self.decision_book.token_id):
             raise ValueError("paper evidence scope outcome must match decision-book token")
@@ -179,9 +176,7 @@ class PaperExperimentSpec:
                 "strategy_id": self.strategy_id,
                 "strategy_version": self.strategy_version,
                 "strategy_parameters": self.strategy_parameters,
-                "evidence": [
-                    case.evidence_fingerprint for case in self.evidence_cases
-                ],
+                "evidence": [case.evidence_fingerprint for case in self.evidence_cases],
                 "economics": economics_identity,
             }
         )
@@ -213,9 +208,7 @@ class PaperExperimentResult:
     @property
     def economically_evaluated_count(self) -> int:
         return sum(
-            1
-            for case in self.cases
-            if case.economic_status is EconomicEvaluationStatus.EVALUATED
+            1 for case in self.cases if case.economic_status is EconomicEvaluationStatus.EVALUATED
         )
 
 
@@ -234,9 +227,7 @@ def _economic_request(
     if case.execution_book is None:
         raise ValueError("economic request requires frozen execution evidence")
     if decision.model_probability != case.calibrated.model_probability:
-        raise ValueError(
-            "strategy decision probability must equal calibrated evidence probability"
-        )
+        raise ValueError("strategy decision probability must equal calibrated evidence probability")
     return PaperEntryRequest(
         strategy_id=f"{spec.strategy_id}@{spec.strategy_version}",
         decision_id=f"{spec.experiment_id}:{case.case_id}",
@@ -295,8 +286,7 @@ class PaperExperimentEngine:
                 decision = strategy_evaluator(case, spec.strategy_parameters)
                 if decision.model_probability != case.calibrated.model_probability:
                     raise ValueError(
-                        "strategy evaluator changed calibrated probability for "
-                        f"case {case.case_id}"
+                        f"strategy evaluator changed calibrated probability for case {case.case_id}"
                     )
 
                 economic_status = EconomicEvaluationStatus.DISABLED
