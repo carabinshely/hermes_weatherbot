@@ -9,9 +9,9 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-import bot_v3_legacy as _legacy
 from weatherbot.domain import MarketId, OutcomeId, RiskScope
 from weatherbot.forecasting import CalibrationRuntimeError, load_calibrated_probability_runtime
+from weatherbot.paper.config import PaperResearchConfig, load_paper_research_config
 from weatherbot.paper.integration import (
     paper_runtime_status,
     recover_paper_runtime,
@@ -20,13 +20,20 @@ from weatherbot.paper.integration import (
 )
 from weatherbot.paper.service import PaperEntryStatus
 from weatherbot.producer.config import load_producer_policy
+from weatherbot.producer.market_source import fetch_token_order_book
 from weatherbot.producer.scanner import collect_calibrated_candidates
+from weatherbot.resolution import run_resolution_cycle
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
-def scan_once() -> tuple[int, list[str]]:
-    runtime = _legacy.PAPER_RUNTIME
+def _load_research_config() -> PaperResearchConfig:
+    return load_paper_research_config(REPOSITORY_ROOT)
+
+
+def scan_once(config: PaperResearchConfig | None = None) -> tuple[int, list[str]]:
+    research = config or _load_research_config()
+    runtime = research.runtime
     try:
         recover_paper_runtime(runtime=runtime)
     except Exception as exc:
@@ -61,9 +68,9 @@ def scan_once() -> tuple[int, list[str]]:
                 decision_book=candidate.decision_book,
                 condition_id=candidate.decision_book.condition_id,
                 token_id=candidate.decision_book.token_id,
-                freshness_policy=_legacy._quote_freshness_policy(),
-                cost_policy=_legacy._quote_cost_policy(),
-                fetch_book=_legacy._fetch_token_order_book,
+                freshness_policy=research.freshness_policy,
+                cost_policy=research.cost_policy,
+                fetch_book=fetch_token_order_book,
                 audit_metadata={
                     "city_name": candidate.city_name,
                     "horizon": candidate.horizon,
@@ -83,14 +90,15 @@ def scan_once() -> tuple[int, list[str]]:
     return simulated, errors
 
 
-def show_status() -> int:
-    runtime = _legacy.PAPER_RUNTIME
+def show_status(config: PaperResearchConfig | None = None) -> int:
+    research = config or _load_research_config()
+    runtime = research.runtime
     status = paper_runtime_status(
         runtime=runtime,
         observed_at=datetime.now(UTC),
-        freshness_policy=_legacy._quote_freshness_policy(),
-        cost_policy=_legacy._quote_cost_policy(),
-        fetch_book=_legacy._fetch_token_order_book,
+        freshness_policy=research.freshness_policy,
+        cost_policy=research.cost_policy,
+        fetch_book=fetch_token_order_book,
     )
     print("Hermes internal PAPER R&D")
     print(f"  ledger: {runtime.ledger_path}")
@@ -117,26 +125,31 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    try:
+        research = _load_research_config()
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: invalid PAPER research configuration: {exc}", file=sys.stderr)
+        return 2
+
     if args.command == "status":
-        return show_status()
+        return show_status(research)
     if args.command == "resolve":
-        _legacy.run_resolution_monitor_cycle(_legacy.PAPER_RUNTIME.ledger_path)
+        run_resolution_cycle(research.runtime.ledger_path)
         return 0
     if args.command == "reset":
         if not args.confirm_reset:
             print("ERROR: reset requires --confirm-reset", file=sys.stderr)
             return 2
-        archive = reset_paper_runtime(runtime=_legacy.PAPER_RUNTIME, reset_at=datetime.now(UTC))
+        archive = reset_paper_runtime(runtime=research.runtime, reset_at=datetime.now(UTC))
         print(f"archived prior PAPER ledger to {archive}")
         return 0
     if args.command == "scan":
-        _simulated, errors = scan_once()
+        _simulated, errors = scan_once(research)
         return 1 if errors else 0
 
-    policy = load_producer_policy(REPOSITORY_ROOT)
     while True:
-        scan_once()
-        time.sleep(policy.scan_interval_seconds)
+        scan_once(research)
+        time.sleep(research.scan_interval_seconds)
 
 
 if __name__ == "__main__":
