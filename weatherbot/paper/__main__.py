@@ -9,7 +9,11 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import cast
 
-from weatherbot.paper.experiment import PaperExperimentEngine, PaperExperimentSpec, StrategyEvaluator
+from weatherbot.paper.experiment import (
+    PaperExperimentEngine,
+    PaperExperimentSpec,
+    StrategyEvaluator,
+)
 from weatherbot.paper.io import write_experiment_artifacts
 
 
@@ -19,7 +23,10 @@ def _parser() -> argparse.ArgumentParser:
         description="Run internal deterministic PAPER strategy experiments.",
     )
     subcommands = parser.add_subparsers(dest="command", required=True)
-    evaluate = subcommands.add_parser("evaluate", help="evaluate one frozen experiment manifest")
+    evaluate = subcommands.add_parser(
+        "evaluate",
+        help="evaluate one frozen experiment manifest",
+    )
     evaluate.add_argument("--manifest", required=True, type=Path)
     evaluate.add_argument("--output", required=True, type=Path)
     return parser
@@ -32,7 +39,9 @@ def _load_manifest(path: Path) -> tuple[str, Mapping[str, object]]:
     raw = cast(dict[str, object], decoded)
     unknown = set(raw) - {"factory", "arguments"}
     if unknown:
-        raise ValueError(f"PAPER experiment manifest has unsupported fields: {sorted(unknown)}")
+        raise ValueError(
+            f"PAPER experiment manifest has unsupported fields: {sorted(unknown)}"
+        )
     factory = raw.get("factory")
     if not isinstance(factory, str) or not factory.strip() or ":" not in factory:
         raise ValueError("PAPER manifest factory must be 'module:function'")
@@ -51,10 +60,15 @@ def _factory(path: str) -> Callable[..., object]:
     return cast(Callable[..., object], function)
 
 
-def _build(factory_path: str, arguments: Mapping[str, object]) -> tuple[PaperExperimentSpec, StrategyEvaluator]:
+def _build(
+    factory_path: str,
+    arguments: Mapping[str, object],
+) -> tuple[PaperExperimentSpec, StrategyEvaluator]:
     built = _factory(factory_path)(**dict(arguments))
     if not isinstance(built, tuple) or len(built) != 2:
-        raise ValueError("PAPER experiment factory must return (PaperExperimentSpec, StrategyEvaluator)")
+        raise ValueError(
+            "PAPER experiment factory must return (PaperExperimentSpec, StrategyEvaluator)"
+        )
     spec, evaluator = built
     if not isinstance(spec, PaperExperimentSpec):
         raise ValueError("PAPER experiment factory returned an invalid spec")
