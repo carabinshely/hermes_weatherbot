@@ -9,7 +9,10 @@ import time
 from datetime import UTC, datetime
 from pathlib import Path
 
-from weatherbot.forecasting import CalibrationRuntimeError, load_calibrated_probability_runtime
+from weatherbot.forecasting import (
+    CalibrationRuntimeError,
+    load_calibrated_probability_runtime,
+)
 from weatherbot.producer.config import ProducerPolicy, load_producer_policy
 from weatherbot.producer.scanner import collect_calibrated_candidates
 from weatherbot.producer.service import evaluate_candidate
@@ -50,7 +53,9 @@ def scan_once(policy: ProducerPolicy) -> tuple[int, list[str]]:
         try:
             append_signal(policy.signal_log_path, signal)
         except (OSError, TypeError, ValueError) as exc:
-            errors.append(f"{candidate.city_name} {candidate.horizon}: signal persistence failed: {exc}")
+            errors.append(
+                f"{candidate.city_name} {candidate.horizon}: signal persistence failed: {exc}"
+            )
             continue
         emitted += 1
         print(json.dumps(signal.to_mapping(), sort_keys=True, ensure_ascii=False))
@@ -81,7 +86,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Hermes non-executing calibrated weather-market signal producer"
     )
-    parser.add_argument("command", nargs="?", default="scan", choices=("scan", "run", "status"))
+    parser.add_argument(
+        "command",
+        nargs="?",
+        default="scan",
+        choices=("scan", "run", "status"),
+    )
     return parser
 
 
