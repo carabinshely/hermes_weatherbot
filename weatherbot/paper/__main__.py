@@ -55,19 +55,21 @@ def _factory(path: str) -> Callable[..., object]:
     function = getattr(module, function_name, None)
     if not callable(function):
         raise ValueError(f"PAPER experiment factory is not callable: {path}")
-    return cast(Callable[..., object], function)
+    return function
 
 
 def _build(
     factory_path: str,
     arguments: Mapping[str, object],
 ) -> tuple[PaperExperimentSpec, StrategyEvaluator]:
-    built = _factory(factory_path)(**dict(arguments))
+    built: object = _factory(factory_path)(**dict(arguments))
     if not isinstance(built, tuple) or len(built) != 2:
         raise ValueError(
             "PAPER experiment factory must return (PaperExperimentSpec, StrategyEvaluator)"
         )
-    spec, evaluator = built
+    pair = cast(tuple[object, object], built)
+    spec = pair[0]
+    evaluator = pair[1]
     if not isinstance(spec, PaperExperimentSpec):
         raise ValueError("PAPER experiment factory returned an invalid spec")
     if not callable(evaluator):
