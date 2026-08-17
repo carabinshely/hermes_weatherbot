@@ -1,0 +1,52 @@
+name: Format issue 59
+
+on:
+  push:
+    branches:
+      - agent/issue-59-paper-rnd
+    paths:
+      - .github/workflows/issue59-format.yml
+      - weatherbot/paper/experiment.py
+      - weatherbot/paper/__main__.py
+      - tests/paper/test_experiment.py
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-59-paper-rnd
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --locked --all-groups
+      - name: Format issue 59 files
+        run: |
+          uv run ruff format \
+            weatherbot/paper/experiment.py \
+            weatherbot/paper/__main__.py \
+            tests/paper/test_experiment.py
+      - name: Commit formatter output
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- \
+            weatherbot/paper/experiment.py \
+            weatherbot/paper/__main__.py \
+            tests/paper/test_experiment.py; then
+            echo "No formatter changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            weatherbot/paper/experiment.py \
+            weatherbot/paper/__main__.py \
+            tests/paper/test_experiment.py
+          git commit -m "Format issue 59 experiment files"
+          git push origin HEAD:agent/issue-59-paper-rnd
