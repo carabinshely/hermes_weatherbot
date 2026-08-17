@@ -66,14 +66,49 @@ def _package_parents(module: str) -> tuple[str, ...]:
     return tuple(".".join(parts[:index]) for index in range(1, len(parts)))
 
 
-def _imports(path: Path) -> set[str]:
+def _current_package(module: str, path: Path) -> tuple[str, ...]:
+    parts = tuple(module.split("."))
+    return parts if path.name == "__init__.py" else parts[:-1]
+
+
+def _resolve_from_import(module: str, path: Path, node: ast.ImportFrom) -> set[str]:
+    if node.level == 0:
+        if node.module is None:
+            return set()
+        base = node.module
+    else:
+        package = _current_package(module, path)
+        parents_up = node.level - 1
+        if parents_up > len(package):
+            return set()
+        anchor = package[: len(package) - parents_up]
+        suffix = tuple(node.module.split(".")) if node.module else ()
+        parts = anchor + suffix
+        if not parts:
+            return set()
+        base = ".".join(parts)
+
+    result = {base}
+    # ``from package import submodule`` may load the submodule even when package
+    # ``__init__`` does not import it. Include repository-backed alias candidates so
+    # the static graph mirrors Python's import behavior closely enough for this guard.
+    for alias in node.names:
+        if alias.name == "*":
+            continue
+        candidate = f"{base}.{alias.name}"
+        if _module_path(candidate) is not None:
+            result.add(candidate)
+    return result
+
+
+def _imports(module: str, path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     result: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             result.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            result.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            result.update(_resolve_from_import(module, path, node))
     return result
 
 
@@ -103,7 +138,7 @@ def _check_boundary(
         for parent in _package_parents(module):
             if parent not in visited:
                 pending.append(parent)
-        for imported in _imports(path):
+        for imported in _imports(module, path):
             if _is_forbidden(imported, forbidden_prefixes):
                 offenders.append(f"{label}: {module} -> {imported}")
             elif _module_path(imported) is not None and imported not in visited:
