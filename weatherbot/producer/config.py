@@ -30,6 +30,7 @@ class ProducerPolicy:
     maximum_forecast_age_seconds: int
     maximum_event_age_seconds: int
     maximum_order_book_age_seconds: int
+    future_tolerance_seconds: int
     platform_fee_reserve_rate: Decimal
     transaction_cost_reserve: Decimal
     market_reference_safety_margin_rate: Decimal
@@ -39,8 +40,12 @@ class ProducerPolicy:
     def __post_init__(self) -> None:
         if self.schema_version != 1:
             raise ValueError("unsupported producer policy schema_version")
-        if not self.strategy_id.strip() or not self.strategy_version.strip():
+        strategy_id = self.strategy_id.strip()
+        strategy_version = self.strategy_version.strip()
+        if not strategy_id or not strategy_version:
             raise ValueError("strategy identity must not be blank")
+        object.__setattr__(self, "strategy_id", strategy_id)
+        object.__setattr__(self, "strategy_version", strategy_version)
         if self.scan_interval_seconds <= 0:
             raise ValueError("scan_interval_seconds must be positive")
         if self.min_volume < 0 or self.min_hours < 0 or self.max_hours <= self.min_hours:
@@ -51,6 +56,16 @@ class ProducerPolicy:
             raise ValueError("maximum_forecast_age_seconds must be positive")
         if self.maximum_event_age_seconds <= 0 or self.maximum_order_book_age_seconds <= 0:
             raise ValueError("market freshness limits must be positive")
+        if self.future_tolerance_seconds < 0:
+            raise ValueError("future_tolerance_seconds must not be negative")
+        if self.depth_policy is not DepthPolicy.REJECT:
+            raise ValueError(
+                "public producer schema v1 requires reject depth policy to preserve the fixed reference notional"
+            )
+        # Eagerly validate all decision-affecting policy values at load/construction time,
+        # rather than failing later in the middle of a producer scan.
+        self.freshness_policy
+        self.cost_policy
 
     @property
     def freshness_policy(self) -> FreshnessPolicy:
@@ -61,6 +76,7 @@ class ProducerPolicy:
             # Public producer never supplies a balance. Keep this positive solely because
             # FreshnessPolicy is shared with execution-oriented historical code.
             maximum_balance_age=timedelta(seconds=1),
+            future_tolerance=timedelta(seconds=self.future_tolerance_seconds),
         )
 
     @property
@@ -92,6 +108,7 @@ class ProducerPolicy:
             "maximum_forecast_age_seconds": self.maximum_forecast_age_seconds,
             "maximum_event_age_seconds": self.maximum_event_age_seconds,
             "maximum_order_book_age_seconds": self.maximum_order_book_age_seconds,
+            "future_tolerance_seconds": self.future_tolerance_seconds,
             "platform_fee_reserve_rate": format(self.platform_fee_reserve_rate, "f"),
             "transaction_cost_reserve": format(self.transaction_cost_reserve, "f"),
             "market_reference_safety_margin_rate": format(
@@ -171,6 +188,7 @@ def load_producer_policy(
         maximum_forecast_age_seconds=_integer(data, "maximum_forecast_age_seconds"),
         maximum_event_age_seconds=_integer(data, "maximum_event_age_seconds"),
         maximum_order_book_age_seconds=_integer(data, "maximum_order_book_age_seconds"),
+        future_tolerance_seconds=_integer(data, "future_tolerance_seconds"),
         platform_fee_reserve_rate=_decimal(data, "platform_fee_reserve_rate"),
         transaction_cost_reserve=_decimal(data, "transaction_cost_reserve"),
         market_reference_safety_margin_rate=_decimal(data, "market_reference_safety_margin_rate"),
