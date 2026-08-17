@@ -24,7 +24,13 @@ from weatherbot.producer.service import evaluate_candidate
 from weatherbot.quoting import DepthPolicy
 
 
-def policy(*, strategy_version: str = "1", minimum_return: str = "0.10") -> ProducerPolicy:
+def policy(
+    *,
+    strategy_version: str = "1",
+    minimum_return: str = "0.10",
+    future_tolerance_seconds: int = 5,
+    depth_policy: DepthPolicy = DepthPolicy.REJECT,
+) -> ProducerPolicy:
     return ProducerPolicy(
         schema_version=1,
         strategy_id="bot-v3-weather",
@@ -41,10 +47,11 @@ def policy(*, strategy_version: str = "1", minimum_return: str = "0.10") -> Prod
         maximum_forecast_age_seconds=21600,
         maximum_event_age_seconds=120,
         maximum_order_book_age_seconds=30,
+        future_tolerance_seconds=future_tolerance_seconds,
         platform_fee_reserve_rate=Decimal("0.01"),
         transaction_cost_reserve=Decimal("0.01"),
         market_reference_safety_margin_rate=Decimal("0.02"),
-        depth_policy=DepthPolicy.REJECT,
+        depth_policy=depth_policy,
         signal_log_path=Path("state/test-signals.jsonl"),
     )
 
@@ -73,11 +80,17 @@ def candidate() -> CalibratedMarketCandidate:
     )
 
 
-def test_policy_fingerprint_covers_strategy_and_decision_thresholds() -> None:
+def test_policy_fingerprint_covers_all_decision_thresholds() -> None:
     baseline = policy()
     assert baseline.fingerprint == policy().fingerprint
     assert baseline.fingerprint != policy(strategy_version="2").fingerprint
     assert baseline.fingerprint != policy(minimum_return="0.11").fingerprint
+    assert baseline.fingerprint != policy(future_tolerance_seconds=6).fingerprint
+
+
+def test_public_policy_rejects_depth_reduction() -> None:
+    with pytest.raises(ValueError, match="reject depth policy"):
+        policy(depth_policy=DepthPolicy.REDUCE)
 
 
 def test_candidate_rejects_event_identity_mixup() -> None:
@@ -149,10 +162,27 @@ def test_signal_contract_schema_and_calibration_provenance_are_fixed() -> None:
         replace(signal, contract="other.signal")
     with pytest.raises(ValueError, match="schema_version"):
         replace(signal, schema_version="2")
+    with pytest.raises(ValueError, match="accepted producer signals"):
+        replace(signal, classification="paper")
     with pytest.raises(ValueError, match="calibration_fingerprint"):
         replace(signal, model_probability=Decimal("0.70"))
     with pytest.raises(ValueError, match="calibration_fingerprint"):
         replace(signal, climate_region="different-region")
+
+
+def test_signal_id_binds_condition_and_market_reference_economics() -> None:
+    signal, evaluation = evaluate_candidate(candidate(), policy(), evaluated_at=NOW)
+    assert evaluation.accepted
+    assert signal is not None
+
+    with pytest.raises(ValueError, match="signal_id"):
+        replace(signal, condition_id="different-condition")
+    changed_reference = replace(
+        signal.market_reference,
+        expected_return=signal.market_reference.expected_return + Decimal("0.01"),
+    )
+    with pytest.raises(ValueError, match="signal_id"):
+        replace(signal, market_reference=changed_reference)
 
 
 def test_strategy_version_changes_logical_signal_identity() -> None:
