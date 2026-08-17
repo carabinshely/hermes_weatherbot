@@ -1,6 +1,6 @@
 """Internal PAPER Research and Development CLI entry point."""
 
-from .cli import main
+from weatherbot.paper.cli import main
 
 
 if __name__ == "__main__":
