@@ -12,12 +12,22 @@ def test_public_bot_does_not_mix_resolution_ledger_commands_into_signal_cli() ->
     assert 'choices=("scan", "run", "status")' in cli_source
 
 
-def test_internal_paper_cli_retains_safe_resolution_delegate() -> None:
-    source = Path("weatherbot/paper/cli.py").read_text(encoding="utf-8")
-    assert '"resolve"' in source
-    assert "run_resolution_cycle" in source
-    assert "run_resolution_monitor_cycle" not in source
-    assert "bot_v3_legacy" not in source
+def test_internal_paper_uses_frozen_settlement_not_resolution_monitor() -> None:
+    cli_source = Path("weatherbot/paper/cli.py").read_text(encoding="utf-8")
+    experiment_source = Path("weatherbot/paper/experiment.py").read_text(encoding="utf-8")
+
+    assert '"evaluate"' in cli_source
+    assert '"resolve"' not in cli_source
+    assert "run_resolution_cycle" not in cli_source
+    assert "run_resolution_monitor_cycle" not in cli_source
+    assert "bot_v3_legacy" not in cli_source
+
+    assert "PaperSettlementEvidence" in experiment_source
+    assert "MarketResolved(" in experiment_source
+    assert "PositionSettled(" in experiment_source
+    assert "run_resolution_cycle" not in experiment_source
+    assert "run_resolution_monitor_cycle" not in experiment_source
+    assert "Wunderground" not in experiment_source
 
 
 def test_quarantined_resolution_cycle_remains_read_only() -> None:
