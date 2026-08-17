@@ -4,6 +4,8 @@ from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 from tests.paper.helpers import calibrated_probability
 from tests.quoting.helpers import CONDITION, NOW, TOKEN, event_snapshot, order_book, weather_snapshot
 from weatherbot.markets import TemperatureBucket, TemperatureUnit
@@ -40,13 +42,14 @@ def policy(*, strategy_version: str = "1", minimum_return: str = "0.10") -> Prod
 
 def candidate() -> CalibratedMarketCandidate:
     weather = weather_snapshot()
+    event = event_snapshot()
     return CalibratedMarketCandidate(
         city_slug="chicago",
         city_name="Chicago",
         horizon="D+0",
         market_date=weather.forecast.market_date,
         market_timezone=weather.forecast.market_timezone,
-        event_id="paper-weather-event",
+        event_id=event.event_id,
         market_id="paper-weather-market",
         condition_id=str(CONDITION),
         outcome="yes",
@@ -55,7 +58,7 @@ def candidate() -> CalibratedMarketCandidate:
         bucket=TemperatureBucket.bounded(85, 86, TemperatureUnit.FAHRENHEIT),
         volume=Decimal("1000"),
         weather=weather,
-        event=event_snapshot(),
+        event=event,
         decision_book=order_book(first_size="100", second_size="100"),
         calibrated=calibrated_probability(),
     )
@@ -69,7 +72,7 @@ def test_policy_fingerprint_covers_strategy_and_decision_thresholds() -> None:
 
 
 def test_real_signal_identity_is_stable_across_processing_time_and_environment(
-    monkeypatch,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     item = candidate()
     selected_policy = policy()
@@ -110,7 +113,9 @@ def test_real_signal_payload_contains_no_execution_or_paper_state() -> None:
         "bet_size",
     }
     assert forbidden.isdisjoint(payload)
-    assert forbidden.isdisjoint(payload["market_reference"])
+    market_reference = payload["market_reference"]
+    assert isinstance(market_reference, dict)
+    assert forbidden.isdisjoint(market_reference)
 
 
 def test_strategy_version_changes_logical_signal_identity() -> None:
