@@ -18,7 +18,7 @@ from weatherbot.paper.integration import (
     reset_paper_runtime,
     submit_scanner_candidate,
 )
-from weatherbot.paper.model import PaperEntryStatus
+from weatherbot.paper.service import PaperEntryStatus
 from weatherbot.producer.config import load_producer_policy
 from weatherbot.producer.scanner import collect_calibrated_candidates
 
@@ -106,7 +106,10 @@ def show_status() -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Internal deterministic PAPER strategy R&D")
     parser.add_argument(
-        "command", nargs="?", default="scan", choices=("scan", "run", "status", "resolve", "reset")
+        "command",
+        nargs="?",
+        default="scan",
+        choices=("scan", "run", "status", "resolve", "reset"),
     )
     parser.add_argument("--confirm-reset", action="store_true")
     return parser
