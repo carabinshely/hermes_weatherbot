@@ -59,18 +59,10 @@ def _economic_identity(config: PaperEconomicConfig) -> Mapping[str, object]:
         "enabled": config.enabled,
         "starting_cash": _money_identity(config.starting_cash),
         "freshness_policy": {
-            "maximum_forecast_age_seconds": _duration_seconds(
-                freshness.maximum_forecast_age
-            ),
-            "maximum_event_age_seconds": _duration_seconds(
-                freshness.maximum_event_age
-            ),
-            "maximum_order_book_age_seconds": _duration_seconds(
-                freshness.maximum_order_book_age
-            ),
-            "maximum_balance_age_seconds": _duration_seconds(
-                freshness.maximum_balance_age
-            ),
+            "maximum_forecast_age_seconds": _duration_seconds(freshness.maximum_forecast_age),
+            "maximum_event_age_seconds": _duration_seconds(freshness.maximum_event_age),
+            "maximum_order_book_age_seconds": _duration_seconds(freshness.maximum_order_book_age),
+            "maximum_balance_age_seconds": _duration_seconds(freshness.maximum_balance_age),
             "future_tolerance_seconds": _duration_seconds(freshness.future_tolerance),
         },
         "cost_policy": {
@@ -94,18 +86,14 @@ def _economic_identity(config: PaperEconomicConfig) -> Mapping[str, object]:
         "portfolio_policy": {
             "maximum_total_exposure": _money_identity(portfolio.maximum_total_exposure),
             "maximum_event_exposure": _money_identity(portfolio.maximum_event_exposure),
-            "maximum_city_date_exposure": _money_identity(
-                portfolio.maximum_city_date_exposure
-            ),
+            "maximum_city_date_exposure": _money_identity(portfolio.maximum_city_date_exposure),
             "maximum_correlation_group_exposure": _money_identity(
                 portfolio.maximum_correlation_group_exposure
             ),
             "maximum_open_positions": portfolio.maximum_open_positions,
             "maximum_daily_loss": _money_identity(portfolio.maximum_daily_loss),
             "maximum_drawdown": _money_identity(portfolio.maximum_drawdown),
-            "maximum_valuation_age_seconds": _duration_seconds(
-                portfolio.maximum_valuation_age
-            ),
+            "maximum_valuation_age_seconds": _duration_seconds(portfolio.maximum_valuation_age),
             "future_tolerance_seconds": _duration_seconds(portfolio.future_tolerance),
             "loss_timezone": portfolio.loss_timezone,
         },
