@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -79,6 +80,11 @@ def test_policy_fingerprint_covers_strategy_and_decision_thresholds() -> None:
     assert baseline.fingerprint != policy(minimum_return="0.11").fingerprint
 
 
+def test_candidate_rejects_event_identity_mixup() -> None:
+    with pytest.raises(ValueError, match="event_id"):
+        replace(candidate(), event_id="different-event")
+
+
 def test_real_signal_identity_is_stable_across_processing_time_and_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -125,6 +131,17 @@ def test_real_signal_payload_contains_no_execution_or_paper_state() -> None:
     assert isinstance(market_reference_value, dict)
     market_reference = cast(dict[str, object], market_reference_value)
     assert forbidden.isdisjoint(market_reference)
+
+
+def test_signal_contract_and_schema_are_fixed() -> None:
+    signal, evaluation = evaluate_candidate(candidate(), policy(), evaluated_at=NOW)
+    assert evaluation.accepted
+    assert signal is not None
+
+    with pytest.raises(ValueError, match="contract"):
+        replace(signal, contract="other.signal")
+    with pytest.raises(ValueError, match="schema_version"):
+        replace(signal, schema_version="2")
 
 
 def test_strategy_version_changes_logical_signal_identity() -> None:
