@@ -1,0 +1,76 @@
+name: Add PIP integrations to Project
+
+on:
+  issues:
+    types: [opened, reopened, transferred, labeled]
+  pull_request_target:
+    types: [opened, reopened, labeled]
+
+permissions: {}
+
+jobs:
+  add-to-pip-project:
+    if: >-
+      (github.event_name == 'issues' &&
+      contains(github.event.issue.labels.*.name, 'integration:pip')) ||
+      (github.event_name == 'pull_request_target' &&
+      contains(github.event.pull_request.labels.*.name, 'integration:pip'))
+    runs-on: [self-hosted, linux, x64, pip-project-sync-hermes]
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ secrets.PIP_PROJECT_TOKEN }}
+      PIP_OWNER: carabinshely
+      PIP_PROJECT_NUMBER: "7"
+      CONTENT_NODE_ID: ${{ github.event.issue.node_id || github.event.pull_request.node_id }}
+
+    steps:
+      - name: Verify trusted runner tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(id -u)" -ne 0
+          test -x /usr/bin/gh
+
+      - name: Add item to Project 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${GH_TOKEN:-}"
+          test -n "${CONTENT_NODE_ID:-}"
+
+          project_id="$(
+            /usr/bin/gh api graphql \
+              -f query='
+                query($owner: String!, $number: Int!) {
+                  user(login: $owner) {
+                    projectV2(number: $number) {
+                      id
+                    }
+                  }
+                }
+              ' \
+              -f owner="$PIP_OWNER" \
+              -F number="$PIP_PROJECT_NUMBER" \
+              --jq '.data.user.projectV2.id'
+          )"
+          test -n "$project_id"
+
+          item_id="$(
+            /usr/bin/gh api graphql \
+              -f query='
+                mutation($project: ID!, $content: ID!) {
+                  addProjectV2ItemById(
+                    input: {projectId: $project, contentId: $content}
+                  ) {
+                    item {
+                      id
+                    }
+                  }
+                }
+              ' \
+              -f project="$project_id" \
+              -f content="$CONTENT_NODE_ID" \
+              --jq '.data.addProjectV2ItemById.item.id'
+          )"
+          test -n "$item_id"
+          echo "Project item ready: $item_id"
