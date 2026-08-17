@@ -30,7 +30,9 @@ from weatherbot.markets import (
     TemperatureMarketError,
     TemperatureUnit,
 )
-from weatherbot.markets.public_http import (
+from weatherbot.producer.catalog import LOCATIONS, MONTHS
+from weatherbot.producer.config import ProducerPolicy
+from weatherbot.producer.market_source import (
     ParsedTemperatureMarket,
     fetch_temperature_event,
     fetch_token_order_book,
@@ -38,8 +40,6 @@ from weatherbot.markets.public_http import (
     parse_api_datetime,
     parse_temperature_markets,
 )
-from weatherbot.producer.catalog import LOCATIONS, MONTHS
-from weatherbot.producer.config import ProducerPolicy
 from weatherbot.producer.model import CalibratedMarketCandidate
 from weatherbot.producer.sources import fetch_weather_snapshots
 from weatherbot.quoting import MarketEventSnapshot
