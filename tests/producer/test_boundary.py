@@ -85,6 +85,11 @@ def test_candidate_rejects_event_identity_mixup() -> None:
         replace(candidate(), event_id="different-event")
 
 
+def test_candidate_rejects_horizon_calibration_mixup() -> None:
+    with pytest.raises(ValueError, match="horizon"):
+        replace(candidate(), horizon="D+1")
+
+
 def test_real_signal_identity_is_stable_across_processing_time_and_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -127,13 +132,15 @@ def test_real_signal_payload_contains_no_execution_or_paper_state() -> None:
         "bet_size",
     }
     assert forbidden.isdisjoint(payload)
+    assert payload["climate_region"] == signal.climate_region
+    assert payload["lead_days"] == signal.lead_days
     market_reference_value = payload["market_reference"]
     assert isinstance(market_reference_value, dict)
     market_reference = cast(dict[str, object], market_reference_value)
     assert forbidden.isdisjoint(market_reference)
 
 
-def test_signal_contract_and_schema_are_fixed() -> None:
+def test_signal_contract_schema_and_calibration_provenance_are_fixed() -> None:
     signal, evaluation = evaluate_candidate(candidate(), policy(), evaluated_at=NOW)
     assert evaluation.accepted
     assert signal is not None
@@ -142,6 +149,10 @@ def test_signal_contract_and_schema_are_fixed() -> None:
         replace(signal, contract="other.signal")
     with pytest.raises(ValueError, match="schema_version"):
         replace(signal, schema_version="2")
+    with pytest.raises(ValueError, match="calibration_fingerprint"):
+        replace(signal, model_probability=Decimal("0.70"))
+    with pytest.raises(ValueError, match="calibration_fingerprint"):
+        replace(signal, climate_region="different-region")
 
 
 def test_strategy_version_changes_logical_signal_identity() -> None:
