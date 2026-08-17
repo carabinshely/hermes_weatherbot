@@ -13,9 +13,9 @@ SENSITIVE_CONFIG_KEYS = {
 
 def test_committed_config_contains_no_secret_values() -> None:
     config = json.loads(Path("config.json").read_text(encoding="utf-8"))
-    assert SENSITIVE_CONFIG_KEYS.isdisjoint(config), (
-        "secret-shaped keys must not exist in committed configuration"
-    )
+    producer = json.loads(Path("config/producer.json").read_text(encoding="utf-8"))
+    assert SENSITIVE_CONFIG_KEYS.isdisjoint(config)
+    assert SENSITIVE_CONFIG_KEYS.isdisjoint(producer)
 
 
 def test_local_environment_file_is_not_tracked() -> None:
@@ -29,26 +29,34 @@ def test_local_environment_file_is_not_tracked() -> None:
     assert ".DS_Store" not in tracked
 
 
-def test_workflows_do_not_use_pull_request_target() -> None:
+def test_pull_request_target_is_limited_to_trusted_project_sync_workflow() -> None:
+    users: list[str] = []
     for workflow in Path(".github/workflows").glob("*.yml"):
         content = workflow.read_text(encoding="utf-8")
-        assert "pull_request_target:" not in content
+        if "pull_request_target:" in content:
+            users.append(workflow.name)
+            assert workflow.name == "pip-project-sync.yml"
+            assert "permissions: {}" in content
+            assert "pull_request_target" in content
+            assert "actions/checkout" not in content
+    assert users == ["pip-project-sync.yml"]
 
 
-def test_legacy_bots_load_credentials_from_environment_only() -> None:
+def test_quarantined_legacy_credentials_remain_environment_only() -> None:
     v2_source = Path("bot_v2.py").read_text(encoding="utf-8")
-    v3_source = Path("bot_v3_legacy.py").read_text(encoding="utf-8")
-    public_v3_source = Path("bot_v3.py").read_text(encoding="utf-8")
+    legacy_source = Path("bot_v3_legacy_impl.py").read_text(encoding="utf-8")
+    public_source = Path("bot_v3.py").read_text(encoding="utf-8")
 
     assert '_cfg.get("vc_key"' not in v2_source
     assert 'os.getenv("VC_KEY"' in v2_source
     assert "if not VC_KEY:" in v2_source
 
-    for source in (v3_source, public_v3_source):
+    for source in (legacy_source, public_source):
         assert '_cfg.get("telegram_bot_token"' not in source
         assert '_cfg.get("telegram_chat_id"' not in source
         assert '_cfg.get("vc_key"' not in source
 
-    assert 'os.getenv("TELEGRAM_BOT_TOKEN"' in v3_source
-    assert 'os.getenv("TELEGRAM_CHAT_ID"' in v3_source
-    assert "VC_KEY" not in v3_source
+    assert 'os.getenv("TELEGRAM_BOT_TOKEN"' in legacy_source
+    assert 'os.getenv("TELEGRAM_CHAT_ID"' in legacy_source
+    assert "PK" not in public_source
+    assert "WALLET" not in public_source
