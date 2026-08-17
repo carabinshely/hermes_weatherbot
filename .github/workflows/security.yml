@@ -59,8 +59,6 @@ jobs:
           set -e
 
           if [[ -s /tmp/gitleaks.json ]]; then
-            jq -r '.[] | "Gitleaks file=\(.File) line=\(.StartLine) rule=\(.RuleID)"' \
-              /tmp/gitleaks.json
             jq -r '.[] | "::error file=\(.File),line=\(.StartLine)::Gitleaks rule \(.RuleID)"' \
               /tmp/gitleaks.json
           fi
