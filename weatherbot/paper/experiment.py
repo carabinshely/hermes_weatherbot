@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import tempfile
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
@@ -147,6 +147,7 @@ class PaperEvidenceCase:
         default_factory=_empty_valuation_books
     )
     settlement: PaperSettlementEvidence | None = None
+    correlation_groups: tuple[str, ...] = ()
     metadata: Mapping[str, object] = field(default_factory=_empty_metadata)
 
     def __post_init__(self) -> None:
@@ -154,6 +155,12 @@ class PaperEvidenceCase:
             raise ValueError("paper evidence case_id must not be blank")
         if self.decision_at.tzinfo is None or self.decision_at.utcoffset() is None:
             raise ValueError("paper evidence decision_at must be timezone-aware")
+        if any(not group.strip() for group in self.correlation_groups):
+            raise ValueError("paper correlation groups must not be blank")
+        normalized_groups = tuple(
+            sorted({group.strip().casefold() for group in self.correlation_groups})
+        )
+        object.__setattr__(self, "correlation_groups", normalized_groups)
         if self.execution_book is not None:
             if self.execution_book.condition_id != self.candidate.decision_book.condition_id:
                 raise ValueError("execution evidence must use the decision-book condition")
@@ -170,6 +177,7 @@ class PaperEvidenceCase:
             event_id=self.candidate.event_id,
             city_key=self.candidate.city_slug,
             market_date=self.candidate.market_date,
+            correlation_groups=self.correlation_groups,
         )
 
     @property
@@ -182,6 +190,7 @@ class PaperEvidenceCase:
                 "execution_book": self.execution_book,
                 "valuation_books": self.valuation_books,
                 "settlement": self.settlement,
+                "correlation_groups": self.correlation_groups,
                 "metadata": self.metadata,
             }
         )
@@ -213,8 +222,8 @@ class PaperExperimentSpec:
     engine_version: str = _ENGINE_VERSION
 
     def __post_init__(self) -> None:
-        if not self.engine_version.strip():
-            raise ValueError("paper engine_version must not be blank")
+        if self.engine_version != _ENGINE_VERSION:
+            raise ValueError(f"paper engine_version must match running engine {_ENGINE_VERSION!r}")
         if not self.evidence_cases:
             raise ValueError("paper experiment requires at least one evidence case")
         case_ids = [case.case_id for case in self.evidence_cases]
@@ -420,6 +429,52 @@ def _settle_hypothetical_position(
     )
 
 
+def _pending_settlement_sort_key(
+    item: tuple[int, PaperEvidenceCase],
+) -> tuple[datetime, str]:
+    settlement = item[1].settlement
+    assert settlement is not None
+    return settlement.resolved_at, item[1].case_id
+
+
+def _settle_due_positions(
+    *,
+    store: PortfolioRiskEventStore,
+    spec: PaperExperimentSpec,
+    pending: list[tuple[int, PaperEvidenceCase]],
+    results: list[PaperCaseResult],
+    before: datetime | None,
+) -> None:
+    """Apply only settlements known strictly before the next decision time.
+
+    A settlement at or after a decision timestamp must never change the bankroll, loss,
+    drawdown, or exposure state used by that decision. Remaining settlements are applied
+    after all decisions have been evaluated.
+    """
+    due: list[tuple[int, PaperEvidenceCase]] = []
+    remaining: list[tuple[int, PaperEvidenceCase]] = []
+    for index, case in pending:
+        settlement = case.settlement
+        assert settlement is not None
+        if before is None or settlement.resolved_at < before:
+            due.append((index, case))
+        else:
+            remaining.append((index, case))
+
+    for index, case in sorted(due, key=_pending_settlement_sort_key):
+        settlement_result, settlement_reason = _settle_hypothetical_position(
+            store=store,
+            spec=spec,
+            case=case,
+        )
+        results[index] = replace(
+            results[index],
+            settlement_result=settlement_result,
+            settlement_reason=settlement_reason,
+        )
+    pending[:] = remaining
+
+
 class PaperExperimentEngine:
     """Replay public strategy decisions, then optionally simulate isolated economics."""
 
@@ -441,6 +496,7 @@ class PaperExperimentEngine:
         service: PaperTradingService | None = None
         tempdir: tempfile.TemporaryDirectory[str] | None = None
         store: PortfolioRiskEventStore | None = None
+        pending_settlements: list[tuple[int, PaperEvidenceCase]] = []
 
         if economics is not None and economics.enabled:
             opened_at = spec.evidence_cases[0].decision_at.astimezone(UTC)
@@ -459,6 +515,15 @@ class PaperExperimentEngine:
                 public_results,
                 strict=True,
             ):
+                if store is not None:
+                    _settle_due_positions(
+                        store=store,
+                        spec=spec,
+                        pending=pending_settlements,
+                        results=results,
+                        before=case.decision_at,
+                    )
+
                 economic_status = EconomicEvaluationStatus.DISABLED
                 economic_result: PaperEntryResult | None = None
                 economic_reason: str | None = None
@@ -488,12 +553,6 @@ class PaperExperimentEngine:
                             owner_id=f"experiment:{experiment_id}",
                         )
                         economic_status = EconomicEvaluationStatus.EVALUATED
-                        assert store is not None
-                        settlement_result, settlement_reason = _settle_hypothetical_position(
-                            store=store,
-                            spec=spec,
-                            case=case,
-                        )
 
                 if (case.settlement is not None and economics is None) or (
                     case.settlement is not None and economics is not None and not economics.enabled
@@ -519,6 +578,20 @@ class PaperExperimentEngine:
                         settlement_result=settlement_result,
                         settlement_reason=settlement_reason,
                     )
+                )
+                if (
+                    case.settlement is not None
+                    and economic_status is EconomicEvaluationStatus.EVALUATED
+                ):
+                    pending_settlements.append((len(results) - 1, case))
+
+            if store is not None:
+                _settle_due_positions(
+                    store=store,
+                    spec=spec,
+                    pending=pending_settlements,
+                    results=results,
+                    before=None,
                 )
         finally:
             if store is not None:

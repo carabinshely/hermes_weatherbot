@@ -14,7 +14,7 @@ from tests.producer.test_boundary import candidate, policy
 from tests.quoting.helpers import NOW, cost_policy, freshness_policy
 from tests.risk.helpers import policy as sizing_policy
 from tests.risk.portfolio_helpers import policy as portfolio_policy
-from weatherbot.domain import Money
+from weatherbot.domain import Money, PositionStatus
 from weatherbot.paper.experiment import (
     EconomicEvaluationStatus,
     PaperEconomicConfig,
@@ -282,6 +282,85 @@ def test_artifacts_label_public_decision_and_economics_boundaries(tmp_path: Path
     public_mapping = cast(dict[str, object], case_mapping["public_producer"])
     assert public_mapping["would_emit"] is True
     assert summary_payload(result)["automatic_promotion"] is False
+
+
+def test_future_settlement_cannot_leak_into_an_earlier_decision() -> None:
+    first = replace(
+        _case(),
+        settlement=PaperSettlementEvidence(
+            resolved_at=NOW + timedelta(seconds=20),
+            outcome_payout=Decimal("1"),
+        ),
+    )
+    second = replace(
+        _case(settlement=False),
+        case_id="later-decision",
+        decision_at=NOW + timedelta(seconds=10),
+        candidate=replace(candidate(), market_id="paper-weather-market-2"),
+        valuation_books={
+            first.scope.position_key: paper_book(
+                observed_at=NOW + timedelta(seconds=10),
+                book_hash="first-position-valuation",
+            )
+        },
+    )
+    spec = PaperExperimentSpec(
+        policy=replace(policy(), strategy_version="candidate-v1"),
+        evidence_cases=(first, second),
+        economics=_economics("100"),
+    )
+
+    result = PaperExperimentEngine().evaluate(spec)
+    later_entry = result.cases[1].economic_result
+
+    assert later_entry is not None
+    assert later_entry.state.positions[first.scope.position_key].status is PositionStatus.OPEN
+    assert result.cases[0].settlement_result is not None
+
+
+def test_due_settlement_is_applied_before_a_later_decision() -> None:
+    first = replace(
+        _case(),
+        settlement=PaperSettlementEvidence(
+            resolved_at=NOW + timedelta(seconds=5),
+            outcome_payout=Decimal("1"),
+        ),
+    )
+    second = replace(
+        _case(settlement=False),
+        case_id="post-resolution-decision",
+        decision_at=NOW + timedelta(seconds=10),
+        candidate=replace(candidate(), market_id="paper-weather-market-2"),
+    )
+    spec = PaperExperimentSpec(
+        policy=replace(policy(), strategy_version="candidate-v1"),
+        evidence_cases=(first, second),
+        economics=_economics("100"),
+    )
+
+    result = PaperExperimentEngine().evaluate(spec)
+    later_entry = result.cases[1].economic_result
+
+    assert later_entry is not None
+    assert later_entry.state.positions[first.scope.position_key].status is PositionStatus.SETTLED
+    assert result.cases[0].settlement_result is not None
+
+
+def test_engine_version_cannot_be_spoofed() -> None:
+    with pytest.raises(ValueError, match="must match running engine"):
+        replace(_spec(settlement=False), engine_version="paper-experiment-v1")
+
+
+def test_correlation_groups_are_normalized_and_part_of_experiment_identity() -> None:
+    baseline = _spec(settlement=False)
+    grouped_case = replace(
+        baseline.evidence_cases[0],
+        correlation_groups=("Weather-System:Midwest",),
+    )
+    grouped = replace(baseline, evidence_cases=(grouped_case,))
+
+    assert grouped_case.scope.correlation_groups == ("weather-system:midwest",)
+    assert grouped.experiment_id != baseline.experiment_id
 
 
 def test_invalid_settlement_and_experiment_order_fail_closed() -> None:

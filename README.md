@@ -165,7 +165,8 @@ For every case, PAPER first calls the exact public
 `weatherbot.producer.service.evaluate_candidate()` function. **All public producer
 decisions for the experiment are computed before any simulated ledger is allocated.**
 Only afterward may PAPER evaluate hypothetical sizing/risk/fills and settlement in an
-isolated temporary ledger. Changing PAPER bankroll, positions, fills, or prior PAPER
+isolated temporary ledger. Settlements are applied in event-time order and cannot affect
+an earlier decision. Changing PAPER bankroll, positions, fills, or prior PAPER
 outcomes therefore cannot change the real `HermesSignal` decision or payload.
 
 Experiment identity binds the producer-policy fingerprint, strategy version, frozen
