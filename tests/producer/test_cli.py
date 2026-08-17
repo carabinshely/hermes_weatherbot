@@ -32,7 +32,7 @@ def test_public_cli_rejects_old_mode_flag() -> None:
     assert "unrecognized arguments" in completed.stderr
 
 
-def test_internal_paper_cli_has_distinct_surface() -> None:
+def test_internal_paper_cli_has_distinct_experiment_only_surface() -> None:
     completed = subprocess.run(
         [sys.executable, "-m", "weatherbot.paper", "--help"],
         cwd=ROOT,
@@ -42,4 +42,7 @@ def test_internal_paper_cli_has_distinct_surface() -> None:
         timeout=30,
     )
     assert completed.returncode == 0
-    assert "Internal deterministic PAPER strategy R&D" in completed.stdout
+    assert "deterministic internal PAPER strategy experiments" in completed.stdout
+    assert "{evaluate}" in completed.stdout
+    for obsolete in ("scan", "run", "status", "resolve", "reset"):
+        assert obsolete not in completed.stdout
