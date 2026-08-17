@@ -124,7 +124,7 @@ def load_producer_policy(
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("producer policy must be a JSON object")
-    data = raw
+    data: dict[str, object] = raw
     signal_path = Path(str(data["signal_log_path"]))
     if not signal_path.is_absolute():
         signal_path = repository_root / signal_path
