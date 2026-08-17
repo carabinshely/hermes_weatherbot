@@ -36,7 +36,7 @@ def _invalid_factory() -> object:
 
 def _module_with_factory(name: str, factory: object) -> ModuleType:
     module = ModuleType(name)
-    setattr(module, "build", factory)
+    module.__dict__["build"] = factory
     return module
 
 
