@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 
 from tests.paper.helpers import calibrated_probability
-from tests.quoting.helpers import CONDITION, NOW, TOKEN, event_snapshot, order_book, weather_snapshot
+from tests.quoting.helpers import (
+    CONDITION,
+    NOW,
+    TOKEN,
+    event_snapshot,
+    order_book,
+    weather_snapshot,
+)
 from weatherbot.markets import TemperatureBucket, TemperatureUnit
 from weatherbot.producer.config import ProducerPolicy
 from weatherbot.producer.model import CalibratedMarketCandidate
