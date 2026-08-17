@@ -10,7 +10,7 @@ from __future__ import annotations
 import tempfile
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
@@ -34,6 +34,82 @@ def _empty_metadata() -> Mapping[str, object]:
 
 def _empty_valuation_books() -> Mapping[PositionKey, OrderBookSnapshot]:
     return cast(Mapping[PositionKey, OrderBookSnapshot], {})
+
+
+def _duration_seconds(value: timedelta) -> str:
+    seconds = Decimal(value.days * 86400 + value.seconds) + (
+        Decimal(value.microseconds) / Decimal(1_000_000)
+    )
+    return format(seconds, "f")
+
+
+def _money_identity(value: Money) -> Mapping[str, object]:
+    return {
+        "amount": format(value.amount, "f"),
+        "currency": value.currency,
+    }
+
+
+def _economic_identity(config: PaperEconomicConfig) -> Mapping[str, object]:
+    freshness = config.freshness_policy
+    costs = config.cost_policy
+    sizing = config.sizing_policy
+    portfolio = config.portfolio_policy
+    return {
+        "enabled": config.enabled,
+        "starting_cash": _money_identity(config.starting_cash),
+        "freshness_policy": {
+            "maximum_forecast_age_seconds": _duration_seconds(
+                freshness.maximum_forecast_age
+            ),
+            "maximum_event_age_seconds": _duration_seconds(
+                freshness.maximum_event_age
+            ),
+            "maximum_order_book_age_seconds": _duration_seconds(
+                freshness.maximum_order_book_age
+            ),
+            "maximum_balance_age_seconds": _duration_seconds(
+                freshness.maximum_balance_age
+            ),
+            "future_tolerance_seconds": _duration_seconds(freshness.future_tolerance),
+        },
+        "cost_policy": {
+            "platform_fee_rate": format(costs.platform_fee_rate, "f"),
+            "transaction_cost": format(costs.transaction_cost, "f"),
+            "safety_margin_rate": format(costs.safety_margin_rate, "f"),
+            "maximum_average_slippage": format(costs.maximum_average_slippage, "f"),
+            "maximum_worst_slippage": format(costs.maximum_worst_slippage, "f"),
+            "maximum_all_in_price": format(costs.maximum_all_in_price, "f"),
+            "minimum_expected_return": format(costs.minimum_expected_return, "f"),
+            "depth_policy": costs.depth_policy.value,
+        },
+        "sizing_policy": {
+            "fractional_kelly_multiplier": format(
+                sizing.fractional_kelly_multiplier,
+                "f",
+            ),
+            "maximum_cash_per_trade": _money_identity(sizing.maximum_cash_per_trade),
+            "maximum_iterations": sizing.maximum_iterations,
+        },
+        "portfolio_policy": {
+            "maximum_total_exposure": _money_identity(portfolio.maximum_total_exposure),
+            "maximum_event_exposure": _money_identity(portfolio.maximum_event_exposure),
+            "maximum_city_date_exposure": _money_identity(
+                portfolio.maximum_city_date_exposure
+            ),
+            "maximum_correlation_group_exposure": _money_identity(
+                portfolio.maximum_correlation_group_exposure
+            ),
+            "maximum_open_positions": portfolio.maximum_open_positions,
+            "maximum_daily_loss": _money_identity(portfolio.maximum_daily_loss),
+            "maximum_drawdown": _money_identity(portfolio.maximum_drawdown),
+            "maximum_valuation_age_seconds": _duration_seconds(
+                portfolio.maximum_valuation_age
+            ),
+            "future_tolerance_seconds": _duration_seconds(portfolio.future_tolerance),
+            "loss_timezone": portfolio.loss_timezone,
+        },
+    }
 
 
 class EconomicEvaluationStatus(StrEnum):
@@ -173,14 +249,7 @@ class PaperExperimentSpec:
     def experiment_id(self) -> str:
         economics_identity: object = None
         if self.economics is not None:
-            economics_identity = {
-                "enabled": self.economics.enabled,
-                "starting_cash": self.economics.starting_cash,
-                "freshness_policy": self.economics.freshness_policy,
-                "cost_policy": self.economics.cost_policy,
-                "sizing_policy": self.economics.sizing_policy,
-                "portfolio_policy": self.economics.portfolio_policy,
-            }
+            economics_identity = _economic_identity(self.economics)
         digest = fingerprint(
             {
                 "engine_version": self.engine_version,
