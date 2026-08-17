@@ -137,7 +137,9 @@ class SignalMarketReference:
         if not self.best_ask <= self.average_reference_price <= self.worst_reference_price:
             raise ValueError("average reference price must lie between best ask and worst price")
         if not self.average_reference_price <= self.all_in_reference_price < Decimal("1"):
-            raise ValueError("all-in reference price must be at least the average price and below one")
+            raise ValueError(
+                "all-in reference price must be at least the average price and below one"
+            )
         if self.worst_reference_price >= Decimal("1"):
             raise ValueError("worst reference price must be below one")
         if self.probability_edge <= 0 or self.expected_return <= 0:
