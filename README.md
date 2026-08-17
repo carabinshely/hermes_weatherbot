@@ -3,7 +3,8 @@
 Hermes is a **non-executing calibrated weather prediction-market signal producer**.
 It combines point-in-time weather evidence with read-only Polymarket market evidence,
 computes an approved calibrated probability, applies one versioned producer policy, and
-emits a stable typed `HermesSignal` with replayable provenance.
+emits a stable typed `HermesSignal` with auditable calibration and market-reference
+provenance.
 
 Hermes does **not** submit, cancel, redeem, sign, or manage real-money trades as a public
 product capability.
@@ -34,7 +35,8 @@ hypothetical fills / sizing / portfolio state / P&L
 
 `PAPER` is retained only as an internal Research and Development (R&D) harness. Its
 bankroll, positions, ledger, fills, and Profit and Loss (P&L) cannot affect the public
-signal identity or payload.
+signal identity or payload. The PAPER command/runtime also has no import path to legacy
+wallet, approval, signing, or exchange-write code.
 
 ## Current calibration activation state
 
@@ -97,15 +99,19 @@ Each line is one typed `HermesSignal v1`. The logical `signal_id` is derived fro
 
 - producer and strategy identity/version;
 - versioned producer-policy fingerprint;
-- market/event/outcome identity;
+- venue, event, market, condition, outcome, and token identity;
+- accepted decision classification;
 - target market date;
 - calibrated probability identity and model/artifact provenance;
 - exact weather fingerprint;
 - decision order-book hash and observation time;
-- fixed read-only market-reference notional.
+- fixed read-only market-reference notional;
+- stable executable market-reference economics such as bid/ask, all-in price, edge, and expected return.
 
 Local processing timestamps, wallet state, PAPER state, learning history, Telegram state,
-and future PIP availability are excluded from logical signal identity.
+and future PIP availability are excluded from logical signal identity. The historical
+quote fingerprint is audit metadata rather than logical identity because it includes its
+local evaluation timestamp.
 
 ## Producer policy
 
@@ -119,14 +125,16 @@ Important fields include:
 
 - `strategy_id` and `strategy_version`;
 - volume and time-to-resolution filters;
-- freshness limits;
+- forecast/event/order-book freshness limits and future-timestamp tolerance;
 - fixed `market_reference_notional`;
 - cost/slippage reserves;
 - minimum expected return;
 - signal log path.
 
 The reference notional is a **read-only liquidity and executable-price probe**. It is not
-a bet size, customer position recommendation, or execution instruction.
+a bet size, customer position recommendation, or execution instruction. Public producer
+schema v1 uses reject-on-insufficient-depth semantics so the reference probe is never
+silently reduced to a different notional.
 
 Changing decision-affecting policy changes `policy_fingerprint` and should be accompanied
 by an explicit strategy-version change.
@@ -150,7 +158,10 @@ uv run --no-dev python -m weatherbot.paper reset --confirm-reset
 
 PAPER results are hypothetical development evidence only. They are not real producer
 signals, cannot self-promote a strategy/model, and are not automatically published to the
-Prediction Intelligence Platform (PIP).
+Prediction Intelligence Platform (PIP). PAPER retains the existing simulation sizing,
+risk, ledger, valuation, and adaptive research-threshold semantics through safe read-only
+configuration and public market-data adapters; it does not import the historical live
+trading implementation.
 
 ## Probability and provenance
 
@@ -160,6 +171,7 @@ signal carries at least:
 - `model_probability`;
 - `model_version`;
 - calibration artifact SHA-256 digest;
+- climate region and calibrated lead day;
 - forecast source and exact weather fingerprint;
 - calibration group/fallback/distribution identity;
 - calibration sample count and training cutoff;
@@ -171,10 +183,10 @@ There is no public fallback to the historical global fixed `2°F` uncertainty pa
 
 ## Non-execution security boundary
 
-Continuous Integration (CI) runs `scripts/ci/check_public_non_execution.py` from the
-public roots `bot_v3.py` and `weatherbot.producer`.
+Continuous Integration (CI) runs `scripts/ci/check_public_non_execution.py` over both
+supported runtime surfaces.
 
-The public import graph must not reach:
+The public import graph, rooted at `bot_v3.py` and `weatherbot.producer`, must not reach:
 
 - `bot_v3_legacy` / quarantined implementation;
 - `execution_modes`;
@@ -183,8 +195,13 @@ The public import graph must not reach:
 - authenticated Polymarket trading modules;
 - Web3 or signing packages.
 
-The historical implementation remains quarantined only to preserve internal PAPER and
-legacy regression mechanics while #59 simplifies that engine.
+The internal PAPER CLI has a separate transitive guard that permits PAPER simulation
+modules but forbids legacy execution modules, wallet/live dependency helpers,
+authenticated trading clients, Web3, and signing packages.
+
+The historical implementation remains quarantined only for historical compatibility and
+regression evidence while #59 simplifies the research engine. Neither the supported public
+producer nor the supported PAPER runtime imports it.
 
 ## Relationship to PIP
 
