@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType
 
 import pytest
 
@@ -24,6 +24,20 @@ def _spec(*, strategy_version: str = "candidate-v1") -> PaperExperimentSpec:
             ),
         ),
     )
+
+
+def _build_spec(strategy_version: str) -> PaperExperimentSpec:
+    return _spec(strategy_version=strategy_version)
+
+
+def _invalid_factory() -> object:
+    return object()
+
+
+def _module_with_factory(name: str, factory: object) -> ModuleType:
+    module = ModuleType(name)
+    setattr(module, "build", factory)
+    return module
 
 
 def test_internal_parser_exposes_evaluate_only() -> None:
@@ -47,22 +61,11 @@ def test_internal_parser_exposes_evaluate_only() -> None:
         parser.parse_args(["status"])
 
 
-def test_manifest_is_minimal_and_fail_closed(tmp_path: Path) -> None:
+def test_manifest_rejects_unknown_fields_through_supported_cli(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     manifest = tmp_path / "experiment.json"
-    manifest.write_text(
-        json.dumps(
-            {
-                "factory": "weatherbot.paper.experiments.fixture:build",
-                "arguments": {"strategy_version": "candidate-v2"},
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    factory, arguments = paper_cli._load_manifest(manifest)
-    assert factory == "weatherbot.paper.experiments.fixture:build"
-    assert arguments == {"strategy_version": "candidate-v2"}
-
     manifest.write_text(
         json.dumps(
             {
@@ -73,36 +76,102 @@ def test_manifest_is_minimal_and_fail_closed(tmp_path: Path) -> None:
         ),
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="unsupported fields"):
-        paper_cli._load_manifest(manifest)
+
+    assert (
+        paper_cli.main(
+            [
+                "evaluate",
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(tmp_path / "results"),
+            ]
+        )
+        == 2
+    )
+    error = capsys.readouterr().err
+    assert "unsupported fields" in error
+    assert "Traceback" not in error
 
 
+@pytest.mark.parametrize(
+    ("factory", "expected"),
+    [
+        (
+            "weatherbot.producer.service:evaluate_candidate",
+            "must live under weatherbot.paper.experiments",
+        ),
+        (
+            "weatherbot.paper.experiments.fixture:factory.method",
+            "must name one module-level function",
+        ),
+    ],
+)
 def test_factory_loading_is_restricted_to_reviewed_namespace(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    factory: str,
+    expected: str,
 ) -> None:
-    with pytest.raises(ValueError, match="must live under"):
-        paper_cli._factory("weatherbot.producer.service:evaluate_candidate")
-    with pytest.raises(ValueError, match="module-level"):
-        paper_cli._factory("weatherbot.paper.experiments.fixture:factory.method")
-
-    module = SimpleNamespace(
-        build=lambda strategy_version: _spec(strategy_version=strategy_version)
-    )
-    monkeypatch.setattr(paper_cli.importlib, "import_module", lambda _name: module)
-    built = paper_cli._build(
-        "weatherbot.paper.experiments.fixture:build",
-        {"strategy_version": "candidate-v3"},
+    manifest = tmp_path / "experiment.json"
+    manifest.write_text(
+        json.dumps({"factory": factory, "arguments": {}}),
+        encoding="utf-8",
     )
 
-    assert built.strategy_version == "candidate-v3"
+    assert (
+        paper_cli.main(
+            [
+                "evaluate",
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(tmp_path / "results"),
+            ]
+        )
+        == 2
+    )
+    assert expected in capsys.readouterr().err
 
 
-def test_build_rejects_non_spec_factory_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    module = SimpleNamespace(build=lambda: object())
-    monkeypatch.setattr(paper_cli.importlib, "import_module", lambda _name: module)
+def test_factory_result_must_be_experiment_spec(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "experiment.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "factory": "weatherbot.paper.experiments.fixture:build",
+                "arguments": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    module = _module_with_factory(
+        "weatherbot.paper.experiments.fixture",
+        _invalid_factory,
+    )
 
-    with pytest.raises(ValueError, match="return PaperExperimentSpec"):
-        paper_cli._build("weatherbot.paper.experiments.fixture:build", {})
+    def import_module(_name: str) -> ModuleType:
+        return module
+
+    monkeypatch.setattr(paper_cli.importlib, "import_module", import_module)
+
+    assert (
+        paper_cli.main(
+            [
+                "evaluate",
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(tmp_path / "results"),
+            ]
+        )
+        == 2
+    )
+    assert "must return PaperExperimentSpec" in capsys.readouterr().err
 
 
 def test_cli_evaluates_repository_owned_frozen_experiment(
@@ -121,10 +190,15 @@ def test_cli_evaluates_repository_owned_frozen_experiment(
         ),
         encoding="utf-8",
     )
-    module = SimpleNamespace(
-        build=lambda strategy_version: _spec(strategy_version=strategy_version)
+    module = _module_with_factory(
+        "weatherbot.paper.experiments.fixture",
+        _build_spec,
     )
-    monkeypatch.setattr(paper_cli.importlib, "import_module", lambda _name: module)
+
+    def import_module(_name: str) -> ModuleType:
+        return module
+
+    monkeypatch.setattr(paper_cli.importlib, "import_module", import_module)
     monkeypatch.setenv("PK", "must-not-matter")
     monkeypatch.setenv("WALLET", "must-not-matter")
 
