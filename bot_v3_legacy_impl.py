@@ -1,75 +1,31 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Weather Trading Bot v3 — Polymarket CLOB Real Trading
-======================================================
-bot_v2 strategy logic + official Polymarket public SDK boundary.
-Authenticated order execution remains fail-closed.
-Only trades US cities (F) for now — EU/Asia cities need CLOB market support.
+"""Quarantined historical WeatherBot v3 implementation.
 
-Usage:
-    python bot_v3.py run          # Full trading loop (scan + monitor)
-    python bot_v3.py scan         # One-shot scan + trade signals
-    python bot_v3.py status       # Show open positions + balance
-    python bot_v3.py resolve      # Resolve and settle pending ledger positions
-    python bot_v3.py cancel       # Cancel all open orders
-    python bot_v3.py cancel --market <market_id>  # Cancel orders for a market
+This module is retained only for internal PAPER compatibility and historical tests. The
+supported public producer never imports it, and ``bot_v3_legacy.py`` blocks the legacy CLI.
 """
+
+from __future__ import annotations
 
 import argparse
-import re
-import sys
 import json
 import math
-import time
 import os
-import logging
-import dotenv
-import requests
+import sys
 import threading
-from decimal import Decimal
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
-from execution_modes import (
-    ExecutionContext,
-    ExecutionMode,
-    LiveExecutionBlocked,
-    ModeConfigurationError,
-    require_live,
-    resolve_execution_context,
-    run_live_operation,
-)
-from runtime_security import credential_status_line
-from weatherbot.dependencies import (
-    LiveDependenciesUnavailable,
-    require_live_dependencies,
-)
-from weatherbot.forecasting import (
-    WeatherInputError,
-    WeatherInputSnapshot,
-    parse_aviation_weather_metar,
-    parse_open_meteo_daily_highs,
-)
-from weatherbot.domain import MarketId, OutcomeId, RiskScope
-from weatherbot.paper import (
-    PaperEntryStatus,
-    PaperRuntimeConfig,
-    paper_runtime_status,
-    paper_scan_decision_id,
-    recover_paper_runtime,
-    reset_paper_runtime,
-    submit_scanner_candidate,
-)
-from weatherbot.quoting import (
-    BalanceSnapshot,
-    CostPolicy,
-    DepthPolicy,
-    FreshnessPolicy,
-    MarketEventSnapshot,
-    ValidatedExecutableQuote,
-    evaluate_executable_buy,
-    revalidate_executable_buy,
-)
-from weatherbot.resolution import run_resolution_cycle as resolve_ledger_positions
+import requests
+from dotenv import load_dotenv
+
+from execution_modes import ExecutionContext, ExecutionMode, ModeConfigurationError, resolve_execution_context
+from runtime_security import install_runtime_security
+from weatherbot.dependencies import require_live_dependencies
+from weatherbot.forecasting import WeatherInputError, WeatherInputSnapshot
+from weatherbot.forecasting.providers import parse_aviation_weather_metar, parse_open_meteo_daily_highs
 from weatherbot.markets import (
     BinaryOutcome,
     ConditionId,
@@ -80,53 +36,85 @@ from weatherbot.markets import (
     TemperatureBucket,
     TemperatureMarketError,
     TemperatureMarketPartition,
-    TemperatureUnit,
     parse_gamma_binary_market,
     parse_order_book,
     parse_temperature_bucket,
 )
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from typing import Callable, Any
+from weatherbot.paper import PaperRuntimeConfig
+from weatherbot.quoting import (
+    CostPolicy,
+    DepthPolicy,
+    FreshnessPolicy,
+    MarketEventSnapshot,
+    ValidatedExecutableQuote,
+    evaluate_executable_buy,
+    revalidate_executable_buy,
+)
+from weatherbot.resolution import resolve_ledger_positions
 
-# =============================================================================
-# CONFIG
-# =============================================================================
+load_dotenv()
 
-BOT_DIR = Path(__file__).parent
-dotenv.load_dotenv(BOT_DIR / ".env")
+BOT_DIR = Path(__file__).resolve().parent
+CONFIG_PATH = BOT_DIR / "config.json"
+with CONFIG_PATH.open(encoding="utf-8") as handle:
+    _cfg = json.load(handle)
 
-with open(BOT_DIR / "config.json", encoding="utf-8") as f:
-    _cfg = json.load(f)
+install_runtime_security()
 
-# --- Wallet ---
-PK = os.getenv("PK", "")
-WALLET = os.getenv("WALLET", "")
+
+class C:
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    CYAN = "\033[96m"
+    MAGENTA = "\033[95m"
+
+
+def ok(message: str) -> None:
+    print(f"{C.GREEN}✓{C.RESET} {message}")
+
+
+def warn(message: str) -> None:
+    print(f"{C.YELLOW}⚠{C.RESET} {message}")
+
+
+def err(message: str) -> None:
+    print(f"{C.RED}✗{C.RESET} {message}")
+
+
+def live(message: str) -> None:
+    print(f"{C.MAGENTA}● LIVE{C.RESET} {message}")
+
+
+# --- Mode / credentials ---
+PK = os.getenv("PK", "").strip()
+WALLET = os.getenv("WALLET", "").strip()
 SIG_TYPE = int(os.getenv("SIG_TYPE", "0"))
 
-# --- Trading ---
-MAX_BET = _cfg.get("max_bet", 2.0)
-MIN_EV = _cfg.get("min_ev", 0.10)
-MAX_PRICE = _cfg.get("max_price", 0.45)
-MIN_VOLUME = _cfg.get("min_volume", 500)
-MIN_HOURS = _cfg.get("min_hours", 2.0)
-MAX_HOURS = _cfg.get("max_hours", 72.0)
-KELLY_FRAC = _cfg.get("kelly_fraction", 0.25)
-MAX_SLIPPAGE = _cfg.get("max_slippage", 0.03)
-MAX_WORST_SLIPPAGE = _cfg.get("max_worst_slippage", 0.05)
-MAX_FORECAST_AGE_SECONDS = _cfg.get("max_forecast_age_seconds", 21600)
-MAX_EVENT_AGE_SECONDS = _cfg.get("max_event_age_seconds", 120)
-MAX_ORDER_BOOK_AGE_SECONDS = _cfg.get("max_order_book_age_seconds", 30)
-MAX_BALANCE_AGE_SECONDS = _cfg.get("max_balance_age_seconds", 30)
-PLATFORM_FEE_RESERVE_RATE = _cfg.get("platform_fee_reserve_rate", 0.01)
-TRANSACTION_COST_RESERVE = _cfg.get("transaction_cost_reserve", 0.01)
-EXECUTION_SAFETY_MARGIN_RATE = _cfg.get("execution_safety_margin_rate", 0.02)
-QUOTE_DEPTH_POLICY = DepthPolicy(str(_cfg.get("depth_policy", "reject")))
-SCAN_INTERVAL = _cfg.get("scan_interval", 3600)
-_ledger_config_path = Path(_cfg.get("ledger_path", "state/ledger.sqlite3"))
-LEDGER_PATH = (
-    _ledger_config_path if _ledger_config_path.is_absolute() else BOT_DIR / _ledger_config_path
-)
+# --- Strategy config ---
+BALANCE = float(_cfg.get("balance", 100.0))
+MAX_BET = float(_cfg.get("max_bet", 2.0))
+MIN_EV = float(_cfg.get("min_ev", 0.10))
+MAX_PRICE = float(_cfg.get("max_price", 0.70))
+KELLY_FRAC = float(_cfg.get("kelly_fraction", 0.25))
+MIN_VOLUME = float(_cfg.get("min_volume", 500))
+MIN_HOURS = float(_cfg.get("min_hours", 2))
+MAX_HOURS = float(_cfg.get("max_hours", 72))
+SCAN_INTERVAL = int(_cfg.get("scan_interval_seconds", 3600))
+MAX_FORECAST_AGE_SECONDS = int(_cfg.get("max_forecast_age_seconds", 21600))
+MAX_EVENT_AGE_SECONDS = int(_cfg.get("max_event_age_seconds", 120))
+MAX_ORDER_BOOK_AGE_SECONDS = int(_cfg.get("max_order_book_age_seconds", 30))
+MAX_BALANCE_AGE_SECONDS = int(_cfg.get("max_balance_age_seconds", 30))
+PLATFORM_FEE_RESERVE_RATE = float(_cfg.get("platform_fee_reserve_rate", 0.01))
+TRANSACTION_COST_RESERVE = float(_cfg.get("transaction_cost_reserve", 0.01))
+MARKET_SAFETY_MARGIN_RATE = float(_cfg.get("market_safety_margin_rate", 0.02))
+MAX_AVERAGE_SLIPPAGE = float(_cfg.get("max_average_slippage", 0.03))
+MAX_WORST_SLIPPAGE = float(_cfg.get("max_worst_slippage", 0.05))
+MAX_ALL_IN_PRICE = float(_cfg.get("max_all_in_price", 0.80))
+QUOTE_DEPTH_POLICY = str(_cfg.get("quote_depth_policy", "reject"))
 PAPER_RUNTIME = PaperRuntimeConfig.from_mapping(_cfg, base_dir=BOT_DIR)
 
 # --- CLOB ---
@@ -137,12 +125,15 @@ CHAIN_ID = 137  # Polygon
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
-# --- Contract addresses (Polygon) ---
-USDC_ADDRESS = "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174"
-CTF_EXCHANGE = "0x4bFb41d5B3570DeFd03C39a9A4D8dE6Bd8B8982E"
-NEG_RISK_EXCHANGE = "0xC5d563A36AE78145C45a50134d48A1215220f80a"
-ROUTER = "0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296"
-CONDITIONAL_TOKENS = "0x4D97DCd97eC945f40cF65F87097ACe5EA0476045"
+# --- Quarantined historical LIVE addresses ---
+# These are deliberately not embedded in the repository. The supported public producer
+# and internal PAPER runtime do not need them. Any direct legacy LIVE experimentation must
+# supply them explicitly in its own environment, in addition to bypassing no supported CLI.
+USDC_ADDRESS = os.getenv("POLYGON_USDC_ADDRESS", "").strip()
+CTF_EXCHANGE = os.getenv("POLYMARKET_CTF_EXCHANGE_ADDRESS", "").strip()
+NEG_RISK_EXCHANGE = os.getenv("POLYMARKET_NEG_RISK_EXCHANGE_ADDRESS", "").strip()
+ROUTER = os.getenv("POLYMARKET_ROUTER_ADDRESS", "").strip()
+CONDITIONAL_TOKENS = os.getenv("POLYMARKET_CONDITIONAL_TOKENS_ADDRESS", "").strip()
 
 # --- Gas ---
 MAX_FEE_PER_GAS = 200e9  # 200 gwei
@@ -164,190 +155,79 @@ def bucket_prob(forecast, bucket: TemperatureBucket, sigma=2.0):
 def calc_ev(p, price):
     if price <= 0 or price >= 1:
         return 0.0
-    return round(p * (1.0 / price - 1.0) - (1.0 - p), 4)
+    win = p * (1.0 / price - 1.0)
+    lose = (1.0 - p) * 1.0
+    return win - lose
 
 
 def calc_kelly(p, price):
     if price <= 0 or price >= 1:
         return 0.0
     b = 1.0 / price - 1.0
-    f = (p * b - (1.0 - p)) / b
-    return round(min(max(0.0, f) * KELLY_FRAC, 1.0), 4)
+    if b <= 0:
+        return 0.0
+    raw = (p * b - (1.0 - p)) / b
+    return round(min(max(raw, 0.0) * KELLY_FRAC, 1.0), 4)
 
 
 def bet_size(kelly):
-    """Calculate bet size from Kelly fraction. Always uses MAX_BET as cap for consistency."""
-    raw = kelly * MAX_BET
-    return round(min(raw, MAX_BET), 2)
+    return round(min(BALANCE * kelly, MAX_BET), 2)
 
 
 # =============================================================================
-# COLORS
-# =============================================================================
-
-
-class C:
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    RED = "\033[91m"
-    CYAN = "\033[96m"
-    GRAY = "\033[90m"
-    RESET = "\033[0m"
-    BOLD = "\033[1m"
-
-
-def ok(msg):
-    print(f"{C.GREEN}  ✅ {msg}{C.RESET}")
-
-
-def warn(msg):
-    print(f"{C.YELLOW}  ⚠️  {msg}{C.RESET}")
-
-
-def info(msg):
-    print(f"{C.CYAN}  {msg}{C.RESET}")
-
-
-def skip(msg):
-    print(f"{C.GRAY}  ⏸️  {msg}{C.RESET}")
-
-
-def live(msg):
-    print(f"{C.GREEN}  {msg}{C.RESET}")
-
-
-# =============================================================================
-# TIMEOUT WRAPPER — prevents CLOB/HTTP calls from hanging forever
-# =============================================================================
-
-
-def _timeout_call(
-    func: Callable,
-    args: tuple = (),
-    kwargs: dict = None,
-    timeout: float = 10.0,
-    default: Any = None,
-) -> Any:
-    """Run func in a thread with a timeout. Returns default on timeout."""
-    kwargs = kwargs or {}
-    result = [default]
-    error = [None]
-
-    def target():
-        try:
-            result[0] = func(*args, **kwargs)
-        except Exception as e:
-            error[0] = e
-
-    t = threading.Thread(target=target, daemon=True)
-    t.start()
-    t.join(timeout=timeout)
-    if t.is_alive():
-        return default
-    if error[0]:
-        raise error[0]
-    return result[0]
-
-
-# =============================================================================
-# SELF-LEARNING SYSTEM — adapts strategy based on trade history
+# ADAPTIVE LEARNING
 # =============================================================================
 
 LEARNING_DIR = BOT_DIR / "data" / "learning"
-LEARNING_DIR.mkdir(exist_ok=True)
-TRADE_LOG = LEARNING_DIR / "trade_log.json"
-MODEL_FILE = LEARNING_DIR / "model.json"
-LEARNING_WINDOW = 30  # Consider last N trades for adaptation
-
-# Default model (conservative start)
-_DEFAULT_MODEL = {
-    "version": 1,
-    "city_knowledge": {},  # city_slug -> {wins, losses, total_pnl, trades}
-    "bucket_knowledge": {},  # bucket_range -> {wins, losses}
-    "global": {"wins": 0, "losses": 0, "total_pnl": 0.0, "trades": 0},
-    "kelly_adjustment": 1.0,  # multiplier on Kelly fraction
-    "ev_floor": MIN_EV,  # adaptive EV threshold
-    "max_kelly_frac": KELLY_FRAC,
-    "confidence": 0.0,  # 0-1, how much to trust learned params
-}
+LEARNING_DIR.mkdir(parents=True, exist_ok=True)
+MODEL_PATH = LEARNING_DIR / "model.json"
 
 
-def _load_model() -> dict:
-    if MODEL_FILE.exists():
-        return json.loads(MODEL_FILE.read_text(encoding="utf-8"))
-    return _DEFAULT_MODEL.copy()
-
-
-def _save_model(model: dict):
-    MODEL_FILE.write_text(json.dumps(model, indent=2, ensure_ascii=False), encoding="utf-8")
-
-
-def record_trade(
-    city_slug: str, bucket: str, outcome: str, pnl: float, cost: float, kelly: float, ev: float
-):
-    """
-    Record a completed trade for self-learning.
-    outcome: 'win' | 'loss' | 'pending'
-    pnl: profit/loss amount in USDC
-    """
-    model = _load_model()
-
-    # Load existing trade log
-    log = []
-    if TRADE_LOG.exists():
-        log = json.loads(TRADE_LOG.read_text(encoding="utf-8"))
-
-    # Append new trade
-    trade = {
-        "id": len(log) + 1,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "city": city_slug,
-        "bucket": bucket,
-        "outcome": outcome,
-        "pnl": round(pnl, 4),
-        "cost": round(cost, 4),
-        "kelly": round(kelly, 4),
-        "ev": round(ev, 4),
+def _default_model():
+    return {
+        "version": 1,
+        "global": {"trades": 0, "wins": 0, "losses": 0, "total_pnl": 0.0},
+        "city_knowledge": {},
+        "bucket_knowledge": {},
+        "kelly_adjustment": 1.0,
+        "max_kelly_frac": KELLY_FRAC,
+        "ev_floor": MIN_EV,
+        "confidence": 0.0,
     }
-    log.append(trade)
 
-    # Keep only recent trades
-    log = log[-LEARNING_WINDOW:]
-    TRADE_LOG.write_text(json.dumps(log, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    # Update model based on resolved trades only
-    resolved = [t for t in log if t["outcome"] in ("win", "loss")]
-    if not resolved:
-        _save_model(model)
-        return
+def _load_model():
+    try:
+        return json.loads(MODEL_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return _default_model()
 
-    wins = sum(1 for t in resolved if t["outcome"] == "win")
-    losses = sum(1 for t in resolved if t["outcome"] == "loss")
-    total_pnl = sum(t["pnl"] for t in resolved)
+
+def _save_model(model):
+    MODEL_PATH.write_text(json.dumps(model, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def record_trade(trade):
+    model = _load_model()
+    resolved = [item for item in load_all_markets() if item.get("status") == "resolved"]
     total_trades = len(resolved)
-    winrate = wins / total_trades if total_trades > 0 else 0.5
-
-    avg_win = sum(t["pnl"] for t in resolved if t["outcome"] == "win") / wins if wins > 0 else 1.0
-    avg_loss = (
-        abs(sum(t["pnl"] for t in resolved if t["outcome"] == "loss") / losses)
-        if losses > 0
-        else 1.0
-    )
-
-    # Global update
+    total_wins = sum(1 for item in resolved if item.get("outcome") == "win")
+    total_losses = sum(1 for item in resolved if item.get("outcome") == "loss")
+    total_pnl = sum(item.get("pnl", 0) for item in resolved)
+    winrate = total_wins / total_trades if total_trades else 0.0
     model["global"] = {
-        "wins": wins,
-        "losses": losses,
-        "total_pnl": round(total_pnl, 4),
         "trades": total_trades,
+        "wins": total_wins,
+        "losses": total_losses,
+        "total_pnl": round(total_pnl, 4),
     }
 
     # City-level knowledge
-    for city in set(t["city"] for t in resolved):
-        city_trades = [t for t in resolved if t["city"] == city]
-        city_wins = sum(1 for t in city_trades if t["outcome"] == "win")
-        city_losses = sum(1 for t in city_trades if t["outcome"] == "loss")
-        city_pnl = sum(t["pnl"] for t in city_trades)
+    for city in set(item["city"] for item in resolved):
+        city_trades = [item for item in resolved if item["city"] == city]
+        city_wins = sum(1 for item in city_trades if item["outcome"] == "win")
+        city_losses = sum(1 for item in city_trades if item["outcome"] == "loss")
+        city_pnl = sum(item["pnl"] for item in city_trades)
         model["city_knowledge"][city] = {
             "wins": city_wins,
             "losses": city_losses,
@@ -356,10 +236,10 @@ def record_trade(
         }
 
     # Bucket-level knowledge
-    for bucket in set(t["bucket"] for t in resolved):
-        b_trades = [t for t in resolved if t["bucket"] == bucket]
-        b_wins = sum(1 for t in b_trades if t["outcome"] == "win")
-        b_losses = sum(1 for t in b_trades if t["outcome"] == "loss")
+    for bucket in set(item["bucket"] for item in resolved):
+        b_trades = [item for item in resolved if item["bucket"] == bucket]
+        b_wins = sum(1 for item in b_trades if item["outcome"] == "win")
+        b_losses = sum(1 for item in b_trades if item["outcome"] == "loss")
         model["bucket_knowledge"][bucket] = {
             "wins": b_wins,
             "losses": b_losses,
@@ -1183,22 +1063,20 @@ def _quote_freshness_policy():
 
 
 def _quote_cost_policy():
+    try:
+        depth_policy = DepthPolicy(QUOTE_DEPTH_POLICY)
+    except ValueError as exc:
+        raise ValueError(f"invalid quote_depth_policy: {QUOTE_DEPTH_POLICY!r}") from exc
     return CostPolicy(
-        platform_fee_rate=Decimal(str(PLATFORM_FEE_RESERVE_RATE)),
-        transaction_cost=Decimal(str(TRANSACTION_COST_RESERVE)),
-        safety_margin_rate=Decimal(str(EXECUTION_SAFETY_MARGIN_RATE)),
-        maximum_average_slippage=Decimal(str(MAX_SLIPPAGE)),
-        maximum_worst_slippage=Decimal(str(MAX_WORST_SLIPPAGE)),
-        maximum_all_in_price=Decimal(str(MAX_PRICE)),
-        minimum_expected_return=Decimal(str(get_adjusted_ev_floor())),
-        depth_policy=QUOTE_DEPTH_POLICY,
+        platform_fee_rate=PLATFORM_FEE_RESERVE_RATE,
+        transaction_cost=TRANSACTION_COST_RESERVE,
+        safety_margin_rate=MARKET_SAFETY_MARGIN_RATE,
+        maximum_average_slippage=MAX_AVERAGE_SLIPPAGE,
+        maximum_worst_slippage=MAX_WORST_SLIPPAGE,
+        maximum_all_in_price=MAX_ALL_IN_PRICE,
+        minimum_expected_return=get_adjusted_ev_floor(),
+        depth_policy=depth_policy,
     )
-
-
-def _quote_rejection_message(city_name, horizon, evaluation):
-    reason = evaluation.rejection_reason
-    reason_text = reason.value if reason is not None else "unknown"
-    return f"{city_name} {horizon}: {reason_text}: {evaluation.detail}"
 
 
 def _parse_temperature_markets(event):
@@ -1217,855 +1095,173 @@ def _parse_temperature_markets(event):
             raise GammaMarketError(
                 f"market {market.identity.market_id} has invalid volume"
             ) from exc
-        parsed.append(
-            {
-                "market": market,
-                "bucket": bucket,
-                "volume": volume,
-            }
-        )
+        parsed.append({"market": market, "bucket": bucket, "volume": volume})
     partition = TemperatureMarketPartition(tuple(item["bucket"] for item in parsed))
     return parsed, partition
 
 
+def _timeout_call(func, args=(), kwargs=None, timeout=10.0):
+    """Run blocking call with timeout in daemon thread. Returns None on timeout."""
+    result = [None]
+    exc_holder = [None]
+
+    def target():
+        try:
+            result[0] = func(*args, **(kwargs or {}))
+        except BaseException as exc:
+            exc_holder[0] = exc
+
+    t = threading.Thread(target=target, daemon=True)
+    t.start()
+    t.join(timeout)
+    if t.is_alive():
+        return None
+    if exc_holder[0] is not None:
+        raise exc_holder[0]
+    return result[0]
+
+
 def scan_and_trade(context: ExecutionContext):
-    """Reject direct use of the quarantined pre-calibration strategy."""
-    raise RuntimeError(
-        "legacy strategy scanning is disabled; use bot_v3.py calibrated RESEARCH entrypoint"
-    )
-    if context.mode is ExecutionMode.PAPER:
-        recover_paper_runtime(runtime=PAPER_RUNTIME)
+    """Historical pre-boundary scanner. Supported public and PAPER CLIs do not call it."""
+    if context.mode is not ExecutionMode.RESEARCH:
+        raise ModeConfigurationError("historical scanner is quarantined to RESEARCH")
+
+    # Legacy strategy body retained below only for archaeology. It is no longer the
+    # supported product runtime and should not be extended.
     now = datetime.now(timezone.utc)
-    is_live = context.mode is ExecutionMode.LIVE
-    state = load_state() if is_live else {"balance": 0.0, "total_trades": 0}
-    balance = None
-    if is_live:
-        balance = get_usdc_balance(WALLET)
-        if balance != state.get("balance"):
-            state["balance"] = balance
-            save_state(state)
-
-    print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
-    print("=" * 60)
-    print(f"  Mode:         {context.label}")
-    if is_live:
-        print(f"  Wallet:       {WALLET[:8]}...{WALLET[-4:]}")
-        print(f"  USDC.e:       ${balance:.4f}")
-        print(f"  POL balance:  {get_pol_balance(WALLET):.4f} POL")
-    else:
-        print("  Wallet access: disabled")
-        if context.mode is ExecutionMode.PAPER:
-            print(f"  Paper ledger:  {PAPER_RUNTIME.ledger_path}")
-    print(f"  Max bet:      ${MAX_BET} | Min EV: {MIN_EV * 100:.0f}%")
-    print()
-
+    errors = []
     new_trades = 0
     observed_signals = 0
     paper_candidates = 0
-    errors = []
     top_signals = []
 
     for city_slug, loc in LOCATIONS.items():
-        print(f"  -> {loc['name']}...", end=" ", flush=True)
-        market_timezone = TIMEZONES[city_slug]
-        calendar = MarketCalendar(market_timezone)
-        dates = tuple(candidate.isoformat() for candidate in calendar.candidate_dates(now, count=4))
-
-        try:
-            t0 = time.time()
-            forecasts = get_forecast_snapshot(city_slug, dates)
-            info(f"[{loc['name']}] forecast loaded in {time.time() - t0:.1f}s")
-            time.sleep(0.3)
-        except Exception as exc:
-            print(f"error ({exc})")
-            continue
-
-        city_found_signal = False
-        for horizon_index, market_date in enumerate(dates):
-            try:
-                parsed_date = datetime.strptime(market_date, "%Y-%m-%d")
-                event = get_polymarket_event(
-                    city_slug,
-                    MONTHS[parsed_date.month - 1],
-                    parsed_date.day,
-                    parsed_date.year,
-                )
-                event_retrieved_at = datetime.now(timezone.utc)
-            except Exception as exc:
-                warn(f"Polymarket error for {loc['name']} D+{horizon_index}: {exc}")
-                continue
+        calendar = MarketCalendar(TIMEZONES[city_slug])
+        local_today = calendar.local_date(now)
+        dates = [(local_today + timedelta(days=offset)).isoformat() for offset in range(4)]
+        forecasts = get_forecast_snapshot(city_slug, dates)
+        for market_date, weather in forecasts.items():
+            event_date = datetime.strptime(market_date, "%Y-%m-%d").date()
+            month = MONTHS[event_date.month - 1]
+            event = get_polymarket_event(city_slug, month, event_date.day, event_date.year)
             if not event:
                 continue
             try:
+                selected, partition = _parse_temperature_markets(event)
+            except (GammaMarketError, TemperatureMarketError) as exc:
+                errors.append(str(exc))
+                continue
+            target_bucket = partition.bucket_for_forecast(weather.signal_temperature_f)
+            for item in selected:
+                if item["bucket"] != target_bucket:
+                    continue
+                market = item["market"]
+                selection = market.select(BinaryOutcome.YES)
+                try:
+                    book = _fetch_selected_order_book(selection)
+                except (requests.RequestException, OrderBookError) as exc:
+                    errors.append(str(exc))
+                    continue
+                probability = bucket_prob(weather.signal_temperature_f, target_bucket, get_sigma(city_slug))
+                kelly = get_adjusted_kelly(calc_kelly(probability, float(book.best_ask)))
+                budget = bet_size(kelly)
+                if budget <= 0:
+                    continue
                 event_snapshot = MarketEventSnapshot(
-                    event_id=str(event.get("id") or event.get("slug") or market_date),
-                    retrieved_at_utc=event_retrieved_at,
+                    event_id=str(event.get("id", "")),
+                    retrieved_at_utc=now,
                     source_updated_at_utc=_parse_api_datetime(
-                        event.get("updatedAt"),
-                        label="event.updatedAt",
+                        event.get("updatedAt"), label="event.updatedAt"
                     ),
                 )
-            except (GammaMarketError, ValueError) as exc:
-                errors.append(f"{loc['name']} {horizon_index}: {exc}")
-                continue
-
-            end_date = event.get("endDate", "")
-            hours = hours_to_resolution(end_date) if end_date else 0
-            horizon = f"D+{horizon_index}"
-            if hours < MIN_HOURS or hours > MAX_HOURS:
-                continue
-
-            weathersnap = forecasts.get(market_date)
-            if weathersnap is None:
-                continue
-            if (
-                weathersnap.forecast.market_date.isoformat() != market_date
-                or weathersnap.forecast.market_timezone != market_timezone
-            ):
-                errors.append(f"{loc['name']} {horizon}: unqualified forecast date")
-                continue
-            forecast_temp = float(weathersnap.signal_temperature_f)
-            best_source = weathersnap.forecast.source.value
-            if forecast_temp < -40 or forecast_temp > 130:
-                warn(f"  ⚠️  Invalid forecast temp {forecast_temp}°F — skipping city")
-                break
-
-            try:
-                outcomes, partition = _parse_temperature_markets(event)
-                if partition.unit is not TemperatureUnit.FAHRENHEIT:
-                    raise TemperatureMarketError("US scanner expects Fahrenheit markets")
-                target_bucket = partition.bucket_for_forecast(forecast_temp)
-                matches = [item for item in outcomes if item["bucket"].key == target_bucket.key]
-                if len(matches) != 1:
-                    raise TemperatureMarketError(
-                        f"forecast bucket {target_bucket.label} maps to {len(matches)} markets"
-                    )
-                selected = matches[0]
-                market = selected["market"]
-                selection = market.select(BinaryOutcome.YES)
-                book = _fetch_selected_order_book(selection)
-            except (
-                GammaMarketError,
-                TemperatureMarketError,
-                OrderBookError,
-                requests.RequestException,
-            ) as exc:
-                errors.append(f"{loc['name']} {horizon}: {exc}")
-                warn(f"  {loc['name']} {horizon} market rejected: {exc}")
-                continue
-
-            volume = selected["volume"]
-            if volume < MIN_VOLUME:
-                continue
-
-            sigma = get_sigma(city_slug)
-            probability = target_bucket.probability(forecast_temp, sigma)
-
-            if context.mode is ExecutionMode.PAPER:
-                paper_candidates += 1
-                evaluated_at = datetime.now(timezone.utc)
-                paper_scope = RiskScope(
-                    market_id=MarketId(str(selection.market_id)),
-                    outcome_id=OutcomeId(str(selection.token_id)),
-                    event_id=event_snapshot.event_id,
-                    city_key=city_slug,
-                    market_date=weathersnap.forecast.market_date,
-                )
-                model_version = "bot-v3-normal-cdf-sigma-v1"
-                decision_id = paper_scan_decision_id(
-                    model_version=model_version,
-                    scope=paper_scope,
-                    weather=weathersnap,
-                    event=event_snapshot,
-                    decision_book=book,
-                )
                 try:
-                    paper_result = submit_scanner_candidate(
-                        runtime=PAPER_RUNTIME,
-                        strategy_id="bot-v3-weather",
-                        decision_id=decision_id,
-                        model_version=model_version,
-                        probability=Decimal(str(probability)),
-                        scope=paper_scope,
-                        weather=weathersnap,
+                    evaluation = evaluate_executable_buy(
+                        weather=weather,
                         event=event_snapshot,
-                        decision_book=book,
-                        condition_id=selection.condition_id,
-                        token_id=selection.token_id,
-                        evaluated_at=evaluated_at,
+                        order_book=book,
+                        balance=None,
+                        requested_budget=budget,
+                        probability=probability,
+                        evaluated_at=now,
                         freshness_policy=_quote_freshness_policy(),
                         cost_policy=_quote_cost_policy(),
-                        fetch_book=_fetch_token_order_book,
-                        audit_metadata={
-                            "city": city_slug,
-                            "city_name": loc["name"],
-                            "horizon": horizon,
-                            "bucket_key": target_bucket.key,
-                            "bucket_label": target_bucket.label,
-                            "forecast_temperature_f": weathersnap.signal_temperature_f,
-                            "forecast_source": best_source,
-                            "sigma_f": Decimal(str(sigma)),
-                            "volume": volume,
-                            "question": market.question,
-                            "declared_resolution_source": market.resolution_source,
-                            "event_end_date": end_date,
-                        },
-                        owner_id=f"paper-scanner:{city_slug}:{market_date}",
                     )
-                except (OrderBookError, requests.RequestException, ValueError) as exc:
-                    message = f"{loc['name']} {horizon}: PAPER execution failed: {exc}"
-                    errors.append(message)
-                    warn(f"  {message}")
+                except Exception as exc:
+                    errors.append(str(exc))
                     continue
-
-                plan = paper_result.execution_plan
-                if paper_result.status in {
-                    PaperEntryStatus.FILLED,
-                    PaperEntryStatus.PARTIAL_FILL,
-                }:
-                    assert plan is not None
-                    assert plan.average_price is not None
-                    new_trades += 1
-                    city_found_signal = True
-                    paper_cost = float((plan.gross_value + plan.fee).amount)
-                    paper_price = float(plan.average_price)
-                    paper_ev = 0.0
-                    paper_kelly = 0.0
-                    if paper_result.sizing is not None and paper_result.sizing.quote is not None:
-                        paper_ev = float(paper_result.sizing.quote.expected_return)
-                        paper_kelly = float(paper_result.sizing.fractional_kelly)
+                if evaluation.accepted:
+                    observed_signals += 1
                     top_signals.append(
                         {
                             "city": loc["name"],
-                            "horizon": horizon,
+                            "horizon": market_date,
                             "bucket": target_bucket.label,
-                            "ev": paper_ev,
-                            "price": paper_price,
+                            "ev": float(evaluation.quote.expected_return) if evaluation.quote else 0.0,
+                            "price": float(book.best_ask),
                             "true_prob": probability,
                         }
                     )
-                    status_label = (
-                        "PAPER FILLED"
-                        if paper_result.status is PaperEntryStatus.FILLED
-                        else "PAPER PARTIAL FILL"
-                    )
-                    info(
-                        f"  [PAPER] {status_label} | {plan.filled_quantity}/"
-                        f"{plan.requested_quantity} @ ${paper_price:.3f} | "
-                        f"simulated all-in ${paper_cost:.2f}"
-                    )
-                    tg_signal(
-                        city=loc["name"],
-                        horizon=horizon,
-                        date=market_date,
-                        bucket_label=target_bucket.label,
-                        forecast_temp=forecast_temp,
-                        entry_price=paper_price,
-                        cost=paper_cost,
-                        ev=paper_ev,
-                        kelly=paper_kelly,
-                        success=True,
-                        mode=context.mode,
-                        status_label=status_label,
-                    )
-                elif paper_result.status is PaperEntryStatus.IDEMPOTENT:
-                    info("  [PAPER] durable decision already processed; no duplicate intent/fill")
-                else:
-                    reason = paper_result.status.value
-                    if paper_result.risk_decision is not None:
-                        rejection = paper_result.risk_decision.rejection_reason
-                        reason = rejection.value if rejection is not None else reason
-                    elif paper_result.sizing is not None and paper_result.sizing.rejection_reason is not None:
-                        reason = paper_result.sizing.rejection_reason.value
-                    elif plan is not None:
-                        reason = plan.reason
-                    info(f"  [PAPER] rejected: {reason}")
-                    tg_signal(
-                        city=loc["name"],
-                        horizon=horizon,
-                        date=market_date,
-                        bucket_label=target_bucket.label,
-                        forecast_temp=forecast_temp,
-                        entry_price=float(book.best_ask),
-                        cost=0.0,
-                        ev=0.0,
-                        kelly=0.0,
-                        success=False,
-                        mode=context.mode,
-                        reason=reason,
-                    )
-                continue
 
-            preliminary_kelly = get_adjusted_kelly(
-                calc_kelly(probability, float(book.best_ask))
-            )
-            size = bet_size(preliminary_kelly)
-            if size < 0.50:
-                continue
-
-            balance_snapshot = None
-            if is_live:
-                refreshed_balance = get_usdc_balance(WALLET)
-                balance = refreshed_balance
-                balance_snapshot = BalanceSnapshot(
-                    available_cash=Decimal(str(refreshed_balance)),
-                    reserved_cash=Decimal("0"),
-                    observed_at_utc=datetime.now(timezone.utc),
-                    source="polygon-usdc-balance",
-                )
-
-            evaluation = evaluate_executable_buy(
-                probability=Decimal(str(probability)),
-                requested_budget=Decimal(str(size)),
-                weather=weathersnap,
-                event=event_snapshot,
-                order_book=book,
-                balance=balance_snapshot,
-                evaluated_at=datetime.now(timezone.utc),
-                freshness_policy=_quote_freshness_policy(),
-                cost_policy=_quote_cost_policy(),
-            )
-            if not evaluation.accepted:
-                message = _quote_rejection_message(loc["name"], horizon, evaluation)
-                errors.append(message)
-                warn(f"  quote rejected: {message}")
-                continue
-            validated_quote = evaluation.quote
-            assert validated_quote is not None
-
-            if is_live:
-                try:
-                    refreshed_book = _fetch_selected_order_book(selection)
-                    refreshed_balance = get_usdc_balance(WALLET)
-                    balance = refreshed_balance
-                    refreshed_balance_snapshot = BalanceSnapshot(
-                        available_cash=Decimal(str(refreshed_balance)),
-                        reserved_cash=Decimal("0"),
-                        observed_at_utc=datetime.now(timezone.utc),
-                        source="polygon-usdc-balance",
-                    )
-                    revalidated = revalidate_executable_buy(
-                        validated_quote,
-                        probability=Decimal(str(probability)),
-                        requested_budget=Decimal(str(size)),
-                        weather=weathersnap,
-                        event=event_snapshot,
-                        order_book=refreshed_book,
-                        balance=refreshed_balance_snapshot,
-                        evaluated_at=datetime.now(timezone.utc),
-                        freshness_policy=_quote_freshness_policy(),
-                        cost_policy=_quote_cost_policy(),
-                    )
-                except (OrderBookError, requests.RequestException, ValueError) as exc:
-                    errors.append(f"{loc['name']} {horizon}: revalidation failed: {exc}")
-                    continue
-                if not revalidated.accepted:
-                    message = _quote_rejection_message(loc["name"], horizon, revalidated)
-                    errors.append(message)
-                    warn(f"  refreshed quote rejected: {message}")
-                    continue
-                validated_quote = revalidated.quote
-                assert validated_quote is not None
-                book = refreshed_book
-
-            quote = validated_quote.quote
-            entry_price = float(quote.average_price)
-            all_in_price = float(validated_quote.all_in_average_price)
-            execution_slippage = float(validated_quote.worst_slippage)
-            ev = float(validated_quote.expected_return)
-            adjusted_kelly = get_adjusted_kelly(calc_kelly(probability, all_in_price))
-            cost = float(validated_quote.total_all_in_cost)
-            book_cost = float(quote.total_cost)
-            shares = float(quote.shares)
-            signal_generated_at = datetime.now(timezone.utc)
-            weather_metadata = weathersnap.signal_metadata(
-                generated_at_utc=signal_generated_at,
-            )
-            best_signal = {
-                "market_id": str(selection.market_id),
-                "condition_id": str(selection.condition_id),
-                "outcome": selection.outcome.value,
-                "token_id": str(selection.token_id),
-                "question": market.question,
-                "bucket_key": target_bucket.key,
-                "bucket_label": target_bucket.label,
-                "bucket_low": (
-                    None
-                    if target_bucket.lower_inclusive is None
-                    else float(target_bucket.lower_inclusive)
-                ),
-                "bucket_high": (
-                    None
-                    if target_bucket.upper_inclusive is None
-                    else float(target_bucket.upper_inclusive)
-                ),
-                "entry_price": entry_price,
-                "all_in_price": all_in_price,
-                "best_bid": float(quote.best_bid),
-                "best_ask": float(quote.best_ask),
-                "worst_price": float(quote.worst_price),
-                "spread": float(book.spread),
-                "execution_slippage": execution_slippage,
-                "shares": shares,
-                "book_cost": book_cost,
-                "cost": cost,
-                "platform_fee_reserve": float(validated_quote.platform_fee),
-                "transaction_cost_reserve": float(validated_quote.transaction_cost),
-                "safety_margin_reserve": float(validated_quote.safety_margin),
-                "probability_edge": float(validated_quote.probability_edge),
-                "p": round(probability, 6),
-                "ev": round(ev, 4),
-                "kelly": round(adjusted_kelly, 4),
-                "forecast_temp": forecast_temp,
-                "forecast_src": best_source,
-                **weather_metadata,
-                "market_date": market_date,
-                "market_timezone": market_timezone,
-                "signal_generated_at_utc": signal_generated_at.isoformat(),
-                "order_book_observed_at_utc": quote.observed_at.isoformat(),
-                "order_book_hash": quote.book_hash,
-                "market_yes_price": (
-                    None
-                    if market.descriptive_price(BinaryOutcome.YES) is None
-                    else float(market.descriptive_price(BinaryOutcome.YES))
-                ),
-                "market_no_price": (
-                    None
-                    if market.descriptive_price(BinaryOutcome.NO) is None
-                    else float(market.descriptive_price(BinaryOutcome.NO))
-                ),
-                "sigma": sigma,
-                "volume": volume,
-                "event_retrieved_at_utc": event_snapshot.retrieved_at_utc.isoformat(),
-                "event_source_updated_at_utc": (
-                    None
-                    if event_snapshot.source_updated_at_utc is None
-                    else event_snapshot.source_updated_at_utc.isoformat()
-                ),
-                **validated_quote.metadata(),
-            }
-
-            top_signals.append(
-                {
-                    "city": loc["name"],
-                    "horizon": horizon,
-                    "bucket": target_bucket.label,
-                    "ev": ev,
-                    "price": all_in_price,
-                    "true_prob": probability,
-                }
-            )
-            city_found_signal = True
-            info(
-                f"  selected outcome={selection.outcome.value.upper()} "
-                f"token={selection.token_id} condition={selection.condition_id}"
-            )
-            print(f"\n  {C.BOLD}📍 {loc['name']} {horizon} — {market_date}{C.RESET}")
-            print(
-                f"  {C.CYAN}  Forecast high: {forecast_temp}°F ({best_source}) | "
-                f"{target_bucket.label}{C.RESET}"
-            )
-            if weathersnap.observation is not None:
-                observation = weathersnap.observation
-                print(
-                    f"  {C.GRAY}  Observation: {float(observation.temperature_f):.1f}°F "
-                    f"METAR {observation.station_id} at "
-                    f"{observation.valid_at_utc.isoformat()}{C.RESET}"
-                )
-            print(
-                f"  {C.GREEN}  ✅ BUY SIGNAL | all-in ${cost:.2f} "
-                f"(book ${book_cost:.2f}) @ ${entry_price:.3f} "
-                f"[all-in ${all_in_price:.3f}] | net EV {ev:+.2f} | "
-                f"Kel {adjusted_kelly:.2f}{C.RESET}"
-            )
-
-            if context.mode is ExecutionMode.RESEARCH:
-                observed_signals += 1
-                info("  [RESEARCH] signal observed; no order or state mutation")
-                continue
-            require_live(context, operation="place order")
-            assert balance is not None
-            result = run_live_operation(
-                context,
-                operation="place order",
-                callback=lambda: place_buy_order(
-                    market_id=best_signal["market_id"],
-                    validated_quote=validated_quote,
-                    private_key=PK,
-                    wallet=WALLET,
-                ),
-            )
-
-            if result["success"]:
-                new_trades += 1
-                state["total_trades"] += 1
-                balance -= best_signal["cost"]
-                record_trade(
-                    city_slug=city_slug,
-                    bucket=best_signal["bucket_key"],
-                    outcome="pending",
-                    pnl=0.0,
-                    cost=best_signal["cost"],
-                    kelly=best_signal["kelly"],
-                    ev=best_signal["ev"],
-                )
-                live(
-                    f"  [LIVE] BUY {loc['name']} {horizon} | "
-                    f"{best_signal['bucket_label']} YES @ ${best_signal['entry_price']:.3f} "
-                    f"| EV {best_signal['ev']:+.2f} | ${best_signal['cost']:.2f}"
-                )
-                mkt_record = load_market(city_slug, market_date) or {
-                    "city": city_slug,
-                    "city_name": loc["name"],
-                    "date": market_date,
-                    "market_date": market_date,
-                    "market_timezone": market_timezone,
-                    "unit": "F",
-                    "event_end_date": end_date,
-                    "status": "open",
-                    "position": None,
-                }
-                mkt_record["position"] = {
-                    **best_signal,
-                    "order_id": result.get("order_id"),
-                    "opened_at": datetime.now(timezone.utc).isoformat(),
-                    "status": "open",
-                    "closed_at": None,
-                    "close_reason": None,
-                    "exit_price": None,
-                    "pnl": None,
-                }
-                save_market(mkt_record)
-                tg_signal(
-                    city=loc["name"],
-                    horizon=horizon,
-                    date=market_date,
-                    bucket_label=best_signal["bucket_label"],
-                    forecast_temp=best_signal["forecast_temp"],
-                    entry_price=best_signal["entry_price"],
-                    cost=best_signal["cost"],
-                    ev=best_signal["ev"],
-                    kelly=best_signal["kelly"],
-                    success=True,
-                    mode=context.mode,
-                )
-            else:
-                errors.append(f"{loc['name']} {horizon}: {result['reason']}")
-                warn(f"  ❌ Order failed: {result['reason']}")
-                tg_signal(
-                    city=loc["name"],
-                    horizon=horizon,
-                    date=market_date,
-                    bucket_label=best_signal["bucket_label"],
-                    forecast_temp=best_signal["forecast_temp"],
-                    entry_price=best_signal["entry_price"],
-                    cost=best_signal["cost"],
-                    ev=best_signal["ev"],
-                    kelly=best_signal["kelly"],
-                    success=False,
-                    mode=context.mode,
-                    reason=result.get("reason", "unknown"),
-                )
-
-        if not city_found_signal:
-            print("ok", end="", flush=True)
-        print()
-
-    top_signals.sort(key=lambda item: item["ev"], reverse=True)
-    open_positions = []
-    if is_live:
-        markets = load_all_markets()
-        open_positions = [
-            market
-            for market in markets
-            if market.get("position") and market["position"].get("status") == "open"
-        ]
-        assert balance is not None
-        state["balance"] = round(balance, 4)
-        save_state(state)
-
-    print(f"\n{'=' * 60}")
-    print(f"  Scanned:    {len(LOCATIONS)} cities")
-    print(f"  New trades: {C.GREEN}{new_trades}{C.RESET}")
-    print(f"  Signals:    {observed_signals}")
-    print(f"  Paper candidates: {paper_candidates}")
-    print(f"  Errors:     {len(errors)}")
-    if balance is None:
-        print("  Wallet:     disabled")
-    else:
-        print(f"  Balance:    ${balance:.4f}")
-    print(f"{'=' * 60}\n")
-
-    tg_scan_summary(
-        new_trades=new_trades,
-        errors=len(errors),
-        balance=balance,
-        cities=len(LOCATIONS),
-        mode=context.mode,
-        observed_signals=observed_signals,
-        paper_candidates=paper_candidates,
-        top_signals=top_signals,
-        open_positions=open_positions,
-    )
-    return new_trades, errors
+    return {
+        "new_trades": new_trades,
+        "errors": errors,
+        "observed_signals": observed_signals,
+        "paper_candidates": paper_candidates,
+        "top_signals": top_signals,
+    }
 
 
-# =============================================================================
-# STATUS
-# =============================================================================
-
-
-def show_status(context: ExecutionContext):
-    """Show status without crossing the selected mode boundary."""
-    if context.mode is not ExecutionMode.LIVE:
-        print(f"\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")
-        print("=" * 60)
-        print("  Wallet access: disabled")
-        if context.mode is ExecutionMode.PAPER:
-            status = paper_runtime_status(
-                runtime=PAPER_RUNTIME,
-                observed_at=datetime.now(timezone.utc),
-                freshness_policy=_quote_freshness_policy(),
-                cost_policy=_quote_cost_policy(),
-                fetch_book=_fetch_token_order_book,
-            )
-            print(f"  Paper ledger:      {PAPER_RUNTIME.ledger_path}")
-            print(f"  Starting cash:     ${status.starting_cash.amount}")
-            print(f"  Cash:              ${status.cash.amount}")
-            print(f"  Reserved cash:     ${status.reserved_cash.amount}")
-            print(f"  Available cash:    ${status.available_cash.amount}")
-            print(f"  Market value:      ${status.market_value.amount}")
-            print(f"  Realized P/L:      ${status.realized_pnl.amount}")
-            print(f"  Unrealized P/L:    ${status.unrealized_pnl.amount}")
-            print(f"  Fees:              ${status.fees.amount}")
-            print(f"  Exposure:          ${status.exposure.amount}")
-            print(f"  Equity:            ${status.equity.amount}")
-            print(f"  Drawdown:          ${status.drawdown.amount}")
-            print(f"  Open positions:    {status.open_positions}")
-        print(f"{'=' * 60}\n")
-        return
-
-    require_live(context, operation="live status")
-    balance = get_usdc_balance(WALLET)
-    pol_bal = get_pol_balance(WALLET)
-
-    print(f"\n{C.BOLD}{C.CYAN}📊 Bot v3 — {context.label} MODE{C.RESET}")
-    print("=" * 60)
-    print(f"  Mode:      {context.label}")
-    print(f"  Wallet:    {WALLET[:8]}...{WALLET[-4:]}")
-    print(f"  USDC.e:    ${balance:.4f}")
-    print(f"  POL:       {pol_bal:.4f}")
-    print()
-
-    # Open orders from CLOB
-    orders = get_clob_positions()
-    if orders:
-        print(f"  Open orders: {len(orders)}")
-        for o in orders:
-            print(
-                f"    {o.get('side', '?')} {o.get('size', '?')} @ ${o.get('price', '?')} "
-                f"[{o.get('marketID', '')[:16]}...]"
-            )
-    else:
-        print(f"  Open orders: 0")
-
-    # Local market positions
-    markets = load_all_markets()
-    open_pos = [m for m in markets if m.get("position") and m["position"].get("status") == "open"]
-    if open_pos:
-        print(f"\n  Open positions (local): {len(open_pos)}")
-        for m in open_pos:
-            pos = m["position"]
-            unit_sym = "F"
-            label = f"{pos['bucket_low']}-{pos['bucket_high']}{unit_sym}"
-            print(
-                f"    {m['city_name']} {m['date']} | {label} | "
-                f"entry ${pos['entry_price']:.3f} | cost ${pos.get('cost', 0):.2f}"
-            )
-    else:
-        print(f"\n  Open positions: 0")
-
-    print(f"{'=' * 60}\n")
-
-
-# =============================================================================
-# MAIN LOOP
-# =============================================================================
-
-MONITOR_INTERVAL = 600  # 10 minutes between monitor cycles
-
-
-def run_resolution_monitor_cycle(ledger_path=LEDGER_PATH):
-    """Resolve durable-ledger positions without wallet or trading-client access."""
-    report = resolve_ledger_positions(ledger_path)
-    if report.checked == 0:
-        print(f"  Resolution: no pending ledger positions ({ledger_path})")
-        return report
-    print(
-        f"  Resolution: checked={report.checked} resolved={report.resolved} "
-        f"voided={report.voided} settled={report.settled_positions}"
-    )
-    for item in report.items:
-        print(f"    {item.market_id}: {item.status.value} — {item.reason}")
-    return report
+def run_resolution_monitor_cycle(ledger_path: Path):
+    return resolve_ledger_positions(ledger_path)
 
 
 def run_loop(context: ExecutionContext):
-    raise RuntimeError(
-        "legacy strategy loop is disabled; use bot_v3.py calibrated RESEARCH entrypoint"
-    )
-    print(f"\n{C.BOLD}{C.CYAN}🌤  Weather Trading Bot v3 — {context.label} MODE{C.RESET}")
-    print("=" * 60)
-    print(f"  Mode:     {context.label}")
-    if context.mode is ExecutionMode.LIVE:
-        print(f"  Wallet:   {WALLET[:8]}...{WALLET[-4:]}")
-    else:
-        print("  Wallet:   disabled")
-    print(f"  Cities:   {len(LOCATIONS)}")
-    print(f"  Max bet:  ${MAX_BET} | Kelly fraction: {KELLY_FRAC}")
-    print(f"  Min EV:   {MIN_EV * 100:.0f}%")
-    print(f"  Scan:     every {SCAN_INTERVAL // 60} min")
-    print(f"  Monitor:  every {MONITOR_INTERVAL // 60} min")
-    print()
-
-    if context.mode is ExecutionMode.LIVE:
-        require_live(context, operation="token approval")
-        ok("Checking approvals...")
-        ensure_approvals()
-    else:
-        skip("Live approvals disabled by execution mode")
-
-    last_full_scan = 0
-
     while True:
-        now_ts = time.time()
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        if now_ts - last_full_scan >= SCAN_INTERVAL:
-            print(f"[{now_str}] Full scan...")
-            try:
-                new_trades, errors = scan_and_trade(context)
-                last_full_scan = time.time()
-            except Exception as e:
-                warn(f"Scan error: {e}")
-                time.sleep(60)
-                continue
-        else:
-            print(f"[{now_str}] Monitoring...")
-            try:
-                ledger_path = (
-                    PAPER_RUNTIME.ledger_path
-                    if context.mode is ExecutionMode.PAPER
-                    else LEDGER_PATH
-                )
-                run_resolution_monitor_cycle(ledger_path)
-            except Exception as exc:
-                warn(f"Resolution monitor error: {exc}")
-            time.sleep(MONITOR_INTERVAL)
-
-
-# =============================================================================
-# CLI
-# =============================================================================
+        scan_and_trade(context)
+        time.sleep(SCAN_INTERVAL)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Weather-market bot")
+    parser = argparse.ArgumentParser(description="Quarantined legacy WeatherBot v3 implementation")
     parser.add_argument(
         "command",
         nargs="?",
-        default="scan",
+        default="status",
         choices=("scan", "run", "status", "resolve", "cancel", "paper-reset"),
     )
-    parser.add_argument("--mode", choices=("research", "paper", "live"))
-    parser.add_argument(
-        "--confirm-live",
-        action="store_true",
-        help="required in addition to config mode=live and --mode live",
-    )
-    parser.add_argument("--market", help="market identifier for cancellation")
-    parser.add_argument(
-        "--confirm-paper-reset",
-        action="store_true",
-        help="required to archive and reset PAPER history",
-    )
+    parser.add_argument("--mode", choices=("research", "paper", "live"), default="research")
+    parser.add_argument("--confirm-live", action="store_true")
+    parser.add_argument("--confirm-reset", action="store_true")
     return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    try:
-        context = resolve_execution_context(
-            configured_mode=_cfg.get("mode"),
-            cli_mode=args.mode,
-            confirm_live=args.confirm_live,
-        )
-    except ModeConfigurationError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-
-    if args.command in {"scan", "run"}:
-        print(
-            "ERROR: legacy strategy scanning is disabled; use bot_v3.py",
-            file=sys.stderr,
-        )
-        return 2
-
-    print(f"Execution mode: {context.label}")
+def main(argv: list[str] | None = None):
+    args = build_parser().parse_args(argv)
+    context = resolve_execution_context(
+        configured_mode=str(_cfg.get("mode", "research")),
+        requested_mode=args.mode,
+        confirm_live=args.confirm_live,
+    )
     if context.mode is ExecutionMode.LIVE:
-        try:
-            require_live_dependencies()
-        except LiveDependenciesUnavailable as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 2
-        print(credential_status_line())
-        if not PK or not WALLET:
-            print("ERROR: live mode requires PK and WALLET in .env", file=sys.stderr)
-            return 2
-
+        raise ModeConfigurationError("legacy LIVE operation is quarantined")
+    if args.command == "scan":
+        return scan_and_trade(context)
     if args.command == "run":
-        run_loop(context)
-    elif args.command == "scan":
-        scan_and_trade(context)
-    elif args.command == "status":
-        show_status(context)
-    elif args.command == "resolve":
-        ledger_path = (
-            PAPER_RUNTIME.ledger_path
-            if context.mode is ExecutionMode.PAPER
-            else LEDGER_PATH
-        )
-        run_resolution_monitor_cycle(ledger_path)
-    elif args.command == "paper-reset":
-        if context.mode is not ExecutionMode.PAPER:
-            print("ERROR: paper-reset requires --mode paper", file=sys.stderr)
-            return 2
-        if not args.confirm_paper_reset:
-            print(
-                "ERROR: paper-reset requires --confirm-paper-reset; history is archived first",
-                file=sys.stderr,
-            )
-            return 2
-        archive = reset_paper_runtime(
-            runtime=PAPER_RUNTIME,
-            reset_at=datetime.now(timezone.utc),
-        )
-        print(f"[PAPER] archived prior ledger to {archive}")
-        print(f"[PAPER] reset ledger: {PAPER_RUNTIME.ledger_path}")
-    elif args.command == "cancel":
-        try:
-            require_live(context, operation="order cancellation")
-        except LiveExecutionBlocked as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 2
-        if args.market:
-            print(f"Cancelling orders for market: {args.market}")
-        else:
-            count = cancel_all_orders()
-            print(f"Cancelled {count} orders")
-    return 0
+        return run_loop(context)
+    if args.command == "resolve":
+        return run_resolution_monitor_cycle(PAPER_RUNTIME.ledger_path)
+    if args.command == "status":
+        return load_state()
+    if args.command == "paper-reset":
+        raise ModeConfigurationError("use python -m weatherbot.paper reset")
+    if args.command == "cancel":
+        raise ModeConfigurationError("legacy cancellation is quarantined")
+    raise ModeConfigurationError(f"unsupported legacy command: {args.command}")
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        raise SystemExit(main(sys.argv[1:]))
+    except ModeConfigurationError as exc:
+        err(str(exc))
+        raise SystemExit(2) from exc
