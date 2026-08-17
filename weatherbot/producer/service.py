@@ -15,6 +15,7 @@ from weatherbot.quoting import QuoteEvaluation, evaluate_executable_buy
 
 PRODUCER_ID = "hermes_weatherbot"
 VENUE = "polymarket"
+CLASSIFICATION = "accepted"
 
 
 def evaluate_candidate(
@@ -64,8 +65,10 @@ def evaluate_candidate(
         venue=VENUE,
         event_id=candidate.event_id,
         market_id=candidate.market_id,
+        condition_id=candidate.condition_id,
         outcome=candidate.outcome,
         token_id=candidate.token_id,
+        classification=CLASSIFICATION,
         market_date=candidate.market_date,
         calibration_fingerprint=calibration_fingerprint,
         weather_fingerprint=candidate.calibrated.weather_fingerprint,
@@ -95,7 +98,7 @@ def evaluate_candidate(
         bucket_label=candidate.bucket.label,
         forecast_temperature_f=candidate.weather.signal_temperature_f,
         model_probability=candidate.calibrated.model_probability,
-        classification="accepted",
+        classification=CLASSIFICATION,
         market_reference=reference,
         model_version=candidate.calibrated.model_version,
         artifact_sha256=candidate.calibrated.artifact_sha256,
