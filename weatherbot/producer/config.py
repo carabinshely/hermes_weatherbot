@@ -146,9 +146,7 @@ def load_producer_policy(
         maximum_order_book_age_seconds=int(data["maximum_order_book_age_seconds"]),
         platform_fee_reserve_rate=_decimal(data, "platform_fee_reserve_rate"),
         transaction_cost_reserve=_decimal(data, "transaction_cost_reserve"),
-        market_reference_safety_margin_rate=_decimal(
-            data, "market_reference_safety_margin_rate"
-        ),
+        market_reference_safety_margin_rate=_decimal(data, "market_reference_safety_margin_rate"),
         depth_policy=DepthPolicy(str(data["depth_policy"])),
         signal_log_path=signal_path,
     )
