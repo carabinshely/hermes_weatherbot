@@ -141,27 +141,46 @@ by an explicit strategy-version change.
 
 ## Internal PAPER strategy R&D
 
-PAPER is intentionally separate from the public CLI:
+PAPER is intentionally separate from the public CLI and has one supported command:
+deterministic evaluation of a frozen experiment.
 
 ```bash
-uv run --no-dev python -m weatherbot.paper scan
-uv run --no-dev python -m weatherbot.paper status
-uv run --no-dev python -m weatherbot.paper run
-uv run --no-dev python -m weatherbot.paper resolve
+uv run --no-dev python -m weatherbot.paper evaluate \
+  --manifest path/to/experiment.json \
+  --output state/paper-experiments
 ```
 
-Resetting internal PAPER history is explicit:
+The manifest is intentionally small. It names a reviewed repository-owned factory under
+`weatherbot.paper.experiments.*` plus explicit arguments. Arbitrary import paths are
+rejected. The factory returns a `PaperExperimentSpec` containing:
 
-```bash
-uv run --no-dev python -m weatherbot.paper reset --confirm-reset
-```
+- a candidate `ProducerPolicy` with explicit strategy identity/version;
+- frozen `CalibratedMarketCandidate` evidence, which is the same typed boundary consumed
+  by the public producer;
+- optional frozen execution order-book evidence;
+- optional simulated sizing, cost, bankroll, and portfolio-risk policy;
+- optional frozen settlement payout evidence for hypothetical realized P&L.
 
-PAPER results are hypothetical development evidence only. They are not real producer
-signals, cannot self-promote a strategy/model, and are not automatically published to the
-Prediction Intelligence Platform (PIP). PAPER retains the existing simulation sizing,
-risk, ledger, valuation, and adaptive research-threshold semantics through safe read-only
-configuration and public market-data adapters; it does not import the historical live
-trading implementation.
+For every case, PAPER first calls the exact public
+`weatherbot.producer.service.evaluate_candidate()` function. **All public producer
+decisions for the experiment are computed before any simulated ledger is allocated.**
+Only afterward may PAPER evaluate hypothetical sizing/risk/fills and settlement in an
+isolated temporary ledger. Changing PAPER bankroll, positions, fills, or prior PAPER
+outcomes therefore cannot change the real `HermesSignal` decision or payload.
+
+Experiment identity binds the producer-policy fingerprint, strategy version, frozen
+evidence fingerprints, PAPER engine version, and optional economic policy. Canonical
+`summary.json`, `evaluations.jsonl`, and `checksums.json` artifacts can therefore be
+reproduced byte-for-byte for the same experiment.
+
+PAPER outputs explicitly mark fills, settlement, and Profit and Loss (P&L) as
+**hypothetical development evidence**. They are not verified profitability, cannot
+self-promote a strategy/model, do not grant public or paid eligibility, and are never
+automatically published to the Prediction Intelligence Platform (PIP).
+
+The older PAPER ledger/execution/valuation modules remain reusable implementation
+primitives and regression evidence from #15/#16/#27. They are no longer exposed as
+supported mutable `scan`, `run`, `status`, `resolve`, or `reset` PAPER command modes.
 
 ## Probability and provenance
 
