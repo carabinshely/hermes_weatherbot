@@ -14,6 +14,7 @@
   "maximum_forecast_age_seconds": 21600,
   "maximum_event_age_seconds": 120,
   "maximum_order_book_age_seconds": 30,
+  "future_tolerance_seconds": 5,
   "platform_fee_reserve_rate": "0.01",
   "transaction_cost_reserve": "0.01",
   "market_reference_safety_margin_rate": "0.02",
