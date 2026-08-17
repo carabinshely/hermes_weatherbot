@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -120,8 +121,9 @@ def test_real_signal_payload_contains_no_execution_or_paper_state() -> None:
         "bet_size",
     }
     assert forbidden.isdisjoint(payload)
-    market_reference = payload["market_reference"]
-    assert isinstance(market_reference, dict)
+    market_reference_value = payload["market_reference"]
+    assert isinstance(market_reference_value, dict)
+    market_reference = cast(dict[str, object], market_reference_value)
     assert forbidden.isdisjoint(market_reference)
 
 
