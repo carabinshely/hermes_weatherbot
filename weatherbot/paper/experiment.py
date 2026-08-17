@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
+from typing import cast
 
 from weatherbot.domain import Money, PositionKey, RiskScope, fingerprint
 from weatherbot.forecasting import CalibratedProbability, WeatherInputSnapshot
@@ -25,6 +26,14 @@ from weatherbot.quoting import CostPolicy, FreshnessPolicy, MarketEventSnapshot
 from weatherbot.risk import PortfolioRiskPolicy, SizingPolicy
 
 _ENGINE_VERSION = "paper-experiment-v1"
+
+
+def _empty_metadata() -> Mapping[str, object]:
+    return cast(Mapping[str, object], {})
+
+
+def _empty_valuation_books() -> Mapping[PositionKey, OrderBookSnapshot]:
+    return cast(Mapping[PositionKey, OrderBookSnapshot], {})
 
 
 class EconomicEvaluationStatus(StrEnum):
@@ -43,7 +52,7 @@ class StrategyDecision:
     market_reference_price: Decimal
     expected_edge: Decimal
     reason: str
-    metadata: Mapping[str, object] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=_empty_metadata)
 
     def __post_init__(self) -> None:
         if not self.classification.strip():
@@ -74,8 +83,10 @@ class PaperEvidenceCase:
     event: MarketEventSnapshot
     decision_book: OrderBookSnapshot
     execution_book: OrderBookSnapshot | None = None
-    valuation_books: Mapping[PositionKey, OrderBookSnapshot] = field(default_factory=dict)
-    metadata: Mapping[str, object] = field(default_factory=dict)
+    valuation_books: Mapping[PositionKey, OrderBookSnapshot] = field(
+        default_factory=_empty_valuation_books
+    )
+    metadata: Mapping[str, object] = field(default_factory=_empty_metadata)
 
     def __post_init__(self) -> None:
         if not self.case_id.strip():
