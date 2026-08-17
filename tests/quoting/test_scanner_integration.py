@@ -29,19 +29,21 @@ def test_public_producer_uses_one_calibrated_probability_boundary() -> None:
     assert "place_buy_order(" not in service
 
 
-def test_internal_paper_consumes_candidate_seam_without_public_sizing_helpers() -> None:
-    source = _source("weatherbot/paper/cli.py")
-    start = source.index("def scan_once")
-    end = source.index("\n\ndef show_status", start)
-    scan = source[start:end]
+def test_internal_paper_replays_public_candidate_before_simulated_economics() -> None:
+    source = _source("weatherbot/paper/experiment.py")
 
-    candidate_collection = scan.index("collect_calibrated_candidates(")
-    submission = scan.index("submit_scanner_candidate(")
-    assert candidate_collection < submission
-    assert "calibrated=candidate.calibrated" in scan
-    assert "calc_kelly(" not in scan
-    assert "get_adjusted_kelly(" not in scan
-    assert "bet_size(" not in scan
+    public_batch = source.index("public_results = tuple(")
+    public_decision = source.index("evaluate_candidate(", public_batch)
+    ledger_allocation = source.index("initialize_paper_store(", public_decision)
+    assert public_batch < public_decision < ledger_allocation
+
+    decision_block = source[public_batch:ledger_allocation]
+    assert "case.candidate" in decision_block
+    assert "spec.policy" in decision_block
+    assert "evaluated_at=case.decision_at" in decision_block
+    assert "calc_kelly(" not in decision_block
+    assert "get_adjusted_kelly(" not in decision_block
+    assert "bet_size(" not in decision_block
 
 
 def test_public_producer_does_not_reconstruct_edge_from_best_ask() -> None:
