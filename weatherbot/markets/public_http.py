@@ -117,7 +117,9 @@ def parse_temperature_markets(
         try:
             volume = Decimal(str(raw_market.get("volume", 0)))
         except (InvalidOperation, ValueError) as exc:
-            raise GammaMarketError(f"market {market.identity.market_id} has invalid volume") from exc
+            raise GammaMarketError(
+                f"market {market.identity.market_id} has invalid volume"
+            ) from exc
         if not volume.is_finite() or volume < 0:
             raise GammaMarketError(f"market {market.identity.market_id} has invalid volume")
         parsed.append(ParsedTemperatureMarket(market=market, bucket=bucket, volume=volume))
