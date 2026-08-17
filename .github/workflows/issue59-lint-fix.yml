@@ -1,0 +1,41 @@
+name: Fix issue 59 lint
+
+on:
+  push:
+    branches:
+      - agent/issue-59-paper-rnd
+    paths:
+      - .github/workflows/issue59-lint-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-59-paper-rnd
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --locked --all-groups
+      - name: Apply safe Ruff fix
+        run: |
+          uv run ruff check --select SIM114 --fix weatherbot/paper/experiment.py
+          uv run ruff format weatherbot/paper/experiment.py
+      - name: Commit lint fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- weatherbot/paper/experiment.py; then
+            echo "No lint changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add weatherbot/paper/experiment.py
+          git commit -m "Fix issue 59 lint"
+          git push origin HEAD:agent/issue-59-paper-rnd
