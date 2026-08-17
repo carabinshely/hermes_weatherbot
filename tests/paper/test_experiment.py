@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 from decimal import Decimal
 from pathlib import Path
@@ -54,8 +55,11 @@ def _economics(starting_cash: str) -> PaperEconomicConfig:
     )
 
 
-def _strategy(case: PaperEvidenceCase, parameters: dict[str, object] | object) -> StrategyDecision:
-    threshold = Decimal(str(dict(parameters)["minimum_edge"]))  # type: ignore[arg-type]
+def _strategy(
+    case: PaperEvidenceCase,
+    parameters: Mapping[str, object],
+) -> StrategyDecision:
+    threshold = Decimal(str(parameters["minimum_edge"]))
     probability = case.calibrated.model_probability
     market = case.decision_book.best_ask
     edge = probability - market
@@ -65,7 +69,9 @@ def _strategy(case: PaperEvidenceCase, parameters: dict[str, object] | object) -
         model_probability=probability,
         market_reference_price=market,
         expected_edge=edge,
-        reason="candidate threshold satisfied" if edge >= threshold else "candidate threshold not met",
+        reason=(
+            "candidate threshold satisfied" if edge >= threshold else "candidate threshold not met"
+        ),
         metadata={"threshold": format(threshold, "f")},
     )
 
