@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from typing import Any
+from typing import cast
 
 import requests
 
@@ -39,19 +40,20 @@ def fetch_temperature_event(
     month: str,
     day: int,
     year: int,
-) -> dict[str, Any] | None:
+) -> dict[str, object] | None:
     slug = f"highest-temperature-in-{city_slug}-on-{month}-{day}-{year}"
     response = requests.get(f"{GAMMA_HOST}/events", params={"slug": slug}, timeout=(5, 8))
     response.raise_for_status()
-    payload = response.json()
+    payload: object = response.json()
     if not isinstance(payload, list):
         raise GammaMarketError("Gamma event response must be an array")
-    if not payload:
+    events = cast(list[object], payload)
+    if not events:
         return None
-    event = payload[0]
+    event = events[0]
     if not isinstance(event, dict):
         raise GammaMarketError("Gamma event entry must be an object")
-    return event
+    return cast(dict[str, object], event)
 
 
 def fetch_token_order_book(
@@ -64,11 +66,11 @@ def fetch_token_order_book(
         timeout=(3, 6),
     )
     response.raise_for_status()
-    payload = response.json()
+    payload: object = response.json()
     if not isinstance(payload, dict):
         raise OrderBookError("CLOB order-book response must be an object")
     return parse_order_book(
-        payload,
+        cast(dict[str, object], payload),
         expected_condition_id=condition_id,
         expected_token_id=token_id,
     )
@@ -103,15 +105,16 @@ def hours_to_resolution(end_date: object, *, now: datetime) -> Decimal:
 
 
 def parse_temperature_markets(
-    event: dict[str, Any],
+    event: Mapping[str, object],
 ) -> tuple[tuple[ParsedTemperatureMarket, ...], TemperatureMarketPartition]:
     parsed: list[ParsedTemperatureMarket] = []
-    raw_markets = event.get("markets", [])
-    if not isinstance(raw_markets, list):
+    raw_markets_value = event.get("markets", [])
+    if not isinstance(raw_markets_value, list):
         raise GammaMarketError("event.markets must be an array")
-    for raw_market in raw_markets:
-        if not isinstance(raw_market, dict):
+    for raw_market_value in cast(list[object], raw_markets_value):
+        if not isinstance(raw_market_value, dict):
             raise GammaMarketError("event market entry must be an object")
+        raw_market = cast(dict[str, object], raw_market_value)
         market = parse_gamma_binary_market(raw_market)
         bucket = parse_temperature_bucket(market.question)
         try:
