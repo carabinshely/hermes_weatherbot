@@ -68,8 +68,8 @@ class CalibratedMarketCandidate:
             ("question", self.question),
         ):
             object.__setattr__(self, label, _nonblank(value, label=label))
-        if self.volume < 0:
-            raise ValueError("volume must not be negative")
+        if not self.volume.is_finite() or self.volume < 0:
+            raise ValueError("volume must be finite and non-negative")
         if self.market_date != self.weather.forecast.market_date:
             raise ValueError("candidate market date must match weather forecast")
         if self.market_timezone != self.weather.forecast.market_timezone:
@@ -108,7 +108,10 @@ class SignalMarketReference:
     quote_fingerprint: str
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "kind", _nonblank(self.kind, label="reference kind"))
+        kind = _nonblank(self.kind, label="reference kind")
+        if kind != "executable_read_only":
+            raise ValueError("unsupported market-reference kind")
+        object.__setattr__(self, "kind", kind)
         object.__setattr__(
             self, "order_book_hash", _nonblank(self.order_book_hash, label="order_book_hash")
         )
@@ -116,23 +119,39 @@ class SignalMarketReference:
             self, "quote_fingerprint", _nonblank(self.quote_fingerprint, label="quote_fingerprint")
         )
         object.__setattr__(self, "observed_at_utc", _utc(self.observed_at_utc))
+        for value in (
+            self.reference_notional,
+            self.best_bid,
+            self.best_ask,
+            self.average_reference_price,
+            self.all_in_reference_price,
+            self.worst_reference_price,
+            self.probability_edge,
+            self.expected_return,
+        ):
+            _decimal_text(value)
         if self.reference_notional <= 0:
             raise ValueError("reference_notional must be positive")
+        if not Decimal("0") < self.best_bid < self.best_ask < Decimal("1"):
+            raise ValueError("market reference requires a valid uncrossed best bid/ask")
+        if not self.best_ask <= self.average_reference_price <= self.worst_reference_price:
+            raise ValueError("average reference price must lie between best ask and worst price")
+        if not self.average_reference_price <= self.all_in_reference_price < Decimal("1"):
+            raise ValueError("all-in reference price must be at least the average price and below one")
+        if self.worst_reference_price >= Decimal("1"):
+            raise ValueError("worst reference price must be below one")
+        if self.probability_edge <= 0 or self.expected_return <= 0:
+            raise ValueError("accepted market reference must retain positive edge and expected return")
 
     def identity_mapping(self) -> dict[str, str]:
-        # Logical signal identity follows evidence identity, not local evaluation time.
-        # quote_fingerprint is retained as audit metadata but excluded because the
-        # historical quote object fingerprints its evaluated_at timestamp.
+        # All stable market-reference economics are part of logical identity. The
+        # quote_fingerprint stays audit-only because the historical quote object includes
+        # its local evaluated_at processing timestamp.
         return {
             "kind": self.kind,
             "order_book_hash": self.order_book_hash,
             "observed_at_utc": self.observed_at_utc.isoformat(),
             "reference_notional": _decimal_text(self.reference_notional),
-        }
-
-    def to_mapping(self) -> dict[str, str]:
-        return {
-            **self.identity_mapping(),
             "best_bid": _decimal_text(self.best_bid),
             "best_ask": _decimal_text(self.best_ask),
             "average_reference_price": _decimal_text(self.average_reference_price),
@@ -140,6 +159,11 @@ class SignalMarketReference:
             "worst_reference_price": _decimal_text(self.worst_reference_price),
             "probability_edge": _decimal_text(self.probability_edge),
             "expected_return": _decimal_text(self.expected_return),
+        }
+
+    def to_mapping(self) -> dict[str, str]:
+        return {
+            **self.identity_mapping(),
             "quote_fingerprint": self.quote_fingerprint,
         }
 
@@ -219,6 +243,8 @@ class HermesSignal:
             raise ValueError("unsupported Hermes signal contract")
         if self.schema_version != "1":
             raise ValueError("unsupported Hermes signal schema_version")
+        if self.classification != "accepted":
+            raise ValueError("HermesSignal v1 only represents accepted producer signals")
         object.__setattr__(self, "generated_at_utc", _utc(self.generated_at_utc))
         if self.model_probability <= 0 or self.model_probability >= 1:
             raise ValueError("model_probability must be between zero and one")
@@ -252,8 +278,10 @@ class HermesSignal:
             venue=self.venue,
             event_id=self.event_id,
             market_id=self.market_id,
+            condition_id=self.condition_id,
             outcome=self.outcome,
             token_id=self.token_id,
+            classification=self.classification,
             market_date=self.market_date,
             calibration_fingerprint=self.calibration_fingerprint,
             weather_fingerprint=self.weather_fingerprint,
@@ -313,8 +341,10 @@ def make_signal_id(
     venue: str,
     event_id: str,
     market_id: str,
+    condition_id: str,
     outcome: str,
     token_id: str,
+    classification: str,
     market_date: date,
     calibration_fingerprint: str,
     weather_fingerprint: str,
@@ -330,8 +360,10 @@ def make_signal_id(
         "venue": venue,
         "event_id": event_id,
         "market_id": market_id,
+        "condition_id": condition_id,
         "outcome": outcome,
         "token_id": token_id,
+        "classification": classification,
         "market_date": market_date.isoformat(),
         "calibration_fingerprint": calibration_fingerprint,
         "weather_fingerprint": weather_fingerprint,
