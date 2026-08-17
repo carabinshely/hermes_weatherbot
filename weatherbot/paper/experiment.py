@@ -498,13 +498,16 @@ class PaperExperimentEngine:
                 if case.settlement is not None and economics is None:
                     settlement_reason = "hypothetical settlement requires enabled economics"
                 elif (
-                    case.settlement is not None
-                    and economics is not None
-                    and not economics.enabled
+                    case.settlement is not None and economics is not None and not economics.enabled
                 ):
                     settlement_reason = "hypothetical settlement requires enabled economics"
-                elif case.settlement is not None and economic_status is not EconomicEvaluationStatus.EVALUATED:
-                    settlement_reason = "hypothetical settlement requires an evaluated economic entry"
+                elif (
+                    case.settlement is not None
+                    and economic_status is not EconomicEvaluationStatus.EVALUATED
+                ):
+                    settlement_reason = (
+                        "hypothetical settlement requires an evaluated economic entry"
+                    )
 
                 results.append(
                     PaperCaseResult(

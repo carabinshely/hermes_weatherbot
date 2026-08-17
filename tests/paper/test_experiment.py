@@ -37,9 +37,7 @@ def _case(
         case_id="chicago-2026-08-06-F85-86",
         decision_at=NOW,
         candidate=item,
-        execution_book=(
-            paper_book(book_hash="experiment-execution") if execution else None
-        ),
+        execution_book=(paper_book(book_hash="experiment-execution") if execution else None),
         settlement=(
             PaperSettlementEvidence(
                 resolved_at=NOW + timedelta(days=1),
@@ -83,9 +81,7 @@ def _spec(
 ) -> PaperExperimentSpec:
     return PaperExperimentSpec(
         policy=replace(policy(), strategy_version="candidate-v1"),
-        evidence_cases=(
-            _case(execution=execution, settlement=settlement),
-        ),
+        evidence_cases=(_case(execution=execution, settlement=settlement),),
         economics=_economics(starting_cash, enabled=economics_enabled),
     )
 
@@ -201,8 +197,7 @@ def test_experiment_identity_covers_public_policy_evidence_and_economics() -> No
         baseline,
         policy=replace(
             baseline.policy,
-            minimum_expected_return=baseline.policy.minimum_expected_return
-            + Decimal("0.01"),
+            minimum_expected_return=baseline.policy.minimum_expected_return + Decimal("0.01"),
         ),
     )
     changed_economics = replace(baseline, economics=_economics("99"))

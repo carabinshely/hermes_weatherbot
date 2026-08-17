@@ -85,7 +85,9 @@ def test_factory_loading_is_restricted_to_reviewed_namespace(
     with pytest.raises(ValueError, match="module-level"):
         paper_cli._factory("weatherbot.paper.experiments.fixture:factory.method")
 
-    module = SimpleNamespace(build=lambda strategy_version: _spec(strategy_version=strategy_version))
+    module = SimpleNamespace(
+        build=lambda strategy_version: _spec(strategy_version=strategy_version)
+    )
     monkeypatch.setattr(paper_cli.importlib, "import_module", lambda _name: module)
     built = paper_cli._build(
         "weatherbot.paper.experiments.fixture:build",
@@ -119,7 +121,9 @@ def test_cli_evaluates_repository_owned_frozen_experiment(
         ),
         encoding="utf-8",
     )
-    module = SimpleNamespace(build=lambda strategy_version: _spec(strategy_version=strategy_version))
+    module = SimpleNamespace(
+        build=lambda strategy_version: _spec(strategy_version=strategy_version)
+    )
     monkeypatch.setattr(paper_cli.importlib, "import_module", lambda _name: module)
     monkeypatch.setenv("PK", "must-not-matter")
     monkeypatch.setenv("WALLET", "must-not-matter")

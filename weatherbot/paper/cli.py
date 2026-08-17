@@ -52,8 +52,7 @@ def _factory(path: str) -> Callable[..., object]:
     module_name, function_name = path.split(":", 1)
     if not module_name.startswith(_FACTORY_NAMESPACE):
         raise ValueError(
-            "PAPER experiment factory must live under "
-            f"{_FACTORY_NAMESPACE.rstrip('.')}"
+            f"PAPER experiment factory must live under {_FACTORY_NAMESPACE.rstrip('.')}"
         )
     if not function_name or "." in function_name:
         raise ValueError("PAPER experiment factory must name one module-level function")
