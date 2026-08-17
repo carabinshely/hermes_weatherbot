@@ -143,7 +143,9 @@ class SignalMarketReference:
         if self.worst_reference_price >= Decimal("1"):
             raise ValueError("worst reference price must be below one")
         if self.probability_edge <= 0 or self.expected_return <= 0:
-            raise ValueError("accepted market reference must retain positive edge and expected return")
+            raise ValueError(
+                "accepted market reference must retain positive edge and expected return"
+            )
 
     def identity_mapping(self) -> dict[str, str]:
         # All stable market-reference economics are part of logical identity. The
