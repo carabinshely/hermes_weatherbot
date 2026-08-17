@@ -28,11 +28,7 @@ def _mapping(value: object, *, label: str) -> Mapping[str, object]:
     return cast(dict[str, object], value)
 
 
-def _decimal(
-    config: Mapping[str, object],
-    key: str,
-    default: str,
-) -> Decimal:
+def _decimal(config: Mapping[str, object], key: str, default: str) -> Decimal:
     raw = config.get(key, default)
     if isinstance(raw, bool):
         raise ValueError(f"{key} must be numeric")
@@ -45,11 +41,7 @@ def _decimal(
     return value
 
 
-def _positive_seconds(
-    config: Mapping[str, object],
-    key: str,
-    default: str,
-) -> timedelta:
+def _positive_seconds(config: Mapping[str, object], key: str, default: str) -> timedelta:
     value = _decimal(config, key, default)
     if value <= 0:
         raise ValueError(f"{key} must be positive")
@@ -109,13 +101,9 @@ def load_paper_research_config(
         depth_policy=DepthPolicy(str(config.get("depth_policy", "reject"))),
     )
     freshness_policy = FreshnessPolicy(
-        maximum_forecast_age=_positive_seconds(
-            config, "max_forecast_age_seconds", "21600"
-        ),
+        maximum_forecast_age=_positive_seconds(config, "max_forecast_age_seconds", "21600"),
         maximum_event_age=_positive_seconds(config, "max_event_age_seconds", "120"),
-        maximum_order_book_age=_positive_seconds(
-            config, "max_order_book_age_seconds", "30"
-        ),
+        maximum_order_book_age=_positive_seconds(config, "max_order_book_age_seconds", "30"),
         maximum_balance_age=_positive_seconds(config, "max_balance_age_seconds", "30"),
     )
     return PaperResearchConfig(
