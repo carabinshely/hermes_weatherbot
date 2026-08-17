@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail CI if the public producer can transitively reach execution/PAPER modules."""
+"""Fail CI if supported Hermes runtimes can transitively reach execution modules."""
 
 from __future__ import annotations
 
@@ -7,12 +7,23 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-START_MODULES = ("bot_v3", "weatherbot.producer")
-FORBIDDEN_PREFIXES = (
+PUBLIC_START_MODULES = ("bot_v3", "weatherbot.producer")
+PUBLIC_FORBIDDEN_PREFIXES = (
     "bot_v3_legacy",
     "bot_v3_legacy_impl",
     "execution_modes",
     "weatherbot.paper",
+    "weatherbot.dependencies",
+    "weatherbot.polymarket",
+    "web3",
+    "eth_account",
+    "polymarket",
+)
+PAPER_START_MODULES = ("weatherbot.paper.cli",)
+PAPER_FORBIDDEN_PREFIXES = (
+    "bot_v3_legacy",
+    "bot_v3_legacy_impl",
+    "execution_modes",
     "weatherbot.dependencies",
     "weatherbot.polymarket",
     "web3",
@@ -29,11 +40,14 @@ FORBIDDEN_SYMBOLS = (
     "place_buy_order",
     "cancel_all_orders",
     "ensure_approvals",
+    "approve_token",
+    "get_clob",
+    "get_w3",
 )
 
 
-def _is_forbidden(module: str) -> bool:
-    return any(module == prefix or module.startswith(prefix + ".") for prefix in FORBIDDEN_PREFIXES)
+def _is_forbidden(module: str, prefixes: tuple[str, ...]) -> bool:
+    return any(module == prefix or module.startswith(prefix + ".") for prefix in prefixes)
 
 
 def _module_path(module: str) -> Path | None:
@@ -63,8 +77,13 @@ def _imports(path: Path) -> set[str]:
     return result
 
 
-def main() -> int:
-    pending = list(START_MODULES)
+def _check_boundary(
+    *,
+    label: str,
+    start_modules: tuple[str, ...],
+    forbidden_prefixes: tuple[str, ...],
+) -> tuple[list[str], int]:
+    pending = list(start_modules)
     visited: set[str] = set()
     offenders: list[str] = []
     checked_paths: set[Path] = set()
@@ -74,8 +93,8 @@ def main() -> int:
         if module in visited:
             continue
         visited.add(module)
-        if _is_forbidden(module):
-            offenders.append(module)
+        if _is_forbidden(module, forbidden_prefixes):
+            offenders.append(f"{label}: {module}")
             continue
         path = _module_path(module)
         if path is None:
@@ -85,8 +104,8 @@ def main() -> int:
             if parent not in visited:
                 pending.append(parent)
         for imported in _imports(path):
-            if _is_forbidden(imported):
-                offenders.append(f"{module} -> {imported}")
+            if _is_forbidden(imported, forbidden_prefixes):
+                offenders.append(f"{label}: {module} -> {imported}")
             elif _module_path(imported) is not None and imported not in visited:
                 pending.append(imported)
 
@@ -95,13 +114,31 @@ def main() -> int:
         relative = path.relative_to(ROOT)
         for symbol in FORBIDDEN_SYMBOLS:
             if symbol in text:
-                offenders.append(f"{relative}: forbidden public symbol {symbol}")
+                offenders.append(f"{label}: {relative}: forbidden execution symbol {symbol}")
 
+    return offenders, len(checked_paths)
+
+
+def main() -> int:
+    public_offenders, public_count = _check_boundary(
+        label="PUBLIC",
+        start_modules=PUBLIC_START_MODULES,
+        forbidden_prefixes=PUBLIC_FORBIDDEN_PREFIXES,
+    )
+    paper_offenders, paper_count = _check_boundary(
+        label="PAPER",
+        start_modules=PAPER_START_MODULES,
+        forbidden_prefixes=PAPER_FORBIDDEN_PREFIXES,
+    )
+    offenders = sorted(set(public_offenders + paper_offenders))
     if offenders:
-        for offender in sorted(set(offenders)):
-            print(f"PUBLIC NON-EXECUTION VIOLATION: {offender}")
+        for offender in offenders:
+            print(f"NON-EXECUTION VIOLATION: {offender}")
         return 1
-    print(f"public non-execution boundary OK ({len(checked_paths)} repository modules checked)")
+    print(
+        "non-execution boundaries OK "
+        f"(public={public_count} repository modules, paper={paper_count} repository modules)"
+    )
     return 0
 
 
