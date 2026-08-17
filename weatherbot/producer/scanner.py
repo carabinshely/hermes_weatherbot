@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime
 from decimal import Decimal
-from typing import Any
 
 import requests
 
@@ -45,11 +44,11 @@ from weatherbot.producer.model import CalibratedMarketCandidate
 from weatherbot.producer.sources import fetch_weather_snapshots
 from weatherbot.quoting import MarketEventSnapshot
 
-EventFetcher = Callable[[str, str, int, int], dict[str, Any] | None]
+EventFetcher = Callable[[str, str, int, int], Mapping[str, object] | None]
 BookFetcher = Callable[[ConditionId, OutcomeTokenId], OrderBookSnapshot]
 
 
-def _event_id(event: dict[str, Any], market_date: str) -> str:
+def _event_id(event: Mapping[str, object], market_date: str) -> str:
     value = event.get("id") or event.get("slug") or market_date
     normalized = str(value).strip()
     if not normalized:
