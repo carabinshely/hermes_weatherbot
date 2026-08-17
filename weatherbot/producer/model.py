@@ -74,6 +74,8 @@ class CalibratedMarketCandidate:
             raise ValueError("candidate market date must match weather forecast")
         if self.market_timezone != self.weather.forecast.market_timezone:
             raise ValueError("candidate timezone must match weather forecast")
+        if self.event_id != self.event.event_id:
+            raise ValueError("candidate event_id must match market event snapshot")
         if self.city_slug != self.calibrated.city_slug:
             raise ValueError("candidate city must match calibrated probability")
         if self.bucket.key != self.calibrated.bucket_key:
@@ -208,6 +210,10 @@ class HermesSignal:
             ("distribution_type", self.distribution_type),
         ):
             object.__setattr__(self, label, _nonblank(value, label=label))
+        if self.contract != "hermes.signal":
+            raise ValueError("unsupported Hermes signal contract")
+        if self.schema_version != "1":
+            raise ValueError("unsupported Hermes signal schema_version")
         object.__setattr__(self, "generated_at_utc", _utc(self.generated_at_utc))
         if self.model_probability <= 0 or self.model_probability >= 1:
             raise ValueError("model_probability must be between zero and one")
