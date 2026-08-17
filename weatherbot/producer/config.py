@@ -6,9 +6,9 @@ import hashlib
 import json
 from dataclasses import dataclass
 from datetime import timedelta
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any
+from typing import cast
 
 from weatherbot.quoting import CostPolicy, DepthPolicy, FreshnessPolicy
 
@@ -76,7 +76,7 @@ class ProducerPolicy:
             depth_policy=self.depth_policy,
         )
 
-    def identity_mapping(self) -> dict[str, Any]:
+    def identity_mapping(self) -> dict[str, object]:
         return {
             "schema_version": self.schema_version,
             "strategy_id": self.strategy_id,
@@ -108,11 +108,38 @@ class ProducerPolicy:
         return hashlib.sha256(encoded).hexdigest()
 
 
-def _decimal(data: dict[str, object], key: str) -> Decimal:
-    value = Decimal(str(data[key]))
-    if not value.is_finite():
-        raise ValueError(f"producer policy {key} must be finite")
+def _required(data: dict[str, object], key: str) -> object:
+    try:
+        return data[key]
+    except KeyError as exc:
+        raise ValueError(f"producer policy is missing {key}") from exc
+
+
+def _string(data: dict[str, object], key: str) -> str:
+    value = _required(data, key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"producer policy {key} must be a non-blank string")
+    return value.strip()
+
+
+def _integer(data: dict[str, object], key: str) -> int:
+    value = _required(data, key)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"producer policy {key} must be an integer")
     return value
+
+
+def _decimal(data: dict[str, object], key: str) -> Decimal:
+    value = _required(data, key)
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        raise ValueError(f"producer policy {key} must be decimal-compatible")
+    try:
+        decimal = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(f"producer policy {key} must be decimal-compatible") from exc
+    if not decimal.is_finite():
+        raise ValueError(f"producer policy {key} must be finite")
+    return decimal
 
 
 def load_producer_policy(
@@ -121,18 +148,18 @@ def load_producer_policy(
     relative_path: Path = Path("config/producer.json"),
 ) -> ProducerPolicy:
     path = repository_root / relative_path
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw: object = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("producer policy must be a JSON object")
-    data: dict[str, object] = raw
-    signal_path = Path(str(data["signal_log_path"]))
+    data = cast(dict[str, object], raw)
+    signal_path = Path(_string(data, "signal_log_path"))
     if not signal_path.is_absolute():
         signal_path = repository_root / signal_path
     return ProducerPolicy(
-        schema_version=int(data["schema_version"]),
-        strategy_id=str(data["strategy_id"]),
-        strategy_version=str(data["strategy_version"]),
-        scan_interval_seconds=int(data["scan_interval_seconds"]),
+        schema_version=_integer(data, "schema_version"),
+        strategy_id=_string(data, "strategy_id"),
+        strategy_version=_string(data, "strategy_version"),
+        scan_interval_seconds=_integer(data, "scan_interval_seconds"),
         min_volume=_decimal(data, "min_volume"),
         min_hours=_decimal(data, "min_hours"),
         max_hours=_decimal(data, "max_hours"),
@@ -141,12 +168,12 @@ def load_producer_policy(
         maximum_all_in_price=_decimal(data, "maximum_all_in_price"),
         maximum_average_slippage=_decimal(data, "maximum_average_slippage"),
         maximum_worst_slippage=_decimal(data, "maximum_worst_slippage"),
-        maximum_forecast_age_seconds=int(data["maximum_forecast_age_seconds"]),
-        maximum_event_age_seconds=int(data["maximum_event_age_seconds"]),
-        maximum_order_book_age_seconds=int(data["maximum_order_book_age_seconds"]),
+        maximum_forecast_age_seconds=_integer(data, "maximum_forecast_age_seconds"),
+        maximum_event_age_seconds=_integer(data, "maximum_event_age_seconds"),
+        maximum_order_book_age_seconds=_integer(data, "maximum_order_book_age_seconds"),
         platform_fee_reserve_rate=_decimal(data, "platform_fee_reserve_rate"),
         transaction_cost_reserve=_decimal(data, "transaction_cost_reserve"),
         market_reference_safety_margin_rate=_decimal(data, "market_reference_safety_margin_rate"),
-        depth_policy=DepthPolicy(str(data["depth_policy"])),
+        depth_policy=DepthPolicy(_string(data, "depth_policy")),
         signal_log_path=signal_path,
     )
