@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
+from typing import cast
 
 import requests
 
@@ -44,7 +45,7 @@ def fetch_ecmwf_daily_highs(
         try:
             response = requests.get(url, params=params, timeout=(5, 10))
             response.raise_for_status()
-            payload = response.json()
+            payload: object = response.json()
             if not isinstance(payload, dict):
                 raise WeatherInputError("Open-Meteo response must be an object")
             retrieved_at = datetime.now(UTC)
@@ -52,7 +53,7 @@ def fetch_ecmwf_daily_highs(
             # prove the exact calibrated run, CalibratedProbabilityRuntime stays fail-closed.
             return dict(
                 parse_open_meteo_daily_highs(
-                    payload,
+                    cast(dict[str, object], payload),
                     requested_dates=requested_dates,
                     market_timezone=location.market_timezone,
                     retrieved_at_utc=retrieved_at,
@@ -78,8 +79,9 @@ def fetch_metar(city_slug: str) -> TemperatureObservation | None:
             timeout=(5, 8),
         )
         response.raise_for_status()
+        payload: object = response.json()
         return parse_aviation_weather_metar(
-            response.json(),
+            payload,
             station_id=location.station_id,
             market_timezone=location.market_timezone,
             retrieved_at_utc=datetime.now(UTC),
