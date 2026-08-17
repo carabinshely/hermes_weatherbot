@@ -1,7 +1,7 @@
 """Deterministic internal PAPER strategy-evaluation experiments.
 
 This module deliberately separates the strategy question (would this versioned strategy
-emit a signal for frozen evidence?) from optional hypothetical economics.  Economic state
+emit a signal for frozen evidence?) from optional hypothetical economics. Economic state
 may change sizing/risk/fill results, but it is never an input to ``StrategyDecision``.
 """
 
@@ -14,13 +14,13 @@ from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
-from typing import cast
 
 from weatherbot.domain import Money, PositionKey, RiskScope, fingerprint
 from weatherbot.forecasting import CalibratedProbability, WeatherInputSnapshot
 from weatherbot.markets import OrderBookSnapshot
 from weatherbot.paper.ledger import initialize_paper_store
 from weatherbot.paper.service import PaperEntryRequest, PaperEntryResult, PaperTradingService
+from weatherbot.persistence import PortfolioRiskEventStore
 from weatherbot.quoting import CostPolicy, FreshnessPolicy, MarketEventSnapshot
 from weatherbot.risk import PortfolioRiskPolicy, SizingPolicy
 
@@ -149,7 +149,9 @@ class PaperExperimentSpec:
         case_ids = [case.case_id for case in self.evidence_cases]
         if len(case_ids) != len(set(case_ids)):
             raise ValueError("paper experiment case_id values must be unique")
-        ordered = tuple(sorted(self.evidence_cases, key=lambda case: (case.decision_at, case.case_id)))
+        ordered = tuple(
+            sorted(self.evidence_cases, key=lambda case: (case.decision_at, case.case_id))
+        )
         if ordered != self.evidence_cases:
             raise ValueError("paper evidence cases must be ordered by decision_at then case_id")
 
@@ -203,7 +205,9 @@ class PaperExperimentResult:
     @property
     def economically_evaluated_count(self) -> int:
         return sum(
-            1 for case in self.cases if case.economic_status is EconomicEvaluationStatus.EVALUATED
+            1
+            for case in self.cases
+            if case.economic_status is EconomicEvaluationStatus.EVALUATED
         )
 
 
@@ -262,17 +266,18 @@ class PaperExperimentEngine:
         experiment_id = spec.experiment_id
         economics = spec.economics
         service: PaperTradingService | None = None
-        store_context = None
+        tempdir: tempfile.TemporaryDirectory[str] | None = None
+        store: PortfolioRiskEventStore | None = None
 
         if economics is not None and economics.enabled:
             opened_at = spec.evidence_cases[0].decision_at.astimezone(UTC)
             tempdir = tempfile.TemporaryDirectory(prefix=f"{experiment_id[:24]}-")
-            store_context = (tempdir, initialize_paper_store(
+            store = initialize_paper_store(
                 Path(tempdir.name) / "experiment.sqlite3",
                 starting_cash=economics.starting_cash,
                 opened_at=opened_at,
-            ))
-            service = PaperTradingService(store_context[1], clock=lambda: opened_at)
+            )
+            service = PaperTradingService(store, clock=lambda: opened_at)
 
         results: list[PaperCaseResult] = []
         try:
@@ -314,11 +319,9 @@ class PaperExperimentEngine:
                     )
                 )
         finally:
-            if store_context is not None:
-                tempdir, store = cast(tuple[tempfile.TemporaryDirectory[str], object], store_context)
-                close = getattr(store, "close", None)
-                if callable(close):
-                    close()
+            if store is not None:
+                store.close()
+            if tempdir is not None:
                 tempdir.cleanup()
 
         return PaperExperimentResult(
