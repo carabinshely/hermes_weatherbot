@@ -1,155 +1,94 @@
-"""Explicit internal PAPER research CLI, separate from the public producer surface."""
+"""Internal deterministic PAPER experiment CLI."""
 
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
-import time
-from datetime import UTC, datetime
+from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import cast
 
-from weatherbot.domain import MarketId, OutcomeId, RiskScope
-from weatherbot.forecasting import CalibrationRuntimeError, load_calibrated_probability_runtime
-from weatherbot.paper.config import PaperResearchConfig, load_paper_research_config
-from weatherbot.paper.integration import (
-    paper_runtime_status,
-    recover_paper_runtime,
-    reset_paper_runtime,
-    submit_scanner_candidate,
-)
-from weatherbot.paper.service import PaperEntryStatus
-from weatherbot.producer.config import load_producer_policy
-from weatherbot.producer.market_source import fetch_token_order_book
-from weatherbot.producer.scanner import collect_calibrated_candidates
-from weatherbot.resolution import run_resolution_cycle
+from weatherbot.paper.experiment import PaperExperimentEngine, PaperExperimentSpec
+from weatherbot.paper.io import write_experiment_artifacts
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-
-
-def _load_research_config() -> PaperResearchConfig:
-    return load_paper_research_config(REPOSITORY_ROOT)
-
-
-def scan_once(config: PaperResearchConfig | None = None) -> tuple[int, list[str]]:
-    research = config or _load_research_config()
-    runtime = research.runtime
-    try:
-        recover_paper_runtime(runtime=runtime)
-    except Exception as exc:
-        return 0, [f"PAPER recovery failed closed: {exc}"]
-    try:
-        calibration = load_calibrated_probability_runtime(repository_root=REPOSITORY_ROOT)
-        policy = load_producer_policy(REPOSITORY_ROOT)
-    except (CalibrationRuntimeError, OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
-        return 0, [f"PAPER calibration/policy unavailable: {exc}"]
-
-    candidates, errors = collect_calibrated_candidates(
-        calibration_runtime=calibration,
-        policy=policy,
-    )
-    simulated = 0
-    for candidate in candidates:
-        scope = RiskScope(
-            market_id=MarketId(candidate.market_id),
-            outcome_id=OutcomeId(candidate.token_id),
-            event_id=candidate.event_id,
-            city_key=candidate.city_slug,
-            market_date=candidate.market_date,
-        )
-        try:
-            result = submit_scanner_candidate(
-                runtime=runtime,
-                strategy_id=policy.strategy_id,
-                calibrated=candidate.calibrated,
-                scope=scope,
-                weather=candidate.weather,
-                event=candidate.event,
-                decision_book=candidate.decision_book,
-                condition_id=candidate.decision_book.condition_id,
-                token_id=candidate.decision_book.token_id,
-                freshness_policy=research.freshness_policy,
-                cost_policy=research.cost_policy,
-                fetch_book=fetch_token_order_book,
-                audit_metadata={
-                    "city_name": candidate.city_name,
-                    "horizon": candidate.horizon,
-                    "bucket_key": candidate.bucket.key,
-                    "bucket_label": candidate.bucket.label,
-                    "forecast_temperature_f": candidate.weather.signal_temperature_f,
-                    "volume": candidate.volume,
-                    "question": candidate.question,
-                },
-                owner_id=f"paper-scanner:{candidate.city_slug}:{candidate.market_date.isoformat()}",
-            )
-        except Exception as exc:
-            errors.append(f"{candidate.city_name} {candidate.horizon}: PAPER failed: {exc}")
-            continue
-        if result.status in {PaperEntryStatus.FILLED, PaperEntryStatus.PARTIAL_FILL}:
-            simulated += 1
-    return simulated, errors
-
-
-def show_status(config: PaperResearchConfig | None = None) -> int:
-    research = config or _load_research_config()
-    runtime = research.runtime
-    status = paper_runtime_status(
-        runtime=runtime,
-        observed_at=datetime.now(UTC),
-        freshness_policy=research.freshness_policy,
-        cost_policy=research.cost_policy,
-        fetch_book=fetch_token_order_book,
-    )
-    print("Hermes internal PAPER R&D")
-    print(f"  ledger: {runtime.ledger_path}")
-    print(f"  starting cash: {status.starting_cash.amount}")
-    print(f"  available cash: {status.available_cash.amount}")
-    print(f"  exposure: {status.exposure.amount}")
-    print(f"  realized P/L: {status.realized_pnl.amount}")
-    print(f"  unrealized P/L: {status.unrealized_pnl.amount}")
-    print(f"  open positions: {status.open_positions}")
-    return 0
+_FACTORY_NAMESPACE = "weatherbot.paper.experiments."
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Internal deterministic PAPER strategy R&D")
-    parser.add_argument(
-        "command",
-        nargs="?",
-        default="scan",
-        choices=("scan", "run", "status", "resolve", "reset"),
+    parser = argparse.ArgumentParser(
+        prog="python -m weatherbot.paper",
+        description="Run deterministic internal PAPER strategy experiments.",
     )
-    parser.add_argument("--confirm-reset", action="store_true")
+    subcommands = parser.add_subparsers(dest="command", required=True)
+    evaluate = subcommands.add_parser(
+        "evaluate",
+        help="evaluate one frozen repository-owned experiment manifest",
+    )
+    evaluate.add_argument("--manifest", required=True, type=Path)
+    evaluate.add_argument("--output", required=True, type=Path)
     return parser
 
 
+def _load_manifest(path: Path) -> tuple[str, Mapping[str, object]]:
+    decoded: object = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(decoded, dict):
+        raise ValueError("PAPER experiment manifest must be a JSON object")
+    raw = cast(dict[str, object], decoded)
+    unknown = set(raw) - {"factory", "arguments"}
+    if unknown:
+        raise ValueError(f"PAPER experiment manifest has unsupported fields: {sorted(unknown)}")
+    factory = raw.get("factory")
+    if not isinstance(factory, str) or not factory.strip() or ":" not in factory:
+        raise ValueError("PAPER manifest factory must be 'module:function'")
+    arguments = raw.get("arguments", {})
+    if not isinstance(arguments, dict):
+        raise ValueError("PAPER manifest arguments must be an object")
+    return factory.strip(), cast(Mapping[str, object], arguments)
+
+
+def _factory(path: str) -> Callable[..., object]:
+    module_name, function_name = path.split(":", 1)
+    if not module_name.startswith(_FACTORY_NAMESPACE):
+        raise ValueError(
+            f"PAPER experiment factory must live under {_FACTORY_NAMESPACE.rstrip('.')}"
+        )
+    if not function_name or "." in function_name:
+        raise ValueError("PAPER experiment factory must name one module-level function")
+    module = importlib.import_module(module_name)
+    function = getattr(module, function_name, None)
+    if not callable(function):
+        raise ValueError(f"PAPER experiment factory is not callable: {path}")
+    return function
+
+
+def _build(
+    factory_path: str,
+    arguments: Mapping[str, object],
+) -> PaperExperimentSpec:
+    built: object = _factory(factory_path)(**dict(arguments))
+    if not isinstance(built, PaperExperimentSpec):
+        raise ValueError("PAPER experiment factory must return PaperExperimentSpec")
+    return built
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
     try:
-        research = _load_research_config()
-    except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"ERROR: invalid PAPER research configuration: {exc}", file=sys.stderr)
+        args = build_parser().parse_args(argv)
+        if args.command != "evaluate":
+            raise AssertionError(f"unsupported PAPER command: {args.command}")
+        factory_path, arguments = _load_manifest(args.manifest)
+        spec = _build(factory_path, arguments)
+        result = PaperExperimentEngine().evaluate(spec)
+        artifacts = write_experiment_artifacts(result, output_directory=args.output)
+    except (ImportError, OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        print(f"ERROR: PAPER experiment failed closed: {exc}", file=sys.stderr)
         return 2
 
-    if args.command == "status":
-        return show_status(research)
-    if args.command == "resolve":
-        run_resolution_cycle(research.runtime.ledger_path)
-        return 0
-    if args.command == "reset":
-        if not args.confirm_reset:
-            print("ERROR: reset requires --confirm-reset", file=sys.stderr)
-            return 2
-        archive = reset_paper_runtime(runtime=research.runtime, reset_at=datetime.now(UTC))
-        print(f"archived prior PAPER ledger to {archive}")
-        return 0
-    if args.command == "scan":
-        _simulated, errors = scan_once(research)
-        return 1 if errors else 0
-
-    while True:
-        scan_once(research)
-        time.sleep(research.scan_interval_seconds)
+    print(result.experiment_id)
+    print(artifacts.directory)
+    return 0
 
 
 if __name__ == "__main__":

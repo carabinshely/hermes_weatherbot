@@ -1,87 +1,247 @@
 from __future__ import annotations
 
-from datetime import timedelta
-from decimal import Decimal
+import json
+from dataclasses import replace
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
-from weatherbot.paper import PaperRuntimeConfig
+from tests.producer.test_boundary import candidate, policy
+from tests.quoting.helpers import NOW
 from weatherbot.paper import cli as paper_cli
-from weatherbot.paper.config import PaperResearchConfig
-from weatherbot.quoting import CostPolicy, DepthPolicy, FreshnessPolicy
+from weatherbot.paper.experiment import PaperEvidenceCase, PaperExperimentSpec
 
 
-def _research_config(tmp_path: Path) -> PaperResearchConfig:
-    runtime = PaperRuntimeConfig.from_mapping(
-        {
-            "paper_ledger_path": str(tmp_path / "paper.sqlite3"),
-            "paper_archive_directory": str(tmp_path / "archive"),
-        },
-        base_dir=tmp_path,
-    )
-    return PaperResearchConfig(
-        runtime=runtime,
-        freshness_policy=FreshnessPolicy(
-            maximum_forecast_age=timedelta(hours=6),
-            maximum_event_age=timedelta(minutes=2),
-            maximum_order_book_age=timedelta(seconds=30),
-            maximum_balance_age=timedelta(seconds=30),
+def _spec(*, strategy_version: str = "candidate-v1") -> PaperExperimentSpec:
+    return PaperExperimentSpec(
+        policy=replace(policy(), strategy_version=strategy_version),
+        evidence_cases=(
+            PaperEvidenceCase(
+                case_id="cli-fixture",
+                decision_at=NOW,
+                candidate=candidate(),
+            ),
         ),
-        cost_policy=CostPolicy(
-            platform_fee_rate=Decimal("0.01"),
-            transaction_cost=Decimal("0.01"),
-            safety_margin_rate=Decimal("0.02"),
-            maximum_average_slippage=Decimal("0.03"),
-            maximum_worst_slippage=Decimal("0.05"),
-            maximum_all_in_price=Decimal("0.45"),
-            minimum_expected_return=Decimal("0.10"),
-            depth_policy=DepthPolicy.REJECT,
-        ),
-        scan_interval_seconds=3600,
     )
 
 
-def test_internal_parser_exposes_paper_commands_only() -> None:
+def _build_spec(strategy_version: str) -> PaperExperimentSpec:
+    return _spec(strategy_version=strategy_version)
+
+
+def _invalid_factory() -> object:
+    return object()
+
+
+def _module_with_factory(name: str, factory: object) -> ModuleType:
+    module = ModuleType(name)
+    module.__dict__["build"] = factory
+    return module
+
+
+def test_internal_parser_exposes_evaluate_only() -> None:
     parser = paper_cli.build_parser()
+    args = parser.parse_args(
+        [
+            "evaluate",
+            "--manifest",
+            "experiment.json",
+            "--output",
+            "state/paper-experiments",
+        ]
+    )
 
-    assert parser.parse_args(["scan"]).command == "scan"
-    assert parser.parse_args(["run"]).command == "run"
-    assert parser.parse_args(["status"]).command == "status"
-    assert parser.parse_args(["resolve"]).command == "resolve"
-    reset = parser.parse_args(["reset", "--confirm-reset"])
-    assert reset.command == "reset"
-    assert reset.confirm_reset is True
+    assert args.command == "evaluate"
+    assert args.manifest == Path("experiment.json")
+    assert args.output == Path("state/paper-experiments")
+    with pytest.raises(SystemExit):
+        parser.parse_args(["scan"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["status"])
 
 
-def test_internal_status_reads_pristine_runtime_without_wallet_or_network(
+def test_manifest_rejects_unknown_fields_through_supported_cli(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "experiment.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "factory": "weatherbot.paper.experiments.fixture:build",
+                "arguments": {},
+                "publish": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        paper_cli.main(
+            [
+                "evaluate",
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(tmp_path / "results"),
+            ]
+        )
+        == 2
+    )
+    error = capsys.readouterr().err
+    assert "unsupported fields" in error
+    assert "Traceback" not in error
+
+
+@pytest.mark.parametrize(
+    ("factory", "expected"),
+    [
+        (
+            "weatherbot.producer.service:evaluate_candidate",
+            "must live under weatherbot.paper.experiments",
+        ),
+        (
+            "weatherbot.paper.experiments.fixture:factory.method",
+            "must name one module-level function",
+        ),
+    ],
+)
+def test_factory_loading_is_restricted_to_reviewed_namespace(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    factory: str,
+    expected: str,
+) -> None:
+    manifest = tmp_path / "experiment.json"
+    manifest.write_text(
+        json.dumps({"factory": factory, "arguments": {}}),
+        encoding="utf-8",
+    )
+
+    assert (
+        paper_cli.main(
+            [
+                "evaluate",
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(tmp_path / "results"),
+            ]
+        )
+        == 2
+    )
+    assert expected in capsys.readouterr().err
+
+
+def test_factory_result_must_be_experiment_spec(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    research = _research_config(tmp_path)
-    monkeypatch.setattr(paper_cli, "_load_research_config", lambda: research)
-    monkeypatch.delenv("PK", raising=False)
-    monkeypatch.delenv("WALLET", raising=False)
+    manifest = tmp_path / "experiment.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "factory": "weatherbot.paper.experiments.fixture:build",
+                "arguments": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    module = _module_with_factory(
+        "weatherbot.paper.experiments.fixture",
+        _invalid_factory,
+    )
 
-    assert paper_cli.main(["status"]) == 0
-    output = capsys.readouterr().out
+    def import_module(_name: str) -> ModuleType:
+        return module
 
-    assert "Hermes internal PAPER R&D" in output
-    assert f"ledger: {research.runtime.ledger_path}" in output
-    assert "available cash:" in output
-    assert "open positions: 0" in output
-    assert not research.runtime.ledger_path.exists()
+    monkeypatch.setattr(paper_cli.importlib, "import_module", import_module)
+
+    assert (
+        paper_cli.main(
+            [
+                "evaluate",
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(tmp_path / "results"),
+            ]
+        )
+        == 2
+    )
+    assert "must return PaperExperimentSpec" in capsys.readouterr().err
 
 
-def test_internal_reset_requires_explicit_confirmation(
+def test_cli_evaluates_repository_owned_frozen_experiment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    research = _research_config(tmp_path)
-    monkeypatch.setattr(paper_cli, "_load_research_config", lambda: research)
+    manifest = tmp_path / "experiment.json"
+    output = tmp_path / "results"
+    manifest.write_text(
+        json.dumps(
+            {
+                "factory": "weatherbot.paper.experiments.fixture:build",
+                "arguments": {"strategy_version": "candidate-v4"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    module = _module_with_factory(
+        "weatherbot.paper.experiments.fixture",
+        _build_spec,
+    )
 
-    assert paper_cli.main(["reset"]) == 2
-    assert "reset requires --confirm-reset" in capsys.readouterr().err
-    assert not research.runtime.ledger_path.exists()
+    def import_module(_name: str) -> ModuleType:
+        return module
+
+    monkeypatch.setattr(paper_cli.importlib, "import_module", import_module)
+    monkeypatch.setenv("PK", "must-not-matter")
+    monkeypatch.setenv("WALLET", "must-not-matter")
+
+    assert (
+        paper_cli.main(
+            [
+                "evaluate",
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    stdout = capsys.readouterr().out.splitlines()
+    assert stdout[0].startswith("paper_exp_")
+    result_directory = Path(stdout[1])
+    assert result_directory.parent == output
+    assert (result_directory / "summary.json").exists()
+    assert (result_directory / "evaluations.jsonl").exists()
+    assert (result_directory / "checksums.json").exists()
+
+
+def test_cli_reports_invalid_manifest_without_traceback(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    manifest = tmp_path / "invalid.json"
+    manifest.write_text("{", encoding="utf-8")
+
+    assert (
+        paper_cli.main(
+            [
+                "evaluate",
+                "--manifest",
+                str(manifest),
+                "--output",
+                str(tmp_path / "results"),
+            ]
+        )
+        == 2
+    )
+    error = capsys.readouterr().err
+    assert "PAPER experiment failed closed" in error
+    assert "Traceback" not in error
