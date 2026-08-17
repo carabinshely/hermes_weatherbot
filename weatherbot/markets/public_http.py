@@ -34,7 +34,12 @@ class ParsedTemperatureMarket:
     volume: Decimal
 
 
-def fetch_temperature_event(city_slug: str, month: str, day: int, year: int) -> dict[str, Any] | None:
+def fetch_temperature_event(
+    city_slug: str,
+    month: str,
+    day: int,
+    year: int,
+) -> dict[str, Any] | None:
     slug = f"highest-temperature-in-{city_slug}-on-{month}-{day}-{year}"
     response = requests.get(f"{GAMMA_HOST}/events", params={"slug": slug}, timeout=(5, 8))
     response.raise_for_status()
@@ -89,7 +94,10 @@ def hours_to_resolution(end_date: object, *, now: datetime) -> Decimal:
     parsed = parse_api_datetime(end_date, label="event.endDate")
     assert parsed is not None
     try:
-        return max(Decimal("0"), Decimal(str((parsed - now).total_seconds())) / Decimal("3600"))
+        return max(
+            Decimal("0"),
+            Decimal(str((parsed - now).total_seconds())) / Decimal("3600"),
+        )
     except (InvalidOperation, ValueError) as exc:
         raise GammaMarketError("event resolution horizon is invalid") from exc
 
