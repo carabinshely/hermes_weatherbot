@@ -64,8 +64,7 @@ class ProducerPolicy:
             )
         # Eagerly validate all decision-affecting policy values at load/construction time,
         # rather than failing later in the middle of a producer scan.
-        self.freshness_policy
-        self.cost_policy
+        _ = self.freshness_policy, self.cost_policy
 
     @property
     def freshness_policy(self) -> FreshnessPolicy:
