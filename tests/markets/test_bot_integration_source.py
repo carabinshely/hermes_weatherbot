@@ -21,7 +21,7 @@ def test_quarantined_legacy_implementation_retains_resolution_safe_market_contra
 
 def test_public_producer_uses_shared_market_contracts_without_legacy_imports() -> None:
     scanner = Path("weatherbot/producer/scanner.py").read_text(encoding="utf-8")
-    market_http = Path("weatherbot/markets/public_http.py").read_text(encoding="utf-8")
+    market_http = Path("weatherbot/producer/market_source.py").read_text(encoding="utf-8")
     service = Path("weatherbot/producer/service.py").read_text(encoding="utf-8")
 
     assert "parse_temperature_markets(event)" in scanner
