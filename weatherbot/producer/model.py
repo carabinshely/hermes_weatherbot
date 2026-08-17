@@ -78,6 +78,8 @@ class CalibratedMarketCandidate:
             raise ValueError("candidate event_id must match market event snapshot")
         if self.city_slug != self.calibrated.city_slug:
             raise ValueError("candidate city must match calibrated probability")
+        if self.horizon != f"D+{self.calibrated.lead_days}":
+            raise ValueError("candidate horizon must match calibrated lead_days")
         if self.bucket.key != self.calibrated.bucket_key:
             raise ValueError("candidate bucket must match calibrated probability")
         if self.calibrated.weather_fingerprint != fingerprint(self.weather):
@@ -159,6 +161,8 @@ class HermesSignal:
     question: str
     city_slug: str
     city_name: str
+    climate_region: str
+    lead_days: int
     market_date: date
     market_timezone: str
     bucket_key: str
@@ -196,6 +200,7 @@ class HermesSignal:
             ("question", self.question),
             ("city_slug", self.city_slug),
             ("city_name", self.city_name),
+            ("climate_region", self.climate_region),
             ("market_timezone", self.market_timezone),
             ("bucket_key", self.bucket_key),
             ("bucket_label", self.bucket_label),
@@ -219,6 +224,26 @@ class HermesSignal:
             raise ValueError("model_probability must be between zero and one")
         if self.calibration_sample_count <= 0:
             raise ValueError("calibration_sample_count must be positive")
+
+        calibrated = CalibratedProbability(
+            model_probability=self.model_probability,
+            model_version=self.model_version,
+            artifact_sha256=self.artifact_sha256,
+            city_slug=self.city_slug,
+            climate_region=self.climate_region,
+            lead_days=self.lead_days,
+            weather_fingerprint=self.weather_fingerprint,
+            bucket_key=self.bucket_key,
+            forecast_source=self.forecast_source,
+            calibration_group_key=self.calibration_group_key,
+            fallback_level=self.fallback_level,
+            distribution_type=self.distribution_type,
+            calibration_sample_count=self.calibration_sample_count,
+            training_cutoff=self.training_cutoff,
+        )
+        if self.calibration_fingerprint != calibrated.calibration_fingerprint():
+            raise ValueError("calibration_fingerprint does not match signal provenance")
+
         expected = make_signal_id(
             producer_id=self.producer_id,
             strategy_id=self.strategy_id,
@@ -256,6 +281,8 @@ class HermesSignal:
             "question": self.question,
             "city_slug": self.city_slug,
             "city_name": self.city_name,
+            "climate_region": self.climate_region,
+            "lead_days": self.lead_days,
             "market_date": self.market_date.isoformat(),
             "market_timezone": self.market_timezone,
             "bucket_key": self.bucket_key,
