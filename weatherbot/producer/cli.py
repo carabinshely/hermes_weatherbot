@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from weatherbot.forecasting import (
+    CalibratedProbabilityRuntime,
     CalibrationRuntimeError,
     load_calibrated_probability_runtime,
 )
@@ -21,7 +22,7 @@ from weatherbot.producer.store import append_signal
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _load_runtime():
+def _load_runtime() -> CalibratedProbabilityRuntime:
     return load_calibrated_probability_runtime(repository_root=REPOSITORY_ROOT)
 
 
@@ -78,7 +79,7 @@ def show_status(policy: ProducerPolicy) -> int:
     except CalibrationRuntimeError as exc:
         print(f"  calibration: unavailable ({exc})")
         return 0
-    print(f"  calibration: available ({runtime.model.model_version})")
+    print(f"  calibration: available ({runtime.model.artifact.model_version})")
     return 0
 
 
