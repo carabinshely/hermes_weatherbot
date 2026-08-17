@@ -12,10 +12,12 @@ def test_public_bot_does_not_mix_resolution_ledger_commands_into_signal_cli() ->
     assert 'choices=("scan", "run", "status")' in cli_source
 
 
-def test_internal_paper_cli_retains_resolution_delegate() -> None:
+def test_internal_paper_cli_retains_safe_resolution_delegate() -> None:
     source = Path("weatherbot/paper/cli.py").read_text(encoding="utf-8")
     assert '"resolve"' in source
-    assert "run_resolution_monitor_cycle" in source
+    assert "run_resolution_cycle" in source
+    assert "run_resolution_monitor_cycle" not in source
+    assert "bot_v3_legacy" not in source
 
 
 def test_quarantined_resolution_cycle_remains_read_only() -> None:
