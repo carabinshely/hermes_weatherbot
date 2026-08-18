@@ -162,6 +162,40 @@ class PipIntentStore:
         )
         return cursor.rowcount == 1
 
+    def discard_orphans(self, committed_signal_ids: set[str]) -> int:
+        """Delete staged signals absent from the authoritative complete JSONL record set.
+
+        This only touches non-deliverable staging. Durable outbox rows are independent and never
+        removed here. Reconciliation calls this only after successfully parsing the entire set of
+        complete newline-terminated signal records, so an absent signal_id is known not to have a
+        committed Hermes record in the append-only authority.
+        """
+        rows = self._connection.execute(
+            "SELECT signal_id FROM pip_publication_intent"
+        ).fetchall()
+        orphan_ids = [
+            str(row["signal_id"])
+            for row in rows
+            if str(row["signal_id"]) not in committed_signal_ids
+        ]
+        if not orphan_ids:
+            return 0
+        try:
+            self._connection.execute("BEGIN IMMEDIATE")
+            deleted = 0
+            for signal_id in orphan_ids:
+                cursor = self._connection.execute(
+                    "DELETE FROM pip_publication_intent WHERE signal_id=?",
+                    (signal_id,),
+                )
+                deleted += cursor.rowcount
+            self._connection.execute("COMMIT")
+            return deleted
+        except BaseException:
+            if self._connection.in_transaction:
+                self._connection.execute("ROLLBACK")
+            raise
+
     def has_outbox_signal(self, signal_id: str) -> bool:
         """Return whether outbox already owns the signal and retire redundant staging.
 
