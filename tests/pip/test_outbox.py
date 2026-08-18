@@ -1,0 +1,164 @@
+from __future__ import annotations
+
+from dataclasses import replace
+from datetime import timedelta
+from pathlib import Path
+
+import pytest
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from tests.pip.test_contract import REPOSITORY_ROOT, make_signal
+from weatherbot.pip.core import FrozenEnvelope, PipExportError, freeze_signal_envelope, load_release
+from weatherbot.pip.outbox import PipOutbox
+
+
+def _frozen() -> FrozenEnvelope:
+    signal = make_signal()
+    return freeze_signal_envelope(
+        signal,
+        key_id="producer-key-test",
+        private_key=Ed25519PrivateKey.from_private_bytes(b"\x01" * 32),
+        release=load_release(REPOSITORY_ROOT, signal.strategy_version),
+    )
+
+
+def test_enqueue_is_idempotent_and_conflicts_fail_closed(tmp_path: Path) -> None:
+    frozen = _frozen()
+    with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
+        first = outbox.enqueue(frozen, now=frozen.generated_at)
+        second = outbox.enqueue(frozen, now=frozen.generated_at)
+        assert first.outbox_id == second.outbox_id
+
+        conflict = replace(frozen, event_sha256="f" * 64)
+        with pytest.raises(PipExportError, match="identity conflict"):
+            outbox.enqueue(conflict, now=frozen.generated_at)
+
+
+def test_expired_automatic_claim_recovers_as_ambiguous_retry(tmp_path: Path) -> None:
+    frozen = _frozen()
+    with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
+        outbox.enqueue(frozen, now=frozen.generated_at)
+        claimed = outbox.claim_due(
+            owner_id="worker-a",
+            now=frozen.generated_at,
+            lease_seconds=1,
+        )
+        assert claimed is not None
+        assert claimed.state == "in_flight"
+        outbox.recover(now=frozen.generated_at + timedelta(seconds=2))
+        summary = outbox.summary()
+        assert summary.retry_wait == 1
+        assert summary.in_flight == 0
+
+
+def test_stale_claimant_cannot_ack_after_lease_expiry(tmp_path: Path) -> None:
+    frozen = _frozen()
+    with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
+        outbox.enqueue(frozen, now=frozen.generated_at)
+        claimed = outbox.claim_due(
+            owner_id="worker-a",
+            now=frozen.generated_at,
+            lease_seconds=1,
+        )
+        assert claimed is not None
+        assert not outbox.acknowledge(
+            claimed,
+            receipt_id="receipt-1",
+            result_class="accepted",
+            http_status=200,
+            now=frozen.generated_at + timedelta(seconds=2),
+        )
+
+
+def test_claim_skips_many_due_rows_whose_lease_would_cross_horizon(tmp_path: Path) -> None:
+    frozen = _frozen()
+    current = frozen.generated_at + timedelta(days=7, seconds=-30)
+    with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
+        # These twenty rows sort first by next_attempt_at, but a fresh 60-second automatic lease
+        # would cross their delivery horizon. They must not hide a later eligible row.
+        for index in range(20):
+            near_horizon = replace(
+                frozen,
+                event_id=f"{frozen.event_id}-near-{index}",
+                signal_id=f"{frozen.signal_id}-near-{index}",
+            )
+            outbox.enqueue(
+                near_horizon,
+                now=frozen.generated_at + timedelta(microseconds=index),
+            )
+
+        eligible = replace(
+            frozen,
+            event_id=f"{frozen.event_id}-eligible",
+            signal_id=f"{frozen.signal_id}-eligible",
+            generated_at=current - timedelta(days=1),
+        )
+        outbox.enqueue(eligible, now=current - timedelta(days=1))
+
+        claimed = outbox.claim_due(owner_id="worker-a", now=current, lease_seconds=60)
+        assert claimed is not None
+        assert claimed.event_id == eligible.event_id
+
+
+def test_delivery_horizon_retains_item_as_dead_letter(tmp_path: Path) -> None:
+    frozen = _frozen()
+    with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
+        outbox.enqueue(frozen, now=frozen.generated_at)
+        outbox.recover(now=frozen.generated_at + timedelta(days=7, seconds=1))
+        summary = outbox.summary()
+        assert summary.dead_letter == 1
+        assert summary.pending == 0
+
+
+def test_operator_can_dead_letter_pending_item_without_mutating_frozen_bytes(
+    tmp_path: Path,
+) -> None:
+    frozen = _frozen()
+    with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
+        original = outbox.enqueue(frozen, now=frozen.generated_at)
+        assert outbox.operator_dead_letter(
+            event_id=frozen.event_id,
+            operator_id="operator-1",
+            reason="maintenance",
+            now=frozen.generated_at + timedelta(seconds=1),
+        )
+        assert outbox.summary().dead_letter == 1
+        claimed = outbox.claim_dead_letter_once(
+            event_id=frozen.event_id,
+            owner_id="worker-b",
+            operator_id="operator-1",
+            reason="approved retry",
+            now=frozen.generated_at + timedelta(seconds=2),
+        )
+        assert claimed.envelope_bytes == original.envelope_bytes
+        assert claimed.event_sha256 == original.event_sha256
+        assert claimed.claim_mode == "operator_one_shot"
+
+
+def test_unacknowledged_operator_one_shot_returns_to_dead_letter(tmp_path: Path) -> None:
+    frozen = _frozen()
+    with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
+        outbox.enqueue(frozen, now=frozen.generated_at)
+        assert outbox.operator_dead_letter(
+            event_id=frozen.event_id,
+            operator_id="operator-1",
+            reason="manual hold",
+            now=frozen.generated_at,
+        )
+        claimed = outbox.claim_dead_letter_once(
+            event_id=frozen.event_id,
+            owner_id="worker-b",
+            operator_id="operator-1",
+            reason="one shot",
+            now=frozen.generated_at + timedelta(seconds=1),
+        )
+        assert outbox.retry(
+            claimed,
+            next_attempt_at=frozen.generated_at + timedelta(seconds=10),
+            result_class="network:Timeout",
+            http_status=None,
+            now=frozen.generated_at + timedelta(seconds=2),
+        )
+        summary = outbox.summary()
+        assert summary.dead_letter == 1
+        assert summary.retry_wait == 0

@@ -1,0 +1,7 @@
+{
+  "release_manifest_version": "1",
+  "strategy_version": "1",
+  "repository": "carabinshely/hermes_weatherbot",
+  "revision": "51f22016617f07038fc698c967685f81a2fb2dc5",
+  "decision_code_identity": "weatherbot.producer.service.evaluate_candidate"
+}

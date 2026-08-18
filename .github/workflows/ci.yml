@@ -34,7 +34,10 @@ jobs:
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           enable-cache: true
-          cache-dependency-glob: uv.lock
+          cache-dependency-glob: |
+            uv.lock
+            requirements-pip-export.txt
+            requirements-pip-conformance.txt
 
       - name: Verify lock file
         run: uv lock --check
@@ -53,10 +56,43 @@ jobs:
               raise SystemExit(f"minimal profile unexpectedly installed: {present}")
           PY
 
+      - name: Verify PIP-disabled imports without exporter dependencies
+        run: |
+          uv run python - <<'PY'
+          from importlib.util import find_spec
+
+          unexpected = [name for name in ("cryptography", "rfc8785") if find_spec(name)]
+          if unexpected:
+              raise SystemExit(f"minimal profile unexpectedly has PIP exporter deps: {unexpected}")
+          import weatherbot.pip
+          import weatherbot.producer.cli
+          PY
+          uv run python bot_v3.py --help
+          uv run python -m weatherbot.pip --help
+
+      - name: Install pinned PIP exporter profile
+        run: uv pip install -r requirements-pip-export.txt
+
+      - name: Verify exporter profile does not pull wallet/live packages
+        run: |
+          uv run python - <<'PY'
+          from importlib.util import find_spec
+
+          required = ("cryptography", "rfc8785")
+          missing = [name for name in required if find_spec(name) is None]
+          if missing:
+              raise SystemExit(f"PIP exporter profile missing: {missing}")
+          forbidden = ("eth_account", "polymarket", "web3")
+          present = [name for name in forbidden if find_spec(name) is not None]
+          if present:
+              raise SystemExit(f"PIP exporter profile unexpectedly installed: {present}")
+          PY
+
       - name: Verify public and internal command imports
         run: |
           uv run python bot_v3.py --help
           uv run python -m weatherbot.paper --help
+          uv run python -m weatherbot.pip --help
           uv run python -m weatherbot.resolution --help
           uv run python -m weatherbot.resolution.observation_cli --help
 
@@ -66,12 +102,16 @@ jobs:
       - name: Check formatting
         run: >
           uv run ruff format --check
-          execution_modes.py runtime_security.py weatherbot tests scripts/ci/check_public_non_execution.py
+          execution_modes.py runtime_security.py weatherbot tests
+          scripts/ci/check_public_non_execution.py
+          scripts/ci/check_pip_conformance.py scripts/ci/validate_pip_fixture.py
 
       - name: Lint maintained code
         run: >
           uv run ruff check
-          execution_modes.py runtime_security.py weatherbot tests scripts/ci/check_public_non_execution.py
+          execution_modes.py runtime_security.py weatherbot tests
+          scripts/ci/check_public_non_execution.py
+          scripts/ci/check_pip_conformance.py scripts/ci/validate_pip_fixture.py
 
       - name: Check critical legacy errors
         run: >
@@ -86,10 +126,18 @@ jobs:
         run: >
           python -m compileall -q
           execution_modes.py runtime_security.py weatherbot
-          bot_v1.py bot_v2.py bot_v3.py bot_v3_legacy.py bot_v3_legacy_impl.py tests
+          bot_v1.py bot_v2.py bot_v3.py bot_v3_legacy.py bot_v3_legacy_impl.py tests scripts/ci
 
       - name: Run tests
         run: uv run pytest
+
+      - name: Check focused PIP exporter coverage
+        if: matrix.python-version == '3.12'
+        run: >
+          PYTHONPATH=. uv run pytest -q tests/pip
+          --cov=weatherbot.pip
+          --cov-report=term-missing
+          --cov-fail-under=70
 
       - name: Check focused paper coverage
         if: matrix.python-version == '3.12'
@@ -98,3 +146,38 @@ jobs:
           --cov=weatherbot.paper
           --cov-report=term-missing
           --cov-fail-under=70
+
+  pip-conformance:
+    name: PIP contract conformance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Hermes
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          cache-dependency-glob: |
+            uv.lock
+            requirements-pip-export.txt
+            requirements-pip-conformance.txt
+
+      - name: Install Hermes and conformance dependencies
+        run: |
+          uv sync --locked --all-groups
+          uv pip install -r requirements-pip-export.txt -r requirements-pip-conformance.txt
+
+      - name: Verify vendored authority and generate a real Hermes fixture
+        run: >
+          PYTHONPATH=. uv run python scripts/ci/check_pip_conformance.py
+          tests/pip/authority pip_tmp
+
+      - name: Validate the real Hermes envelope against pinned PIP authority
+        run: >
+          PYTHONPATH=. uv run python scripts/ci/validate_pip_fixture.py
+          tests/pip/authority pip_tmp

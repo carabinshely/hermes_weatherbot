@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sqlite3
 import sys
 import time
 from datetime import UTC, datetime
@@ -13,6 +14,12 @@ from weatherbot.forecasting import (
     CalibratedProbabilityRuntime,
     CalibrationRuntimeError,
     load_calibrated_probability_runtime,
+)
+from weatherbot.pip import (
+    PipExportError,
+    load_exporter_config,
+    reconcile_signal_log,
+    stage_signal,
 )
 from weatherbot.producer.config import ProducerPolicy, load_producer_policy
 from weatherbot.producer.scanner import collect_calibrated_candidates
@@ -38,6 +45,12 @@ def scan_once(policy: ProducerPolicy) -> tuple[int, list[str]]:
         calibration_runtime=calibration_runtime,
         policy=policy,
     )
+    pip_config = None
+    try:
+        pip_config = load_exporter_config(REPOSITORY_ROOT)
+    except (PipExportError, OSError, ValueError) as exc:
+        errors.append(f"PIP exporter configuration unavailable: {exc}")
+
     emitted = 0
     for candidate in candidates:
         signal, evaluation = evaluate_candidate(
@@ -51,13 +64,48 @@ def scan_once(policy: ProducerPolicy) -> tuple[int, list[str]]:
             detail = evaluation.detail or "producer policy rejected candidate"
             errors.append(f"{candidate.city_name} {candidate.horizon}: {reason_text}: {detail}")
             continue
+
+        # Freeze exact signed bytes before the independent JSONL durability boundary. The staged
+        # intent is not deliverable; if staging fails, the Hermes decision still persists below.
+        if pip_config is not None and pip_config.enabled:
+            try:
+                stage_signal(
+                    signal,
+                    config=pip_config,
+                    repository_root=REPOSITORY_ROOT,
+                )
+            except (PipExportError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
+                errors.append(
+                    f"{candidate.city_name} {candidate.horizon}: PIP staging failed: {exc}"
+                )
+
         try:
             append_signal(policy.signal_log_path, signal)
         except (OSError, TypeError, ValueError) as exc:
             errors.append(
                 f"{candidate.city_name} {candidate.horizon}: signal persistence failed: {exc}"
             )
+            # The durable outcome of a failed write/fsync is ambiguous. Keep any staged frozen
+            # bytes non-deliverable so restart reconciliation can match them against whatever
+            # complete JSONL records actually survived; never guess by deleting recovery state.
             continue
+
+        # The real Hermes decision is now immutable and durably recorded. Use the same lifecycle
+        # reconciler as the standalone worker so there is exactly one authoritative publication
+        # algorithm. It chooses the first durable occurrence for each logical signal_id and only
+        # performs local SQLite work; the producer process never opens a PIP network request.
+        if pip_config is not None and pip_config.enabled:
+            try:
+                reconcile_signal_log(
+                    policy.signal_log_path,
+                    config=pip_config,
+                    repository_root=REPOSITORY_ROOT,
+                )
+            except (PipExportError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
+                errors.append(
+                    f"{candidate.city_name} {candidate.horizon}: PIP reconciliation failed: {exc}"
+                )
+
         emitted += 1
         print(json.dumps(signal.to_mapping(), sort_keys=True, ensure_ascii=False))
 
@@ -74,6 +122,11 @@ def show_status(policy: ProducerPolicy) -> int:
     print(f"  policy fingerprint: {policy.fingerprint}")
     print(f"  reference notional: ${policy.market_reference_notional}")
     print(f"  signal log: {policy.signal_log_path}")
+    try:
+        pip_config = load_exporter_config(REPOSITORY_ROOT)
+        print(f"  PIP export: {'enabled' if pip_config.enabled else 'disabled'}")
+    except (PipExportError, OSError, ValueError) as exc:
+        print(f"  PIP export: configuration error ({exc})")
     try:
         runtime = _load_runtime()
     except CalibrationRuntimeError as exc:
