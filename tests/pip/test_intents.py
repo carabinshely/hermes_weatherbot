@@ -5,9 +5,12 @@ import json
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
+
 from tests.pip.test_contract import REPOSITORY_ROOT, make_signal
 from weatherbot.pip import (
     PipExporterConfig,
+    PipExportError,
     PipIntentStore,
     PipOutbox,
     promote_staged_signal,
@@ -87,6 +90,24 @@ def test_uncommitted_staged_intent_is_never_automatically_deliverable(tmp_path: 
         assert summary.retry_wait == 0
 
 
+def test_known_uncommitted_staging_can_be_discarded(tmp_path: Path) -> None:
+    signal = make_signal()
+    config = _config(tmp_path, key_byte=1, key_id="key-1")
+    assert stage_signal(
+        signal,
+        config=config,
+        repository_root=REPOSITORY_ROOT,
+        now=signal.generated_at_utc,
+    )
+    with PipIntentStore(config.outbox_path) as intents:
+        assert intents.count() == 1
+        assert intents.discard(signal.signal_id)
+        assert not intents.discard(signal.signal_id)
+        assert intents.count() == 0
+    with PipOutbox(config.outbox_path) as outbox:
+        assert outbox.summary().pending == 0
+
+
 def test_reconciliation_promotes_existing_intent_without_current_key(tmp_path: Path) -> None:
     signal = make_signal()
     config = _config(tmp_path, key_byte=1, key_id="old-key")
@@ -161,3 +182,21 @@ def test_reconciliation_ignores_only_an_incomplete_final_tail(tmp_path: Path) ->
     )
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().pending == 1
+
+
+def test_reconciliation_fails_closed_on_corrupt_committed_interior_record(
+    tmp_path: Path,
+) -> None:
+    signal = make_signal()
+    config = _config(tmp_path, key_byte=1, key_id="key-1")
+    signal_log = tmp_path / "signals.jsonl"
+    valid = json.dumps(signal.to_mapping(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    signal_log.write_bytes(valid + b"\n" + b"not-json\n" + valid + b"\n")
+
+    with pytest.raises(PipExportError, match="corrupt committed Hermes signal log record 2"):
+        reconcile_signal_log(
+            signal_log,
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+            now=signal.generated_at_utc + timedelta(seconds=1),
+        )
