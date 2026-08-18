@@ -148,6 +148,14 @@ class PipIntentStore:
         ).fetchone()
         return None if row is None else self._from_row(cast(sqlite3.Row, row))
 
+    def discard(self, signal_id: str) -> bool:
+        """Remove staging only when the caller knows the Hermes signal did not commit."""
+        cursor = self._connection.execute(
+            "DELETE FROM pip_publication_intent WHERE signal_id=?",
+            (signal_id,),
+        )
+        return cursor.rowcount == 1
+
     def has_outbox_signal(self, signal_id: str) -> bool:
         table = self._connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pip_outbox'"
