@@ -240,7 +240,8 @@ def _bounded_body(response: requests.Response) -> bytes:
     return b"".join(chunks)
 
 
-def _parse_bound_result(body: bytes, item: OutboxItem) -> DeliveryResult:
+def parse_delivery_result(body: bytes, item: OutboxItem) -> DeliveryResult:
+    """Parse one strict event-bound PIP delivery result without changing outbox state."""
     try:
         parsed = json.loads(body.decode("utf-8", errors="strict"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
@@ -366,7 +367,7 @@ def _deliver_claimed(
         if 300 <= status < 400:
             raise PipExportError("PIP redirects are never followed")
         body = _bounded_body(response)
-        result = _parse_bound_result(body, item)
+        result = parse_delivery_result(body, item)
     except PipExportError as exc:
         delay = _retry_delay(item, config, None)
         outbox.retry(
