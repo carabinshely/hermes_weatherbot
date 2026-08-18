@@ -10,6 +10,7 @@ from pathlib import Path
 
 from weatherbot.pip import (
     PipExportError,
+    PipExporterConfig,
     PipOutbox,
     deliver_dead_letter_once,
     deliver_once,
@@ -21,7 +22,7 @@ from weatherbot.producer.config import load_producer_policy
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _config():
+def _config() -> PipExporterConfig:
     return load_exporter_config(REPOSITORY_ROOT)
 
 
@@ -138,14 +139,6 @@ def run_worker(interval_seconds: float) -> int:
             time.sleep(interval_seconds)
 
 
-def _operator_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser], name: str):
-    parser = subparsers.add_parser(name)
-    parser.add_argument("--event-id", required=True)
-    parser.add_argument("--operator", required=True)
-    parser.add_argument("--reason", required=True)
-    return parser
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Hermes signed PIP SignalEnvelope exporter")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -154,8 +147,11 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("deliver-once")
     run = subparsers.add_parser("run")
     run.add_argument("--interval-seconds", type=float, default=5.0)
-    _operator_parser(subparsers, "retry-dead-letter")
-    _operator_parser(subparsers, "dead-letter")
+    for command in ("retry-dead-letter", "dead-letter"):
+        operator = subparsers.add_parser(command)
+        operator.add_argument("--event-id", required=True)
+        operator.add_argument("--operator", required=True)
+        operator.add_argument("--reason", required=True)
     return parser
 
 
