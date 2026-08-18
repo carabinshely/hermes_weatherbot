@@ -36,7 +36,7 @@ class FakeSession(requests.Session):
 
     def post(
         self,
-        url: str,
+        url: str | bytes,
         data: object = None,
         json: object = None,
         **kwargs: object,
@@ -49,7 +49,7 @@ class FakeSession(requests.Session):
             raise self.error
         response = requests.Response()
         response.status_code = self.status
-        response.url = url
+        response.url = url.decode() if isinstance(url, bytes) else url
         if self.location is not None:
             response.headers["Location"] = self.location
         response.raw = urllib3.response.HTTPResponse(
