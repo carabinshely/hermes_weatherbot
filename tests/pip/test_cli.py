@@ -4,8 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from weatherbot.pip import PipExporterConfig, PipOutbox
-from weatherbot.pip import cli
+from weatherbot.pip import PipExporterConfig, PipOutbox, cli
 
 
 def _disabled_config(tmp_path: Path) -> PipExporterConfig:
