@@ -56,6 +56,20 @@ jobs:
               raise SystemExit(f"minimal profile unexpectedly installed: {present}")
           PY
 
+      - name: Verify PIP-disabled imports without exporter dependencies
+        run: |
+          uv run python - <<'PY'
+          from importlib.util import find_spec
+
+          unexpected = [name for name in ("cryptography", "rfc8785") if find_spec(name)]
+          if unexpected:
+              raise SystemExit(f"minimal profile unexpectedly has PIP exporter deps: {unexpected}")
+          import weatherbot.pip
+          import weatherbot.producer.cli
+          PY
+          uv run python bot_v3.py --help
+          uv run python -m weatherbot.pip --help
+
       - name: Install pinned PIP exporter profile
         run: uv pip install -r requirements-pip-export.txt
 
