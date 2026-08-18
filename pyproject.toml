@@ -1,7 +1,7 @@
 [project]
 name = "hermes-weatherbot"
 version = "0.1.0"
-description = "Weather-market research and trading bot"
+description = "Non-executing calibrated weather prediction-market signal producer"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "python-dotenv==1.2.2",
@@ -9,6 +9,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Historical compatibility only. Not part of the supported public producer surface.
 live = [
     "eth-account==0.13.7",
     "polymarket-client==0.1.0b21",

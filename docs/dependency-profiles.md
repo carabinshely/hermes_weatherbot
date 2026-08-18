@@ -1,49 +1,58 @@
 # Dependency profiles
 
-The repository has two runtime installation profiles.
+Hermes' supported product surface is a non-executing signal producer with an optional
+one-way Prediction Intelligence Platform (PIP) exporter and a deterministic internal PAPER
+Research and Development (R&D) engine.
 
-## Research and paper
+## Public producer and internal PAPER
 
 ```bash
 uv sync --locked --no-dev
 ```
 
-This installs only the shared public-data runtime:
+The minimal profile intentionally excludes wallet, Web3, financial signing, and
+authenticated exchange-write dependencies. The public producer and internal PAPER runtime
+must import and operate without those packages.
 
-- `python-dotenv`
-- `requests`
-
-It intentionally excludes wallet, signing, Web3, and the optional official Polymarket
-SDK packages. Research, paper, resolution, observation backfill, and safe status commands
-must import and run in this profile.
-
-For development and tests without live packages:
+For development and tests:
 
 ```bash
 uv sync --locked --all-groups
 ```
 
-## Live-capable environment
+## Optional PIP exporter profile
+
+PIP publication adds producer-identity cryptography/canonicalization only:
+
+```bash
+uv pip install -r requirements-pip-export.txt
+```
+
+The exporter signing key is a dedicated Ed25519 application identity. It has no wallet,
+transaction, exchange-write, or funds-control authority. Installing exporter dependencies
+must not pull in the quarantined financial/live dependency set.
+
+## Quarantined historical live extra
+
+The repository still retains an optional `live` dependency group because historical
+execution code has not yet been physically deleted:
 
 ```bash
 uv sync --locked --no-dev --extra live
 ```
 
-The `live` extra adds:
+This is **not a supported Hermes product mode** and is not a forward roadmap. The public
+`bot_v3.py` CLI has no live command/mode selector, cancellation command, wallet status, or
+transaction path. The public producer and supported PAPER runtime cannot import the
+quarantined execution graph.
 
-- `eth-account`
-- `polymarket-client`
-- `web3`
+## Continuous Integration (CI)
 
-Installing the extra does not enable funded-wallet operation. Execution-mode gates,
-credentials, account validation, and the remaining live-safety work still apply.
+CI verifies:
 
-A live command in a minimal environment exits before credential, wallet, RPC, signing, or
-SDK access and prints the exact installation command required to add the optional profile.
-
-## Continuous integration
-
-The required Python jobs first run the full suite in the minimal development profile and
-assert that `eth_account`, `polymarket`, and `web3` are absent. Python 3.12 then installs
-the `live` extra and smoke-tests its imports and Polymarket adapter tests. Security CI
-audits the exported minimal and live runtime sets separately.
+- the minimal producer/PAPER profile excludes wallet/live packages;
+- PIP-disabled imports work before exporter dependencies are installed;
+- the PIP exporter profile contains its required crypto/canonicalization packages without
+  importing wallet/live packages;
+- public and PAPER transitive non-execution guards pass;
+- public, PAPER, and PIP CLI smoke tests match the documented surfaces.

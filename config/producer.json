@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "strategy_id": "bot-v3-weather",
+  "strategy_version": "1",
+  "scan_interval_seconds": 3600,
+  "min_volume": 500,
+  "min_hours": 2.0,
+  "max_hours": 72.0,
+  "market_reference_notional": "2.00",
+  "minimum_expected_return": "0.10",
+  "maximum_all_in_price": "0.45",
+  "maximum_average_slippage": "0.03",
+  "maximum_worst_slippage": "0.05",
+  "maximum_forecast_age_seconds": 21600,
+  "maximum_event_age_seconds": 120,
+  "maximum_order_book_age_seconds": 30,
+  "future_tolerance_seconds": 5,
+  "platform_fee_reserve_rate": "0.01",
+  "transaction_cost_reserve": "0.01",
+  "market_reference_safety_margin_rate": "0.02",
+  "depth_policy": "reject",
+  "signal_log_path": "state/signals-v1.jsonl"
+}

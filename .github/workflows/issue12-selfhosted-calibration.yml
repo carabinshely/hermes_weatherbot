@@ -1,0 +1,162 @@
+name: Issue 12 self-hosted calibration
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+    paths:
+      - .github/workflows/issue12-selfhosted-calibration.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue12-selfhosted-calibration-isolated-v2
+  cancel-in-progress: false
+
+jobs:
+  calibrate:
+    name: Reproduce historical calibration v2
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 180
+
+    steps:
+      - name: Preserve reusable calibration cache before checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          persistent_cache="$(dirname "$(dirname "$GITHUB_WORKSPACE")")/issue12-calibration-cache"
+          legacy_cache="$GITHUB_WORKSPACE/data/calibration/issue12-v1/cache"
+          mkdir -p "$persistent_cache"
+          if [ -d "$legacy_cache" ]; then
+            cp -a -n "$legacy_cache/." "$persistent_cache/"
+          fi
+          echo "ISSUE12_CACHE_DIR=$persistent_cache" >> "$GITHUB_ENV"
+          printf 'preserved cache files: '
+          find "$persistent_cache" -type f | wc -l
+          du -sh "$persistent_cache"
+
+      - name: Check out calibration branch
+        uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+          clean: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked Python 3.12 environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .venv
+          uv sync --locked --all-groups --python "$(command -v python)"
+
+      - name: Verify calibration interpreter contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python - <<'PY'
+          import sys
+
+          print(sys.version)
+          if sys.version_info[:2] != (3, 12):
+              raise SystemExit(f"calibration requires Python 3.12, got {sys.version_info[:2]}")
+          PY
+
+      - name: Collect corrected calibration dataset from preserved cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p data/calibration/issue12-v2
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_retry \
+            --max-attempts 3 \
+            --retry-backoff-seconds 10 \
+            --request-max-attempts 4 \
+            --request-retry-backoff-seconds 3 \
+            -- \
+            --start-date 2026-04-05 \
+            --end-date 2026-08-10 \
+            --cache-dir "$ISSUE12_CACHE_DIR" \
+            --records-out data/calibration/issue12-v2/dataset.jsonl \
+            --manifest-out data/calibration/issue12-v2/dataset-manifest.json \
+            --exclusions-out data/calibration/issue12-v2/dataset-exclusions.json \
+            --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
+            --unavailable-runs-evidence tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json \
+            --timeout-seconds 30 \
+            --request-delay-seconds 1.0
+
+      - name: Verify byte-identical offline replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sparse_sweep \
+            --start-date 2026-04-05 \
+            --end-date 2026-08-10 \
+            --cache-dir "$ISSUE12_CACHE_DIR" \
+            --records-out data/calibration/issue12-v2/dataset-offline.jsonl \
+            --manifest-out data/calibration/issue12-v2/dataset-manifest-offline.json \
+            --exclusions-out data/calibration/issue12-v2/dataset-exclusions-offline.json \
+            --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
+            --unavailable-runs-evidence tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json \
+            --offline
+          cmp data/calibration/issue12-v2/dataset.jsonl data/calibration/issue12-v2/dataset-offline.jsonl
+          cmp data/calibration/issue12-v2/dataset-manifest.json data/calibration/issue12-v2/dataset-manifest-offline.json
+          cmp data/calibration/issue12-v2/dataset-exclusions.json data/calibration/issue12-v2/dataset-exclusions-offline.json
+
+      - name: Reproduce issue12-v2 historical development evaluation
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_train \
+            --records data/calibration/issue12-v2/dataset.jsonl \
+            --manifest data/calibration/issue12-v2/dataset-manifest.json \
+            --model-version issue12-v2 \
+            --created-at-utc 2026-08-13T15:45:00Z \
+            --training-end 2026-07-13 \
+            --validation-start 2026-07-14 \
+            --validation-end 2026-08-10 \
+            --min-sample-count 30 \
+            --artifact-out data/calibration/issue12-v2/calibration-artifact.json \
+            --report-out data/calibration/issue12-v2/holdout-report.json
+
+      - name: Print historical evidence summary
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          wc -l data/calibration/issue12-v2/dataset.jsonl
+          sha256sum \
+            data/calibration/issue12-v2/dataset.jsonl \
+            data/calibration/issue12-v2/dataset-manifest.json \
+            data/calibration/issue12-v2/dataset-exclusions.json \
+            data/calibration/issue12-v2/calibration-artifact.json \
+            data/calibration/issue12-v2/holdout-report.json
+          du -sh "$ISSUE12_CACHE_DIR"
+          printf '%s\n' '--- exclusion report ---'
+          uv run python -m json.tool data/calibration/issue12-v2/dataset-exclusions.json
+          printf '%s\n' '--- historical development report ---'
+          uv run python -m json.tool data/calibration/issue12-v2/holdout-report.json
+
+      - name: Upload normalized historical calibration evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue12-calibration-evidence-v2
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            data/calibration/issue12-v2/dataset.jsonl
+            data/calibration/issue12-v2/dataset-manifest.json
+            data/calibration/issue12-v2/dataset-exclusions.json
+            data/calibration/issue12-v2/calibration-artifact.json
+            data/calibration/issue12-v2/holdout-report.json

@@ -1,276 +1,265 @@
-# 🌦️ WeatherBet — Powered by Hermes Agent
+# Hermes WeatherBot
 
-> **Fully Autonomous Prediction Market Trading Bot** — Uses ECMWF weather forecast data to automatically find mispriced Polymarket markets and bet on them. Self-improves over time via the **Hermes Agent** framework.
+Hermes is a **non-executing calibrated weather prediction-market signal producer**.
+It combines point-in-time weather evidence with read-only Polymarket market evidence,
+computes a model probability, applies one versioned producer policy, and emits a stable
+`HermesSignal v1` with auditable model, weather, market-reference, and policy provenance.
 
-[![Python 3.13](https://img.shields.io/badge/Python-3.13-blue.svg)](https://www.python.org/downloads/)
-[![Polygon](https://img.shields.io/badge/Chain-Polygon%20137-9B59B6.svg)](https://polygon.technology/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+Hermes does **not** submit, cancel, redeem, or manage real-money trades as a supported
+product capability.
 
----
-![alt text](image-1.png)
-## 🤖 Why Hermes Agent
+## Product architecture
 
-This project demonstrates the power of **Hermes Agent** framework in autonomous trading:
+```text
+PUBLIC PRODUCT
+weather + read-only market evidence
+        ↓
+calibrated model probability
+        ↓
+accepted/versioned producer policy
+        ↓
+HermesSignal v1
+        ↓
+signed SignalEnvelope v1
+        ↓
+durable PIP outbox
+        ↓
+Prediction Intelligence Platform (PIP)
+        ↓
+independent receipt / history / verification / resolution / scoring / publication
 
-| Hermes Agent Feature | Application in This Project |
-|---|---|
-| **Self-Learning & Evolution** | Bot automatically adjusts Kelly fraction and EV threshold from trade history |
-| **Fully Autonomous Execution** | 60-min scan loop → signal calculation → auto order execution → on-chain settlement — zero human intervention |
-| **Multi-Platform Gateway** | Real-time trade alerts via Telegram — control everything from your phone |
-| **Persistent Memory** | Trade logs + learning models persist across sessions |
-| **Model Agnostic** | Switch any LLM provider for decision reasoning |
-| **Tool Orchestration** | Integrates weather API + on-chain CLOB trading + Telegram notifications |
+INTERNAL STRATEGY R&D
+frozen historical/read-only evidence
+        ↓
+candidate strategy
+        ↓
+exact public evaluate_candidate() authority
+        ↓
+isolated PAPER simulation
+        ↓
+hypothetical fills / sizing / risk / P&L
+        ↓
+development evidence
+        ↓
+explicit reviewed strategy-promotion decision
+```
 
----
+Hermes owns weather and market inputs, calibrated model probability, producer strategy,
+provenance, signal generation, producer signing, and durable outbound publication. PIP
+owns independent receipt, prospective signal history, verification, resolution, scoring,
+publication, audience access, and monetization.
 
-## 🎯 What It Does
+PIP availability and delivery state cannot change whether Hermes generated a signal.
+PAPER bankroll, positions, fills, settlement, and Profit and Loss (P&L) cannot change a
+real `HermesSignal` or its `SignalEnvelope`, and PAPER results are never automatically
+published to PIP.
 
-The bot monitors **6 US cities** (NYC, Chicago, Miami, Dallas, Seattle, Atlanta) and scans Polymarket temperature prediction markets for mispricing opportunities.
+## Evidence vocabulary
 
-**Core Logic:** When weather forecast implies a different probability than what the market price suggests → calculate Expected Value (EV) → auto-bet if EV exceeds threshold.
+| Evidence | Meaning | Does not prove |
+|---|---|---|
+| Model probability | Hermes estimate of outcome probability | Profitability |
+| Signal edge | Model probability relative to a read-only executable market reference | Actual trade return |
+| PAPER result | Hypothetical strategy-development evidence | Real execution or verified profitability |
+| Emitted `HermesSignal` | Real prospective producer decision | Correctness by itself |
+| PIP track record | Independently preserved, resolved, and scored emitted-signal history | PAPER trading performance |
 
----
+## Current calibration activation state
 
-## 🚀 Quick Start
+The V3 calibration policy is frozen and implemented, but an accepted V3 artifact does not
+exist yet. Accepted-model public signal generation therefore remains fail-closed.
 
-### 1. Clone & Install
+```text
+V3 policy                     = frozen / implemented
+calibrated probability core   = implemented
+accepted V3 artifact          = absent
+exact-run activation evidence = pending
+accepted-model signals        = fail closed
+```
 
-Install [uv](https://docs.astral.sh/uv/) and choose the smallest dependency profile
-that matches the execution mode:
+Issue #49 owns the pre-registered untouched holdout evaluation and must not execute before
+2026-08-26. Issue #50 owns the explicit accept/reject decision and, only if accepted,
+artifact/approval/evidence pinning. The existence of the producer or PIP publication
+runtime must not be interpreted as calibration acceptance.
+
+## Install
+
+The supported public producer and internal PAPER research surfaces use the minimal locked
+profile and require no wallet, Web3, transaction-signing, or authenticated exchange
+package.
 
 ```bash
 git clone https://github.com/carabinshely/hermes_weatherbot.git
 cd hermes_weatherbot
-
-# Research, paper, resolution, and observation tooling only.
-# No wallet, Web3, signing, or official SDK packages are installed.
 uv sync --locked --no-dev
+```
 
-# Development and tests, still without live extras.
+For development and tests:
+
+```bash
 uv sync --locked --all-groups
-
-# Explicit live-capable environment. Funded-wallet operation remains fail-closed.
-uv sync --locked --no-dev --extra live
 ```
 
-Run commands through the selected locked environment, for example:
+Historical live-only dependencies remain quarantined for compatibility and regression
+coverage. Installing them does not create a supported execution mode.
+
+## Public producer CLI
+
+The public Command-Line Interface (CLI) is signal-oriented and has no execution-mode
+selector:
 
 ```bash
-uv run --no-dev python bot_v3.py scan --mode research
-uv run --no-dev python bot_v3.py scan --mode paper
-uv run --no-dev python -m weatherbot.resolution --help
+uv run --no-dev python -m weatherbot.producer scan
+uv run --no-dev python -m weatherbot.producer status
+uv run --no-dev python -m weatherbot.producer run
 ```
 
-### 2. Configure
+`bot_v3.py` remains a compatibility entrypoint. For foreground process lifecycle,
+service/container operation, shutdown behavior, and network/proxy policy, see
+[`docs/producer-operations.md`](docs/producer-operations.md).
 
-Copy the example env file and fill in your wallet credentials:
+Public commands do not require wallet credentials and do not expose live order submission,
+cancellation, redemption, approval, bankroll, or trading-ledger controls.
+
+Accepted signals are appended to the durable JSON Lines (JSONL) signal log configured by
+the producer policy. Logical signal identity binds producer/strategy identity, policy
+fingerprint, market/outcome identity, target date, calibrated model provenance, weather
+fingerprint, and stable read-only executable-market-reference economics. PAPER state,
+wallet state, processing timestamps, and PIP availability are excluded from logical signal
+identity.
+
+## Producer policy and market reference
+
+Decision-affecting public configuration lives in `config/producer.json`. The market-
+reference notional is a **read-only liquidity and executable-price probe**. It is not a bet
+size, customer recommendation, or execution instruction. Public producer schema v1 rejects
+insufficient depth rather than silently changing the configured reference notional.
+
+See `docs/executable-edge.md` for the read-only executable-reference contract.
+
+## Internal PAPER strategy R&D
+
+PAPER is a supported internal Research and Development (R&D) engine, not a public trading
+mode and not a path to real-money execution.
 
 ```bash
-cp .env.example .env
+uv run --no-dev python -m weatherbot.paper evaluate \
+  --manifest path/to/experiment.json \
+  --output state/paper-experiments
 ```
 
-Edit `.env` and never commit it:
+Experiments use frozen evidence and a reviewed repository-owned factory. PAPER first calls
+the exact public `weatherbot.producer.service.evaluate_candidate()` authority for every
+case. Only after the complete public decision batch exists may isolated hypothetical
+sizing, portfolio-risk, fills, or settlement be evaluated.
 
-```env
-# Your Polygon private key (hex, without 0x prefix)
-PK=your_polygon_private_key_here
+Canonical `summary.json`, `evaluations.jsonl`, and `checksums.json` outputs are reproducible
+for the same experiment identity. They explicitly mark simulated fills, settlement, and
+P&L as **hypothetical development evidence**. PAPER cannot self-promote a model or strategy,
+grants no public/paid eligibility, and never emits PIP lifecycle events.
 
-# Your Polygon wallet address
-WALLET=0xYourWalletAddressHere
+See `docs/paper-trading.md` for the full internal experiment contract.
 
-# Signature type (0 = EOA)
-SIG_TYPE=0
+## PIP publication
 
-# Optional Visual Crossing key for the legacy resolution fallback
-VC_KEY=your_visual_crossing_key
+Hermes can publish already-made real public `HermesSignal v1` decisions to PIP:
 
-# Optional Telegram notifications
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_CHAT_ID=your_telegram_chat_id
+```text
+HermesSignal v1
+  -> frozen signed intent
+  -> durable Hermes signal record
+  -> durable PIP SQLite outbox
+  -> idempotent POST /v1/events
+  -> event-bound PIP receipt
 ```
 
-`config.json` is committed public configuration. Put trading parameters there, never credentials:
+The PIP signing key is a dedicated **Ed25519 application-identity credential**. It has no
+wallet, exchange-write, transaction-signing, or funds-control authority and must never be
+reused as a wallet key.
 
-```json
-{
-  "mode": "disabled",
-  "max_bet": 2.0,
-  "min_ev": 0.10,
-  "min_volume": 500,
-  "scan_interval": 3600
-}
-```
-
-### 3. Choose an execution mode
-
-`config.json` defaults to `"mode": "research"`.
+PIP delivery runs behind the separate `weatherbot.pip` worker boundary:
 
 ```bash
-# Read-only market research; no wallet access or orders
-python bot_v3.py scan --mode research
-
-# Paper-mode candidate generation; simulated fills arrive in #27
-python bot_v3.py scan --mode paper
-
-# Live mode is fail-closed and requires the live extra plus all three gates:
-# 1. uv sync --locked --no-dev --extra live
-# 2. config.json mode=live
-# 3. --mode live
-# 4. --confirm-live
-uv run --no-dev --extra live python bot_v3.py scan --mode live --confirm-live
+python -m weatherbot.pip status
+python -m weatherbot.pip reconcile
+python -m weatherbot.pip deliver-once
+python -m weatherbot.pip run
+python -m weatherbot.pip retry-dead-letter --event-id <event-id> --operator <id> --reason <reason>
+python -m weatherbot.pip dead-letter --event-id <event-id> --operator <id> --reason <reason>
 ```
 
-Research and paper modes do not require `PK`, `WALLET`, Web3, signing packages, or the
-optional official SDK. A live command in a minimal environment exits with an actionable
-installation error before credential or wallet access.
+PIP independently preserves, resolves, and scores the real emitted-signal history. Hermes
+PAPER trades/P&L and the historical financial ledger are not that public track record.
 
-### 4. Start the configured mode
+See `docs/pip-publication.md` for signing, durable outbox, retry, receipt, dead-letter, and
+conformance details.
 
-```bash
-# Start the bot (runs in background)
-./start_bot_v3.sh
+## Probability and provenance
 
-# Stop the bot
-./stop_bot_v3.sh
+Hermes uses the fail-closed calibrated residual model built under #12/#47/#48. A model-
+backed signal carries the model version, calibration artifact SHA-256 digest, forecast
+source and weather identity, selected calibration group/fallback/distribution, sample
+count, training cutoff, and `model_probability`.
+
+There is no public fallback to the historical fixed `2°F` uncertainty path. Calibration
+validation is evidence about probabilistic quality; it is not a profitability claim.
+
+## Non-execution security boundary
+
+Continuous Integration (CI) enforces separate transitive import-graph guards for the
+public producer and internal PAPER runtime. Supported surfaces must not reach quarantined
+legacy execution code, wallet/live dependency helpers, authenticated trading clients,
+Web3, exchange-write signing, approvals, cancellation, or redemption.
+
+Historical execution code and optional live dependencies are retained only for quarantine,
+compatibility, and regression purposes. They are not a supported Hermes product direction.
+
+## Durable-state boundaries
+
+```text
+Hermes signal JSONL             = real producer signal record
+PIP SQLite outbox               = downstream delivery state
+PAPER/historical event ledger   = internal simulated/historical economics
 ```
 
-That's it! The bot will continuously scan markets and trade automatically.
+Do not treat the internal financial/event ledger as the PIP track record and do not treat
+PAPER settlement as independent scoring of real emitted signals.
 
----
+## Product boundary
 
-## 🧠 Core Math: Gaussian Bucket Model
+Supported public capability:
 
-### Step 1 — True Probability from ECMWF
-
-```python
-import math
-
-def norm_cdf(x):
-    """Cumulative distribution function of standard normal"""
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-
-def bucket_prob(forecast_temp, t_low, t_high, sigma=2.0):
-    """
-    Forecast says 72°F ± 2σ.
-    What's the probability actual high falls in 70-75°F bucket?
-    P(t_low ≤ X ≤ t_high) = CDF(z_high) - CDF(z_low)
-    """
-    z_low  = (t_low  - forecast_temp) / sigma
-    z_high = (t_high - forecast_temp) / sigma
-    return norm_cdf(z_high) - norm_cdf(z_low)
+```text
+weather evidence
+calibrated model probability
+versioned signal policy
+stable HermesSignal identity
+read-only market reference
+model/input/policy provenance
+signed one-way PIP publication
 ```
 
-### Step 2 — Expected Value (EV)
+Not a supported public capability:
 
-```python
-def calc_ev(true_prob, market_price):
-    """
-    EV = P(win) × payoff - P(lose) × cost
-    EV > 0 → market is underpriced → BUY signal
-    """
-    win  = true_prob * (1 / market_price - 1)
-    lose = (1 - true_prob) * 1
-    return win - lose
+```text
+wallet management
+exchange writes
+order submission/cancellation/redemption
+customer bankroll management
+real-money position sizing
+copy trading
+automatic execution
+PAPER P&L publication as real history
 ```
 
-**Example:**
-- Forecast: 72°F → 75% chance of 70-75°F bucket
-- Market price: $0.30 (implies 30% probability)
-- `EV = 0.75 × (1/0.30 - 1) - 0.25 = +1.25` → **Strong BUY** 📈
+## Repository artifacts
 
-### Step 3 — Kelly Criterion (Optimal Bet Sizing)
+Generated producer, calibration, PIP, and PAPER state is local by default. `data/` and
+`state/` are ignored working namespaces; deterministic test inputs live under
+`tests/fixtures/`, and only explicitly reviewed compact evidence belongs under `evidence/`.
+See `docs/repository-artifacts.md` for the complete ownership, regeneration, checksum, and
+promotion rules.
 
-```python
-def calc_kelly(p, price):
-    """Kelly % = (bp - q) / b — uses 1/4 Kelly conservative fraction"""
-    b = 1.0 / price - 1.0
-    f = (p * b - (1.0 - p)) / b
-    return round(min(max(f, 0.0) * KELLY_FRAC, 1.0), 4)
-```
+## License
 
----
-
-## 🌀 Auto-Evolution Learning System
-
-This is a core strength of the Hermes Agent framework — the bot **learns from trading and auto-tunes**:
-
-```
-data/learning/
-├── trade_log.json   # All trades: city, bucket, cost, outcome, pnl
-└── model.json       # Learned parameters per city/bucket
-```
-
-**Adaptation Rules:**
-- Winrate < 45% → Kelly fraction ×0.8, EV floor +10%
-- Winrate > 55% + PnL > $2 → Kelly fraction ×1.1, EV floor −5%
-- Per-city winrate tracking adjusts confidence per market
-- Starts conservative (25% Kelly) → converges to optimal as data accumulates
-
----
-
-## 📊 Architecture
-
-```
-ECMWF Weather Forecast API
-        ↓
-Hermes Agent (Autonomous Decision Engine)
-    ├── Gaussian Bucket Model → True Probability
-    ├── calc_ev() → Expected Value Calculation
-    ├── calc_kelly() → Optimal Bet Sizing
-    └── Adaptive Learning → Auto Parameter Tuning
-        ↓
-Polymarket CLOB (On-chain, Polygon)
-        ↓
-Telegram (Real-time Notifications)
-```
-
----
-
-## 🛡️ Risk Management
-
-| Parameter | Value | Purpose |
-|---|---|---|
-| Max bet | $2.00 | Per-trade exposure cap |
-| Kelly fraction | 25% | 1/4 Kelly conservative |
-| Min EV | 10%+ | Only trade positive EV |
-| Min volume | $500 | Avoid illiquid markets |
-| Max spread | 3% | Avoid high-slippage |
-| Adaptive floor | 10-20% | Self-tuning from performance |
-
----
-
-## 🔐 Full Automated Trading Flow
-
-```
-1. Fetch ECMWF forecast (D+0 ~ D+3)
-2. Query Polymarket temperature bucket markets
-3. Gaussian model → true probability (σ=2°F)
-4. Compare to market price → calculate EV
-5. EV ≥ adaptive threshold → calculate Kelly bet size
-6. Execute order on Polymarket CLOB (Polygon)
-7. Record trade → update learning model
-8. Telegram real-time notification
-9. Repeat every 60 minutes
-```
-
----
-
-## 💡 Tech Stack
-
-- **Framework:** Hermes Agent (autonomous learning + multi-platform)
-- **Language:** Python 3.13
-- **Trading:** [py_clob_client](https://github.com/polymarket/py-clob-client) — Polymarket CLOB
-- **Weather:** ECMWF OpenMETAR / Open-Meteo API
-- **Chain:** Polygon (Chain ID 137) — USDC.e stablecoin
-- **Notifications:** Telegram Bot API
-- **Learning:** Pure Python JSON persistence (zero DB dependency)
-
----
-
-## ⚠️ Disclaimer
-
-This bot trades real markets with real money. Past performance does not guarantee future results. Trade at your own risk. For educational and research purposes only.
-
----
-
-*Built with 🐍 + Hermes Agent on Polygon — Autonomous Weather Prediction Trading.*
+MIT. See `LICENSE`.

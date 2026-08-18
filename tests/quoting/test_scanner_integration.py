@@ -3,39 +3,62 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def scanner_source() -> str:
-    source = (ROOT / "bot_v3.py").read_text(encoding="utf-8")
-    start = source.index("def scan_and_trade")
-    end = source.index(
-        "\n\n# =============================================================================\n# STATUS",
-        start,
-    )
-    return source[start:end]
+def _source(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_scanner_uses_one_validated_quote_contract_for_all_modes() -> None:
-    source = scanner_source()
-    assert "evaluate_executable_buy(" in source
-    assert "validated_quote = evaluation.quote" in source
-    assert "**validated_quote.metadata()" in source
-    assert '"book_cost": book_cost' in source
-    assert '"all_in_price": all_in_price' in source
-    assert '"cost": cost' in source
-    assert "if context.mode is ExecutionMode.RESEARCH:" in source
-    assert "if context.mode is ExecutionMode.PAPER:" in source
-    assert 'require_live(context, operation="place order")' in source
+def _function_tail(path: str, function_name: str) -> str:
+    source = _source(path)
+    return source[source.index(f"def {function_name}") :]
 
 
-def test_scanner_does_not_reconstruct_final_edge_from_best_ask() -> None:
-    source = scanner_source()
-    assert "book.quote_buy_budget" not in source
-    assert "preliminary_ev" not in source
-    assert "calc_ev(probability, entry_price)" not in source
-    assert "execution_slippage > MAX_SLIPPAGE" not in source
+def test_public_producer_uses_one_calibrated_probability_boundary() -> None:
+    scanner = _source("weatherbot/producer/scanner.py")
+    service = _source("weatherbot/producer/service.py")
+
+    assert scanner.count("calibration_runtime.probability(") == 1
+    assert "weatherbot.paper" not in scanner
+    assert "ExecutionMode" not in scanner
+    assert "submit_scanner_candidate(" not in scanner
+    assert "evaluate_executable_buy(" in service
+    assert "probability=candidate.calibrated.model_probability" in service
+    assert "requested_budget=policy.market_reference_notional" in service
+    assert "balance=None" in service
+    assert "validated = evaluation.quote" in service
+    assert "artifact_sha256=candidate.calibrated.artifact_sha256" in service
+    assert "place_buy_order(" not in service
 
 
-def test_live_path_revalidates_before_order_callback() -> None:
-    source = scanner_source()
+def test_internal_paper_replays_public_candidate_before_simulated_economics() -> None:
+    source = _source("weatherbot/paper/experiment.py")
+
+    public_batch = source.index("public_results = tuple(")
+    public_decision = source.index("evaluate_candidate(", public_batch)
+    ledger_allocation = source.index("initialize_paper_store(", public_decision)
+    assert public_batch < public_decision < ledger_allocation
+
+    decision_block = source[public_batch:ledger_allocation]
+    assert "case.candidate" in decision_block
+    assert "spec.policy" in decision_block
+    assert "evaluated_at=case.decision_at" in decision_block
+    assert "calc_kelly(" not in decision_block
+    assert "get_adjusted_kelly(" not in decision_block
+    assert "bet_size(" not in decision_block
+
+
+def test_public_producer_does_not_reconstruct_edge_from_best_ask() -> None:
+    service = _source("weatherbot/producer/service.py")
+
+    assert "book.quote_buy_budget" not in service
+    assert "calc_ev(" not in service
+    assert "get_adjusted_kelly(" not in service
+    assert "bet_size(" not in service
+    assert "expected_return=validated.expected_return" in service
+    assert "probability_edge=validated.probability_edge" in service
+
+
+def test_quarantined_historical_live_source_revalidates_before_order_callback() -> None:
+    source = _function_tail("bot_v3_legacy_impl.py", "scan_and_trade")
     revalidation = source.index("revalidate_executable_buy(")
     live_gate = source.index('require_live(context, operation="place order")')
     callback = source.index("callback=lambda: place_buy_order(")
@@ -43,8 +66,8 @@ def test_live_path_revalidates_before_order_callback() -> None:
     assert "validated_quote=validated_quote" in source
 
 
-def test_live_order_boundary_does_not_reconstruct_notional_from_price() -> None:
-    source = (ROOT / "bot_v3.py").read_text(encoding="utf-8")
+def test_quarantined_live_order_boundary_does_not_reconstruct_notional_from_price() -> None:
+    source = _source("bot_v3_legacy_impl.py")
     start = source.index("def place_buy_order")
     end = source.index("\n\ndef cancel_order", start)
     block = source[start:end]
@@ -56,7 +79,7 @@ def test_live_order_boundary_does_not_reconstruct_notional_from_price() -> None:
 
 
 def test_quote_configuration_declares_every_freshness_and_cost_limit() -> None:
-    config = (ROOT / "config.json").read_text(encoding="utf-8")
+    config = _source("config.json")
     for key in (
         "max_forecast_age_seconds",
         "max_event_age_seconds",

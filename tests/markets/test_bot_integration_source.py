@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_legacy_scanner_uses_resolution_safe_market_contracts() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
+def test_quarantined_legacy_implementation_retains_resolution_safe_market_contracts() -> None:
+    source = Path("bot_v3_legacy_impl.py").read_text(encoding="utf-8")
     required = (
         "parse_gamma_binary_market",
         "parse_temperature_bucket",
@@ -19,12 +19,16 @@ def test_legacy_scanner_uses_resolution_safe_market_contracts() -> None:
         assert symbol in source
 
 
-def test_legacy_scanner_does_not_use_removed_market_shortcuts() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
-    assert "(-999," not in source
-    assert ", 999)" not in source
-    assert 'market["outcomePrices"][0]' not in source
-    assert 'market["outcomePrices"][1]' not in source
-    assert "datetime.now(timezone.utc).date()" not in source
-    assert "get_book(token_id=condition_id)" not in source
-    assert "book.quote_buy_budget" not in source
+def test_public_producer_uses_shared_market_contracts_without_legacy_imports() -> None:
+    scanner = Path("weatherbot/producer/scanner.py").read_text(encoding="utf-8")
+    market_http = Path("weatherbot/producer/market_source.py").read_text(encoding="utf-8")
+    service = Path("weatherbot/producer/service.py").read_text(encoding="utf-8")
+
+    assert "parse_temperature_markets(event)" in scanner
+    assert "BinaryOutcome.YES" in scanner
+    assert "parse_gamma_binary_market" in market_http
+    assert "parse_order_book" in market_http
+    assert "evaluate_executable_buy(" in service
+    assert "revalidate_executable_buy(" not in service
+    assert "bot_v3_legacy" not in scanner
+    assert "bot_v3_legacy" not in service

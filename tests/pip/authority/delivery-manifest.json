@@ -1,0 +1,200 @@
+{
+  "protocol": "producer-delivery-v1",
+  "event_binding": {
+    "producer_id": "hermes_weatherbot",
+    "event_id": "evt_delivery_001",
+    "event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "claim_policy": {
+    "requires_unique_fencing_token": true,
+    "completion_requires_unexpired_matching_token": true,
+    "claim_mode_persisted": true,
+    "maximum_claim_duration_ms": 60000,
+    "automatic_claim_lease_must_end_by_horizon": true
+  },
+  "response_policy": {
+    "max_result_body_bytes": 65536,
+    "overflow_classification": "ambiguous_retry"
+  },
+  "key_rotation_policy": {
+    "routine_delivery_accept_until_minimum": "signing_not_after_plus_delivery_horizon",
+    "emergency_revocation_drain_exception": false
+  },
+  "retry_policy": {
+    "base_delay_ms": 1000,
+    "max_delay_ms": 60000,
+    "maximum_supported_delivery_horizon_ms": 604800000,
+    "horizon_anchor": "event.generated_at",
+    "exponent_cap": 10,
+    "jitter_lower_ratio": 0.5,
+    "jitter_upper_ratio": 1.0,
+    "attempt_vectors": [
+      { "attempt_count": 1, "raw_delay_ms": 1000, "minimum_ms": 500, "maximum_ms": 1000 },
+      { "attempt_count": 2, "raw_delay_ms": 2000, "minimum_ms": 1000, "maximum_ms": 2000 },
+      { "attempt_count": 7, "raw_delay_ms": 60000, "minimum_ms": 30000, "maximum_ms": 60000 },
+      { "attempt_count": 1000000, "raw_delay_ms": 60000, "minimum_ms": 30000, "maximum_ms": 60000 }
+    ]
+  },
+  "delivery_results": [
+    {
+      "id": "accepted",
+      "valid": true,
+      "value": {
+        "contract": "pip.event-delivery-result",
+        "protocol_version": "1",
+        "disposition": "accepted",
+        "event": {
+          "producer_id": "hermes_weatherbot",
+          "event_id": "evt_delivery_001",
+          "event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "receipt_id": "rcpt_001"
+      }
+    },
+    {
+      "id": "already-accepted",
+      "valid": true,
+      "value": {
+        "contract": "pip.event-delivery-result",
+        "protocol_version": "1",
+        "disposition": "already_accepted",
+        "event": {
+          "producer_id": "hermes_weatherbot",
+          "event_id": "evt_delivery_001",
+          "event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "receipt_id": "rcpt_001"
+      }
+    },
+    {
+      "id": "retry",
+      "valid": true,
+      "value": {
+        "contract": "pip.event-delivery-result",
+        "protocol_version": "1",
+        "disposition": "retry",
+        "event": {
+          "producer_id": "hermes_weatherbot",
+          "event_id": "evt_delivery_001",
+          "event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "reason_code": "delivery.rate_limited",
+        "retry_after_ms": 5000
+      }
+    },
+    {
+      "id": "identity-conflict",
+      "valid": true,
+      "value": {
+        "contract": "pip.event-delivery-result",
+        "protocol_version": "1",
+        "disposition": "rejected",
+        "event": {
+          "producer_id": "hermes_weatherbot",
+          "event_id": "evt_delivery_001",
+          "event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "category": "identity_conflict",
+        "reason_code": "identity.event_conflict"
+      }
+    },
+    {
+      "id": "accepted-without-receipt",
+      "valid": false,
+      "value": {
+        "contract": "pip.event-delivery-result",
+        "protocol_version": "1",
+        "disposition": "accepted",
+        "event": {
+          "producer_id": "hermes_weatherbot",
+          "event_id": "evt_delivery_001",
+          "event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      }
+    },
+    {
+      "id": "strategy-command-field",
+      "valid": false,
+      "value": {
+        "contract": "pip.event-delivery-result",
+        "protocol_version": "1",
+        "disposition": "retry",
+        "event": {
+          "producer_id": "hermes_weatherbot",
+          "event_id": "evt_delivery_001",
+          "event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "reason_code": "delivery.retry",
+        "strategy_command": "recalculate"
+      }
+    },
+    {
+      "id": "bad-event-digest",
+      "valid": false,
+      "value": {
+        "contract": "pip.event-delivery-result",
+        "protocol_version": "1",
+        "disposition": "rejected",
+        "event": {
+          "producer_id": "hermes_weatherbot",
+          "event_id": "evt_delivery_001",
+          "event_sha256": "ABC"
+        },
+        "category": "invalid_envelope",
+        "reason_code": "envelope.invalid"
+      }
+    },
+    {
+      "id": "unknown-disposition",
+      "valid": false,
+      "value": {
+        "contract": "pip.event-delivery-result",
+        "protocol_version": "1",
+        "disposition": "execute",
+        "event": {
+          "producer_id": "hermes_weatherbot",
+          "event_id": "evt_delivery_001",
+          "event_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "receipt_id": "rcpt_001"
+      }
+    }
+  ],
+  "scenarios": [
+    { "id": "write-before-send", "from": null, "action": "durable_enqueue", "to": "pending", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "local-exact-enqueue", "from": "pending", "action": "enqueue_same_identity_same_digest", "to": "pending", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "local-identity-conflict", "from": "pending", "action": "enqueue_same_identity_different_digest", "to": "pending", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "initial-claim", "from": "pending", "action": "claim", "to": "in_flight", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "connection-failure", "from": "in_flight", "action": "connection_failure", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "timeout-after-send", "from": "in_flight", "action": "timeout_ambiguous", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "retry-claim", "from": "retry_wait", "action": "claim_when_eligible", "to": "in_flight", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "crash-before-send", "from": "in_flight", "action": "lease_expired", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "crash-after-acceptance", "from": "in_flight", "action": "lease_expired_after_possible_acceptance", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "durable-acceptance", "from": "in_flight", "action": "bound_accepted_receipt", "to": "acknowledged", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "exact-duplicate-receipt", "from": "in_flight", "action": "bound_already_accepted_original_receipt", "to": "acknowledged", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "invalid-success-body", "from": "in_flight", "action": "unbound_or_malformed_2xx", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "http-202-not-ack", "from": "in_flight", "action": "http_202", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "rate-limit", "from": "in_flight", "action": "http_429", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "server-failure", "from": "in_flight", "action": "http_5xx", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "redirect-not-followed", "from": "in_flight", "action": "redirect", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "oversized-result-body", "from": "in_flight", "action": "decoded_result_exceeds_65536_bytes", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "permanent-rejection", "from": "in_flight", "action": "bound_rejected", "to": "dead_letter", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "identity-conflict-rejection", "from": "in_flight", "action": "bound_identity_conflict", "to": "dead_letter", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "pending-horizon-exceeded", "from": "pending", "action": "maximum_delivery_horizon_elapsed", "to": "dead_letter", "dead_letter_reason": "delivery_horizon_exceeded", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "retry-wait-horizon-exceeded", "from": "retry_wait", "action": "maximum_delivery_horizon_elapsed", "to": "dead_letter", "dead_letter_reason": "delivery_horizon_exceeded", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "claim-near-horizon-denied", "from": "retry_wait", "action": "automatic_claim_lease_would_cross_horizon", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "automatic-claim-expired-at-horizon", "from": "in_flight", "action": "automatic_claim_lease_expires_at_horizon", "to": "dead_letter", "dead_letter_reason": "delivery_horizon_exceeded", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "manual-one-shot", "from": "dead_letter", "action": "operator_authorized_one_shot_claim", "to": "in_flight", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "manual-one-shot-failure", "from": "in_flight", "action": "manual_attempt_not_acknowledged", "to": "dead_letter", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "manual-one-shot-lease-expired", "from": "in_flight", "action": "operator_one_shot_lease_expires", "to": "dead_letter", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "post-retirement-receipt-reconciliation", "from": "dead_letter", "action": "operator_claim_for_exact_duplicate_lookup", "to": "in_flight", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "post-retirement-original-receipt", "from": "in_flight", "action": "bound_already_accepted_original_receipt_before_version_adjudication", "to": "acknowledged", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "post-retirement-unseen-rejected", "from": "in_flight", "action": "unseen_event_rejected_by_retired_version", "to": "dead_letter", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "operator-dead-letter-pending", "from": "pending", "action": "operator_dead_letter_with_audit_reason", "to": "dead_letter", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "operator-dead-letter-retry-wait", "from": "retry_wait", "action": "operator_dead_letter_with_audit_reason", "to": "dead_letter", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "pip-outage-isolation", "from": "retry_wait", "action": "pip_unavailable", "to": "retry_wait", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "concurrent-claim-denied", "from": "in_flight", "action": "second_claim_before_lease_expiry", "to": "in_flight", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "stale-result-write-denied", "from": "in_flight", "action": "completion_with_expired_or_superseded_claim_token", "to": "in_flight", "preserves_envelope": true, "strategy_effect": "none" },
+    { "id": "acknowledged-terminal", "from": "acknowledged", "action": "normal_worker_scan", "to": "acknowledged", "preserves_envelope": true, "strategy_effect": "none" }
+  ]
+}

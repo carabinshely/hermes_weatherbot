@@ -1,0 +1,4 @@
+self-hosted-runner:
+  labels:
+    - hermes-weather-calibration
+    - pip-project-sync-hermes
