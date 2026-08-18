@@ -103,6 +103,33 @@ def test_uncommitted_staged_intent_is_never_automatically_deliverable(tmp_path: 
         assert summary.retry_wait == 0
 
 
+def test_reconciliation_discards_staging_without_a_durable_signal(tmp_path: Path) -> None:
+    signal = make_signal()
+    config = _config(tmp_path, key_byte=1, key_id="key-1")
+    assert stage_signal(
+        signal,
+        config=config,
+        repository_root=REPOSITORY_ROOT,
+        now=signal.generated_at_utc,
+    )
+    with PipIntentStore(config.outbox_path) as intents:
+        assert intents.count() == 1
+
+    assert (
+        reconcile_signal_log(
+            tmp_path / "missing-signals.jsonl",
+            config=config,
+            repository_root=REPOSITORY_ROOT,
+            now=signal.generated_at_utc + timedelta(seconds=1),
+        )
+        == 0
+    )
+    with PipIntentStore(config.outbox_path) as intents:
+        assert intents.count() == 0
+    with PipOutbox(config.outbox_path) as outbox:
+        assert outbox.summary().pending == 0
+
+
 def test_known_uncommitted_staging_can_be_discarded(tmp_path: Path) -> None:
     signal = make_signal()
     config = _config(tmp_path, key_byte=1, key_id="key-1")
@@ -332,7 +359,9 @@ def test_reconciliation_ignores_only_an_incomplete_final_tail(tmp_path: Path) ->
     signal = make_signal()
     config = _config(tmp_path, key_byte=1, key_id="key-1")
     signal_log = tmp_path / "signals.jsonl"
-    valid = json.dumps(signal.to_mapping(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    valid = json.dumps(
+        signal.to_mapping(), sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
     signal_log.write_bytes(valid + b"\n" + b'{"signal_id":')
 
     assert (
@@ -354,7 +383,9 @@ def test_reconciliation_fails_closed_on_corrupt_committed_interior_record(
     signal = make_signal()
     config = _config(tmp_path, key_byte=1, key_id="key-1")
     signal_log = tmp_path / "signals.jsonl"
-    valid = json.dumps(signal.to_mapping(), sort_keys=True, separators=(",", ":")).encode("utf-8")
+    valid = json.dumps(
+        signal.to_mapping(), sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
     signal_log.write_bytes(valid + b"\n" + b"not-json\n" + valid + b"\n")
 
     with pytest.raises(PipExportError, match="corrupt committed Hermes signal log record 2"):
