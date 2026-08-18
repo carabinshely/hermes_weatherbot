@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import signal
 from pathlib import Path
 
 import pytest
 
 from weatherbot.pip import PipExporterConfig, PipOutbox, cli
+from weatherbot.runtime_control import ShutdownController
 
 
 def _disabled_config(tmp_path: Path) -> PipExporterConfig:
@@ -88,6 +90,43 @@ def test_operator_retry_and_worker_fail_closed_when_disabled(
     )
     assert cli.main(["run", "--interval-seconds", "0"]) == 2
     assert "PIP export is disabled" in capsys.readouterr().err
+
+
+def test_worker_finishes_current_attempt_then_stops(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = PipExporterConfig(
+        enabled=True,
+        endpoint="https://pip.example/v1/events",
+        outbox_path=tmp_path / "outbox.sqlite3",
+        signing_key_path=tmp_path / "producer.key",
+        key_id="producer-key",
+    )
+    controller = ShutdownController()
+    reconciles = 0
+    deliveries = 0
+
+    monkeypatch.setattr(cli, "_config", lambda: config)
+    monkeypatch.setattr(cli, "_signal_log_path", lambda: tmp_path / "signals.jsonl")
+
+    def reconcile_signal_log(*_args: object, **_kwargs: object) -> int:
+        nonlocal reconciles
+        reconciles += 1
+        return 0
+
+    def deliver_once(*_args: object, **_kwargs: object) -> bool:
+        nonlocal deliveries
+        deliveries += 1
+        controller.request(signal.SIGTERM)
+        return True
+
+    monkeypatch.setattr(cli, "reconcile_signal_log", reconcile_signal_log)
+    monkeypatch.setattr(cli, "deliver_once", deliver_once)
+
+    assert cli.run_worker(5.0, controller=controller) == 143
+    assert reconciles == 1
+    assert deliveries == 1
 
 
 def test_dead_letter_command_reports_missing_outbox(
