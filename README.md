@@ -109,10 +109,14 @@ The public Command-Line Interface (CLI) is signal-oriented and has no execution-
 selector:
 
 ```bash
-uv run --no-dev python bot_v3.py scan
-uv run --no-dev python bot_v3.py status
-uv run --no-dev python bot_v3.py run
+uv run --no-dev python -m weatherbot.producer scan
+uv run --no-dev python -m weatherbot.producer status
+uv run --no-dev python -m weatherbot.producer run
 ```
+
+`bot_v3.py` remains a compatibility entrypoint. For foreground process lifecycle,
+service/container operation, shutdown behavior, and network/proxy policy, see
+[`docs/producer-operations.md`](docs/producer-operations.md).
 
 Public commands do not require wallet credentials and do not expose live order submission,
 cancellation, redemption, approval, bankroll, or trading-ledger controls.

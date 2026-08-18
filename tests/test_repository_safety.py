@@ -60,3 +60,30 @@ def test_quarantined_legacy_credentials_remain_environment_only() -> None:
     assert 'os.getenv("TELEGRAM_CHAT_ID"' in legacy_source
     assert "PK" not in public_source
     assert "WALLET" not in public_source
+
+
+def test_public_operations_have_no_bespoke_daemon_helpers() -> None:
+    assert not Path("start_bot_v3.sh").exists()
+    assert not Path("stop_bot_v3.sh").exists()
+
+    operational_sources = (
+        Path("bot_v3.py"),
+        Path("weatherbot/producer/cli.py"),
+        Path("weatherbot/producer/__main__.py"),
+        Path("weatherbot/pip/cli.py"),
+        Path("weatherbot/runtime_control.py"),
+    )
+    forbidden = (
+        "pgrep -f",
+        "pkill -f",
+        "nohup",
+        "~/weatherbot",
+        "/venv/bin/python",
+        "unset ALL_PROXY",
+        "unset HTTP_PROXY",
+        "unset HTTPS_PROXY",
+    )
+    for path in operational_sources:
+        content = path.read_text(encoding="utf-8")
+        for marker in forbidden:
+            assert marker not in content, f"{path} reintroduced host-specific operation: {marker}"

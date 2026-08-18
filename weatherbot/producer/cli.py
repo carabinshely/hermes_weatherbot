@@ -6,7 +6,6 @@ import argparse
 import json
 import sqlite3
 import sys
-import time
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -25,6 +24,7 @@ from weatherbot.producer.config import ProducerPolicy, load_producer_policy
 from weatherbot.producer.scanner import collect_calibrated_candidates
 from weatherbot.producer.service import evaluate_candidate
 from weatherbot.producer.store import append_signal
+from weatherbot.runtime_control import ShutdownController
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -136,6 +136,22 @@ def show_status(policy: ProducerPolicy) -> int:
     return 0
 
 
+def run_producer(
+    policy: ProducerPolicy,
+    *,
+    controller: ShutdownController | None = None,
+) -> int:
+    """Run the producer in the foreground until SIGINT or SIGTERM requests shutdown."""
+    shutdown = controller or ShutdownController()
+    with shutdown.installed():
+        while not shutdown.requested:
+            scan_once(policy)
+            if shutdown.requested:
+                break
+            shutdown.wait(policy.scan_interval_seconds)
+    return shutdown.exit_code
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Hermes non-executing calibrated weather-market signal producer"
@@ -162,10 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "scan":
         _emitted, errors = scan_once(policy)
         return 1 if errors else 0
-
-    while True:
-        scan_once(policy)
-        time.sleep(policy.scan_interval_seconds)
+    return run_producer(policy)
 
 
 if __name__ == "__main__":
