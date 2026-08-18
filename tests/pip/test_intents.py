@@ -21,6 +21,7 @@ from weatherbot.pip import (
     reconcile_signal_log,
     stage_signal,
 )
+from weatherbot.producer.model import HermesSignal
 
 
 def _key_file(tmp_path: Path, byte: int) -> Path:
@@ -41,7 +42,7 @@ def _config(tmp_path: Path, *, key_byte: int, key_id: str) -> PipExporterConfig:
     )
 
 
-def _write_signals(path: Path, *signals: object) -> None:
+def _write_signals(path: Path, *signals: HermesSignal) -> None:
     records = [
         json.dumps(signal.to_mapping(), sort_keys=True, separators=(",", ":"))
         for signal in signals
