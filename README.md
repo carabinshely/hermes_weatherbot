@@ -252,6 +252,14 @@ automatic execution
 PAPER P&L publication as real history
 ```
 
+## Repository artifacts
+
+Generated producer, calibration, PIP, and PAPER state is local by default. `data/` and
+`state/` are ignored working namespaces; deterministic test inputs live under
+`tests/fixtures/`, and only explicitly reviewed compact evidence belongs under `evidence/`.
+See `docs/repository-artifacts.md` for the complete ownership, regeneration, checksum, and
+promotion rules.
+
 ## License
 
 MIT. See `LICENSE`.
