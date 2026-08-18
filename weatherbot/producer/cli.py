@@ -16,7 +16,9 @@ from weatherbot.forecasting import (
     load_calibrated_probability_runtime,
 )
 from weatherbot.pip import (
+    PipExporterConfig,
     PipExportError,
+    PipIntentStore,
     load_exporter_config,
     promote_staged_signal,
     stage_signal,
@@ -31,6 +33,16 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 def _load_runtime() -> CalibratedProbabilityRuntime:
     return load_calibrated_probability_runtime(repository_root=REPOSITORY_ROOT)
+
+
+def _discard_known_uncommitted_intent(
+    signal_id: str,
+    *,
+    config: PipExporterConfig,
+) -> None:
+    """Remove staging only after append_signal definitively reports no durable commit."""
+    with PipIntentStore(config.outbox_path) as intents:
+        intents.discard(signal_id)
 
 
 def scan_once(policy: ProducerPolicy) -> tuple[int, list[str]]:
@@ -86,8 +98,21 @@ def scan_once(policy: ProducerPolicy) -> tuple[int, list[str]]:
             errors.append(
                 f"{candidate.city_name} {candidate.horizon}: signal persistence failed: {exc}"
             )
-            # A staged intent is deliberately left non-deliverable. Reconciliation promotes only
-            # intents whose signal_id is present in the committed, newline-terminated JSONL log.
+            # This exception means append_signal did not return a successful durable commit. A
+            # staging intent created by this same attempt is therefore known to be uncommitted and
+            # can be removed safely. A process crash has no such certainty, so crash-orphaned
+            # intents remain non-deliverable and operator-visible instead of being guessed away.
+            if staged_for_pip and pip_config is not None:
+                try:
+                    _discard_known_uncommitted_intent(
+                        signal.signal_id,
+                        config=pip_config,
+                    )
+                except (OSError, sqlite3.Error) as cleanup_exc:
+                    errors.append(
+                        f"{candidate.city_name} {candidate.horizon}: "
+                        f"PIP staging cleanup failed: {cleanup_exc}"
+                    )
             continue
 
         # The real Hermes decision is now immutable and durably recorded. Promotion is local
