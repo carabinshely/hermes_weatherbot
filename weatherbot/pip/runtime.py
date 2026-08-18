@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 from urllib.parse import urlparse
 
 import requests
