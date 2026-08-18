@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from tests.pip.test_contract import REPOSITORY_ROOT, _signal
-from weatherbot.pip.core import PipExportError, freeze_signal_envelope, load_release
+from tests.pip.test_contract import REPOSITORY_ROOT, make_signal
+from weatherbot.pip.core import FrozenEnvelope, PipExportError, freeze_signal_envelope, load_release
 from weatherbot.pip.outbox import PipOutbox
 
 
-def _frozen():
-    signal = _signal()
+def _frozen() -> FrozenEnvelope:
+    signal = make_signal()
     return freeze_signal_envelope(
         signal,
         key_id="producer-key-test",
