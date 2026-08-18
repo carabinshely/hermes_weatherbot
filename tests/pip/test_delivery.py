@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+from datetime import timedelta
 from pathlib import Path
 
 import requests
@@ -134,7 +135,7 @@ def test_bound_acceptance_acks_and_sends_exact_frozen_bytes(tmp_path: Path) -> N
             config=config,
             session=session,
             now=frozen.generated_at,
-            completion_now=frozen.generated_at.replace(microsecond=1),
+            completion_now=frozen.generated_at + timedelta(seconds=1),
         )
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().acknowledged == 1
@@ -153,7 +154,7 @@ def test_already_accepted_original_receipt_acks_after_ambiguous_prior_attempt(
             config=config,
             session=session,
             now=frozen.generated_at,
-            completion_now=frozen.generated_at.replace(microsecond=1),
+            completion_now=frozen.generated_at + timedelta(seconds=1),
         )
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().acknowledged == 1
@@ -169,7 +170,7 @@ def test_bare_202_and_malformed_success_remain_retryable(tmp_path: Path) -> None
                 config=config,
                 session=session,
                 now=frozen.generated_at,
-                completion_now=frozen.generated_at.replace(microsecond=1),
+                completion_now=frozen.generated_at + timedelta(seconds=1),
             )
         with PipOutbox(config.outbox_path) as outbox:
             assert outbox.summary().retry_wait == 1
@@ -192,7 +193,7 @@ def test_bound_rejection_dead_letters(tmp_path: Path) -> None:
             config=config,
             session=session,
             now=frozen.generated_at,
-            completion_now=frozen.generated_at.replace(microsecond=1),
+            completion_now=frozen.generated_at + timedelta(seconds=1),
         )
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().dead_letter == 1
@@ -206,7 +207,7 @@ def test_network_failure_is_retryable(tmp_path: Path) -> None:
             config=config,
             session=session,
             now=frozen.generated_at,
-            completion_now=frozen.generated_at.replace(microsecond=1),
+            completion_now=frozen.generated_at + timedelta(seconds=1),
         )
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().retry_wait == 1
@@ -220,7 +221,7 @@ def test_redirect_is_not_followed_and_remains_retryable(tmp_path: Path) -> None:
             config=config,
             session=session,
             now=frozen.generated_at,
-            completion_now=frozen.generated_at.replace(microsecond=1),
+            completion_now=frozen.generated_at + timedelta(seconds=1),
         )
     assert adapter.send_count == 1
     with PipOutbox(config.outbox_path) as outbox:
@@ -235,7 +236,7 @@ def test_oversized_decoded_result_is_ambiguous_retry(tmp_path: Path) -> None:
             config=config,
             session=session,
             now=frozen.generated_at,
-            completion_now=frozen.generated_at.replace(microsecond=1),
+            completion_now=frozen.generated_at + timedelta(seconds=1),
         )
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().retry_wait == 1
@@ -246,7 +247,7 @@ def test_completion_after_lease_expiry_cannot_write_receipt(tmp_path: Path) -> N
     adapter = FakeAdapter(
         body=_result_body(frozen, "accepted", receipt_id="too-late"),
     )
-    late = frozen.generated_at + __import__("datetime").timedelta(seconds=61)
+    late = frozen.generated_at + timedelta(seconds=61)
     with _session(adapter) as session:
         assert deliver_once(
             config=config,
@@ -279,7 +280,7 @@ def test_operator_one_shot_non_ack_returns_to_dead_letter(tmp_path: Path) -> Non
             reason="one shot",
             session=session,
             now=frozen.generated_at,
-            completion_now=frozen.generated_at.replace(microsecond=1),
+            completion_now=frozen.generated_at + timedelta(seconds=1),
         )
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().dead_letter == 1
