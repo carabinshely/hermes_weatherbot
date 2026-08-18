@@ -1,0 +1,110 @@
+{
+  "policy": "pip.signal-envelope-version-support",
+  "policy_version": "1",
+  "contract": "pip.signal-envelope",
+  "version_format": "positive-whole-number-string",
+  "normal_transition_order": [
+    "candidate",
+    "active",
+    "deprecated",
+    "retired"
+  ],
+  "minimum_windows": {
+    "deprecation_notice_days": 90,
+    "successful_candidate_conformance_days": 30,
+    "ingestion_drain_rule": "ingestion_cutoff_at must be no earlier than generation_cutoff_at plus the #23 maximum supported delivery retry/outbox horizon"
+  },
+  "state_requirements": {
+    "candidate": {
+      "allow_new_generation": false,
+      "allow_new_ingestion": false,
+      "allow_noncanonical_candidate_validation": true,
+      "require_historical_read": false,
+      "require_historical_hash_verification": false,
+      "require_historical_signature_verification": false,
+      "require_historical_replay": false
+    },
+    "active": {
+      "allow_new_generation": true,
+      "allow_new_ingestion": true,
+      "allow_noncanonical_candidate_validation": true,
+      "require_historical_read": true,
+      "require_historical_hash_verification": true,
+      "require_historical_signature_verification": true,
+      "require_historical_replay": true
+    },
+    "deprecated": {
+      "allow_new_generation_before_generation_cutoff": true,
+      "allow_new_generation_after_generation_cutoff": false,
+      "allow_new_ingestion_before_ingestion_cutoff": true,
+      "allow_new_ingestion_after_ingestion_cutoff": false,
+      "allow_noncanonical_candidate_validation": true,
+      "require_deprecation_warning": true,
+      "require_historical_read": true,
+      "require_historical_hash_verification": true,
+      "require_historical_signature_verification": true,
+      "require_historical_replay": true
+    },
+    "retired": {
+      "allow_new_generation": false,
+      "allow_new_ingestion": false,
+      "allow_noncanonical_candidate_validation": false,
+      "require_historical_read": true,
+      "require_historical_hash_verification": true,
+      "require_historical_signature_verification": true,
+      "require_historical_replay": true
+    }
+  },
+  "unknown_version": {
+    "allow_new_generation": false,
+    "allow_new_ingestion": false,
+    "allow_trusted_interpretation": false,
+    "allow_canonical_history_mutation": false,
+    "quarantine_requires_separate_policy": true
+  },
+  "versions": [
+    {
+      "version": "1",
+      "state": "active",
+      "emergency_ingestion": "open",
+      "successor_version": null,
+      "authorities": {
+        "schema": "signal-envelope-v1.schema.json",
+        "specification": "../spec/signal-envelope-v1.md",
+        "canonicalization": "../spec/canonicalization-v1.md",
+        "lifecycle": "../spec/signal-lifecycle-v1.md",
+        "examples": "../examples/",
+        "golden_vectors": "../tests/golden/manifest.json",
+        "lifecycle_vectors": "../tests/lifecycle/manifest.json"
+      },
+      "support": {
+        "allow_new_generation": true,
+        "allow_new_ingestion": true,
+        "allow_noncanonical_candidate_validation": true,
+        "require_historical_read": true,
+        "require_historical_hash_verification": true,
+        "require_historical_signature_verification": true,
+        "require_historical_replay": true
+      },
+      "schedule": {
+        "announced_at": "2026-08-15T14:22:28.000000Z",
+        "activated_at": "2026-08-15T14:22:28.000000Z",
+        "deprecated_at": null,
+        "generation_cutoff_at": null,
+        "ingestion_cutoff_at": null,
+        "retired_at": null
+      },
+      "migration_guide": null,
+      "candidate_suite": null,
+      "decision_reference": "https://github.com/carabinshely/prediction-intelligence-platform/issues/20",
+      "transition_history": [
+        {
+          "from": "candidate",
+          "to": "active",
+          "effective_at": "2026-08-15T14:22:28.000000Z",
+          "decision_reference": "https://github.com/carabinshely/prediction-intelligence-platform/issues/20"
+        }
+      ]
+    }
+  ]
+}
