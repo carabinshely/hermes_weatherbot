@@ -26,6 +26,7 @@ from weatherbot.quoting import (
 NOW = datetime(2026, 8, 6, 14, 0, tzinfo=UTC)
 CONDITION = ConditionId("0x" + "cd" * 32)
 TOKEN = OutcomeTokenId("12345678901234567890")
+BOOK_HASH = "1" * 64
 
 
 def weather_snapshot(
@@ -74,7 +75,7 @@ def order_book_payload(
     second_ask: str = "0.42",
     first_size: str = "3",
     second_size: str = "10",
-    book_hash: str = "book-hash-1",
+    book_hash: str = BOOK_HASH,
 ) -> dict[str, object]:
     observed = observed_at or NOW - timedelta(seconds=5)
     return {
@@ -103,7 +104,7 @@ def order_book(
     second_ask: str = "0.42",
     first_size: str = "3",
     second_size: str = "10",
-    book_hash: str = "book-hash-1",
+    book_hash: str = BOOK_HASH,
 ) -> OrderBookSnapshot:
     return parse_order_book(
         order_book_payload(
