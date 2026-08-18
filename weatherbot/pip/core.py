@@ -289,12 +289,9 @@ def canonical_event_bytes(event: dict[str, Any]) -> bytes:
             "PIP export requires rfc8785; install requirements-pip-export.txt"
         ) from exc
     try:
-        encoded = rfc8785.dumps(event)
+        return rfc8785.dumps(event)
     except Exception as exc:
         raise PipExportError(f"RFC 8785 canonicalization failed: {exc}") from exc
-    if not isinstance(encoded, bytes):
-        raise PipExportError("RFC 8785 implementation returned non-bytes output")
-    return encoded
 
 
 def _decode_unpadded_base64url(value: str, *, label: str) -> bytes:
