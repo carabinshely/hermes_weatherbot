@@ -13,6 +13,7 @@ from weatherbot.pip.core import (
     make_event_id,
     signal_to_event,
 )
+from weatherbot.pip.intents import PipIntentStore
 from weatherbot.pip.outbox import OutboxItem, OutboxSummary, PipOutbox
 from weatherbot.pip.runtime import (
     PipExporterConfig,
@@ -21,7 +22,10 @@ from weatherbot.pip.runtime import (
     enqueue_signal,
     load_exporter_config,
     parse_delivery_result,
+    promote_staged_signal,
     reconcile_signal_log,
+    retry_delay_bounds,
+    stage_signal,
 )
 
 __all__ = [
@@ -30,6 +34,7 @@ __all__ = [
     "OutboxSummary",
     "PipExportError",
     "PipExporterConfig",
+    "PipIntentStore",
     "PipOutbox",
     "ProducerRelease",
     "canonical_decimal",
@@ -44,6 +49,9 @@ __all__ = [
     "load_release",
     "make_event_id",
     "parse_delivery_result",
+    "promote_staged_signal",
     "reconcile_signal_log",
+    "retry_delay_bounds",
     "signal_to_event",
+    "stage_signal",
 ]
