@@ -7,19 +7,15 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from tests.pip.test_contract import REPOSITORY_ROOT, _signal
+from tests.pip.test_contract import REPOSITORY_ROOT, make_signal
+from weatherbot.pip import parse_delivery_result
 from weatherbot.pip.core import PipExportError, freeze_signal_envelope, load_release
-from weatherbot.pip.outbox import PipOutbox
-from weatherbot.pip.runtime import (
-    MAX_RESULT_BYTES,
-    PipExporterConfig,
-    _parse_bound_result,
-    load_exporter_config,
-)
+from weatherbot.pip.outbox import OutboxItem, PipOutbox
+from weatherbot.pip.runtime import MAX_RESULT_BYTES, PipExporterConfig, load_exporter_config
 
 
-def _claimed(tmp_path: Path):
-    signal = _signal()
+def _claimed(tmp_path: Path) -> tuple[PipOutbox, OutboxItem]:
+    signal = make_signal()
     frozen = freeze_signal_envelope(
         signal,
         key_id="producer-key-test",
@@ -33,7 +29,7 @@ def _claimed(tmp_path: Path):
     return outbox, item
 
 
-def _binding(item):
+def _binding(item: OutboxItem) -> dict[str, str]:
     return {
         "producer_id": item.producer_id,
         "event_id": item.event_id,
@@ -44,20 +40,20 @@ def _binding(item):
 def test_acceptance_requires_exact_event_binding_and_receipt(tmp_path: Path) -> None:
     outbox, item = _claimed(tmp_path)
     try:
-        payload = {
+        payload: dict[str, object] = {
             "contract": "pip.event-delivery-result",
             "protocol_version": "1",
             "disposition": "accepted",
             "event": _binding(item),
             "receipt_id": "receipt-1",
         }
-        result = _parse_bound_result(json.dumps(payload).encode(), item)
+        result = parse_delivery_result(json.dumps(payload).encode(), item)
         assert result.disposition == "accepted"
         assert result.receipt_id == "receipt-1"
 
         payload["event"] = {**_binding(item), "event_sha256": "0" * 64}
         with pytest.raises(PipExportError, match="does not bind"):
-            _parse_bound_result(json.dumps(payload).encode(), item)
+            parse_delivery_result(json.dumps(payload).encode(), item)
     finally:
         outbox.close()
 
@@ -65,7 +61,7 @@ def test_acceptance_requires_exact_event_binding_and_receipt(tmp_path: Path) -> 
 def test_retry_and_rejection_are_closed_results(tmp_path: Path) -> None:
     outbox, item = _claimed(tmp_path)
     try:
-        retry = {
+        retry: dict[str, object] = {
             "contract": "pip.event-delivery-result",
             "protocol_version": "1",
             "disposition": "retry",
@@ -73,11 +69,11 @@ def test_retry_and_rejection_are_closed_results(tmp_path: Path) -> None:
             "reason_code": "ingestion.temporary",
             "retry_after_ms": 5000,
         }
-        result = _parse_bound_result(json.dumps(retry).encode(), item)
+        result = parse_delivery_result(json.dumps(retry).encode(), item)
         assert result.disposition == "retry"
         assert result.retry_after_ms == 5000
 
-        rejected = {
+        rejected: dict[str, object] = {
             "contract": "pip.event-delivery-result",
             "protocol_version": "1",
             "disposition": "rejected",
@@ -85,13 +81,13 @@ def test_retry_and_rejection_are_closed_results(tmp_path: Path) -> None:
             "category": "authentication",
             "reason_code": "authentication.revoked_key",
         }
-        result = _parse_bound_result(json.dumps(rejected).encode(), item)
+        result = parse_delivery_result(json.dumps(rejected).encode(), item)
         assert result.disposition == "rejected"
         assert result.result_class == "rejected:authentication"
 
         rejected["unexpected"] = "command"
         with pytest.raises(PipExportError, match="invalid fields"):
-            _parse_bound_result(json.dumps(rejected).encode(), item)
+            parse_delivery_result(json.dumps(rejected).encode(), item)
     finally:
         outbox.close()
 
@@ -112,7 +108,7 @@ def test_unknown_or_malformed_results_never_acknowledge(tmp_path: Path) -> None:
             ).encode(),
         ):
             with pytest.raises(PipExportError):
-                _parse_bound_result(body, item)
+                parse_delivery_result(body, item)
         assert outbox.summary().in_flight == 1
         assert outbox.summary().acknowledged == 0
     finally:
