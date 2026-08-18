@@ -157,6 +157,11 @@ class PipIntentStore:
         return cursor.rowcount == 1
 
     def has_outbox_signal(self, signal_id: str) -> bool:
+        """Return whether outbox already owns the signal and retire redundant staging.
+
+        The cleanup handles a crash after durable outbox enqueue but before normal intent deletion.
+        Once exact bytes are in the durable outbox, the staging row has no remaining recovery role.
+        """
         table = self._connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pip_outbox'"
         ).fetchone()
@@ -166,7 +171,10 @@ class PipIntentStore:
             "SELECT 1 FROM pip_outbox WHERE signal_id=? LIMIT 1",
             (signal_id,),
         ).fetchone()
-        return row is not None
+        if row is None:
+            return False
+        self.discard(signal_id)
+        return True
 
     def promote(self, signal_id: str, *, now: datetime | None = None) -> bool:
         """Promote an exact staged intent into the durable outbox, then retire the intent.
