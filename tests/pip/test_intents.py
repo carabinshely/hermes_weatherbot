@@ -44,8 +44,7 @@ def _config(tmp_path: Path, *, key_byte: int, key_id: str) -> PipExporterConfig:
 
 def _write_signals(path: Path, *signals: HermesSignal) -> None:
     records = [
-        json.dumps(signal.to_mapping(), sort_keys=True, separators=(",", ":"))
-        for signal in signals
+        json.dumps(signal.to_mapping(), sort_keys=True, separators=(",", ":")) for signal in signals
     ]
     path.write_text("\n".join(records) + "\n", encoding="utf-8")
 
@@ -359,9 +358,7 @@ def test_reconciliation_ignores_only_an_incomplete_final_tail(tmp_path: Path) ->
     signal = make_signal()
     config = _config(tmp_path, key_byte=1, key_id="key-1")
     signal_log = tmp_path / "signals.jsonl"
-    valid = json.dumps(
-        signal.to_mapping(), sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    valid = json.dumps(signal.to_mapping(), sort_keys=True, separators=(",", ":")).encode("utf-8")
     signal_log.write_bytes(valid + b"\n" + b'{"signal_id":')
 
     assert (
@@ -383,9 +380,7 @@ def test_reconciliation_fails_closed_on_corrupt_committed_interior_record(
     signal = make_signal()
     config = _config(tmp_path, key_byte=1, key_id="key-1")
     signal_log = tmp_path / "signals.jsonl"
-    valid = json.dumps(
-        signal.to_mapping(), sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    valid = json.dumps(signal.to_mapping(), sort_keys=True, separators=(",", ":")).encode("utf-8")
     signal_log.write_bytes(valid + b"\n" + b"not-json\n" + valid + b"\n")
 
     with pytest.raises(PipExportError, match="corrupt committed Hermes signal log record 2"):
