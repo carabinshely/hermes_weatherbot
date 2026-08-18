@@ -148,11 +148,11 @@ def reconcile_signal_log(
     metadata. Lifecycle v1 permits exactly one ``signal.created`` for that signal. The append-only
     JSONL order therefore defines the canonical creation occurrence: the first durable record.
 
-    A pre-commit staging intent is promoted only if its canonical event bytes match at least one
-    durable occurrence of the same signal. Otherwise it is proven to be an orphan from an
-    uncommitted attempt, discarded, and the first durable occurrence is frozen with current key
-    material. This preserves exact bytes after real crashes without letting an orphan assertion
-    become canonical history.
+    A pre-commit staging intent is promoted only if its canonical event bytes match that first
+    durable occurrence. Otherwise it cannot be the canonical create: it is discarded and the
+    first durable occurrence is frozen with current key material. This preserves exact bytes after
+    real crashes without allowing a later repeated scan or an uncommitted orphan assertion to
+    replace canonical history.
     """
     if not config.enabled:
         return 0
@@ -164,30 +164,26 @@ def reconcile_signal_log(
 
     promoted = 0
     for signal_id, occurrences in by_signal.items():
+        first = occurrences[0]
         with PipIntentStore(config.outbox_path) as intents:
             if intents.has_outbox_signal(signal_id):
                 continue
 
             intent = intents.get(signal_id)
             if intent is not None:
-                matching = any(
-                    _intent_matches_signal(
-                        occurrence,
-                        key_id=intent.key_id,
-                        canonical_bytes=intent.canonical_event_bytes,
-                        repository_root=repository_root,
-                    )
-                    for occurrence in occurrences
-                )
-                if matching:
+                if _intent_matches_signal(
+                    first,
+                    key_id=intent.key_id,
+                    canonical_bytes=intent.canonical_event_bytes,
+                    repository_root=repository_root,
+                ):
                     if intents.promote(signal_id, now=current):
                         promoted += 1
                     continue
-                # No durable occurrence corresponds to these staged bytes, so this is an orphan
-                # from an attempt that never committed to the authoritative signal log.
+                # The staged bytes do not represent the first durable occurrence, so they cannot
+                # become the one canonical signal.created event for this lifecycle identity.
                 intents.discard(signal_id)
 
-        first = occurrences[0]
         stage_signal(
             first,
             config=config,
