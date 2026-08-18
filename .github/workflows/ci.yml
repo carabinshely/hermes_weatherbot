@@ -37,6 +37,7 @@ jobs:
           cache-dependency-glob: |
             uv.lock
             requirements-pip-export.txt
+            requirements-pip-conformance.txt
 
       - name: Verify lock file
         run: uv lock --check
@@ -139,43 +140,30 @@ jobs:
       - name: Check out Hermes
         uses: actions/checkout@v6
 
-      - name: Check out pinned PIP authority
-        uses: actions/checkout@v6
-        with:
-          repository: carabinshely/prediction-intelligence-platform
-          ref: a21c3e2ec9e7d5fdd453df4d7cbf641989493af8
-          path: pip_contract
-          persist-credentials: false
-
-      - name: Set up Hermes Python
+      - name: Set up Python
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          cache-dependency-glob: |
+            uv.lock
+            requirements-pip-export.txt
+            requirements-pip-conformance.txt
 
-      - name: Install Hermes test and exporter dependencies
+      - name: Install Hermes and conformance dependencies
         run: |
           uv sync --locked --all-groups
-          uv pip install -r requirements-pip-export.txt
+          uv pip install -r requirements-pip-export.txt -r requirements-pip-conformance.txt
 
-      - name: Cross-check Hermes against pinned PIP vectors
+      - name: Verify vendored authority and generate a real Hermes fixture
         run: >
           PYTHONPATH=. uv run python scripts/ci/check_pip_conformance.py
-          pip_contract pip_tmp
+          tests/pip/authority pip_tmp
 
-      - name: Set up PIP Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.14"
-
-      - name: Self-test pinned PIP conformance authority
-        working-directory: pip_contract
-        run: uv run --frozen python -m scripts.conformance self-test
-
-      - name: Validate real Hermes envelope in PIP environment
-        working-directory: pip_contract
+      - name: Validate the real Hermes envelope against pinned PIP authority
         run: >
-          PYTHONPATH=. uv run --frozen python
-          ../scripts/ci/validate_pip_fixture.py ../pip_tmp
+          PYTHONPATH=. uv run python scripts/ci/validate_pip_fixture.py
+          tests/pip/authority pip_tmp
