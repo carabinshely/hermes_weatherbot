@@ -11,6 +11,7 @@ from pathlib import Path
 from weatherbot.pip import (
     PipExportError,
     PipOutbox,
+    deliver_dead_letter_once,
     deliver_once,
     load_exporter_config,
     reconcile_signal_log,
@@ -87,6 +88,37 @@ def deliver_once_command() -> int:
     return 0
 
 
+def retry_dead_letter(event_id: str, operator_id: str, reason: str) -> int:
+    config = _config()
+    if not config.enabled:
+        print("ERROR: PIP export is disabled", file=sys.stderr)
+        return 2
+    attempted = deliver_dead_letter_once(
+        config=config,
+        event_id=event_id,
+        operator_id=operator_id,
+        reason=reason,
+    )
+    print(json.dumps({"attempted": attempted, "event_id": event_id}, sort_keys=True))
+    return 0
+
+
+def dead_letter(event_id: str, operator_id: str, reason: str) -> int:
+    config = _config()
+    if not config.outbox_path.exists():
+        raise PipExportError("PIP outbox has not been initialized")
+    with PipOutbox(config.outbox_path) as outbox:
+        changed = outbox.operator_dead_letter(
+            event_id=event_id,
+            operator_id=operator_id,
+            reason=reason,
+        )
+    if not changed:
+        raise PipExportError("event is not pending or waiting for retry")
+    print(json.dumps({"dead_lettered": True, "event_id": event_id}, sort_keys=True))
+    return 0
+
+
 def run_worker(interval_seconds: float) -> int:
     config = _config()
     if not config.enabled:
@@ -106,6 +138,14 @@ def run_worker(interval_seconds: float) -> int:
             time.sleep(interval_seconds)
 
 
+def _operator_parser(subparsers: argparse._SubParsersAction[argparse.ArgumentParser], name: str):
+    parser = subparsers.add_parser(name)
+    parser.add_argument("--event-id", required=True)
+    parser.add_argument("--operator", required=True)
+    parser.add_argument("--reason", required=True)
+    return parser
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Hermes signed PIP SignalEnvelope exporter")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -114,6 +154,8 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers.add_parser("deliver-once")
     run = subparsers.add_parser("run")
     run.add_argument("--interval-seconds", type=float, default=5.0)
+    _operator_parser(subparsers, "retry-dead-letter")
+    _operator_parser(subparsers, "dead-letter")
     return parser
 
 
@@ -126,6 +168,10 @@ def main(argv: list[str] | None = None) -> int:
             return reconcile()
         if args.command == "deliver-once":
             return deliver_once_command()
+        if args.command == "retry-dead-letter":
+            return retry_dead_letter(args.event_id, args.operator, args.reason)
+        if args.command == "dead-letter":
+            return dead_letter(args.event_id, args.operator, args.reason)
         return run_worker(args.interval_seconds)
     except (PipExportError, OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
