@@ -70,8 +70,10 @@ def check_retry_vectors(contract_root: Path) -> None:
         count = attempt.get("attempt_count")
         minimum_ms = attempt.get("minimum_ms")
         maximum_ms = attempt.get("maximum_ms")
-        if not isinstance(count, int) or not isinstance(minimum_ms, int) or not isinstance(
-            maximum_ms, int
+        if (
+            not isinstance(count, int)
+            or not isinstance(minimum_ms, int)
+            or not isinstance(maximum_ms, int)
         ):
             raise RuntimeError("PIP retry vector has invalid numeric fields")
         lower, upper = retry_delay_bounds(count)
