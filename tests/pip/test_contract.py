@@ -45,9 +45,7 @@ def test_signal_created_mapping_uses_real_public_authority() -> None:
     reference = event["market_references"]["decision_book"]
     assert reference["kind"] == "executable"
     assert reference["value"] == canonical_decimal(signal.market_reference.all_in_reference_price)
-    assert reference["observed_at"] == canonical_timestamp(
-        signal.market_reference.observed_at_utc
-    )
+    assert reference["observed_at"] == canonical_timestamp(signal.market_reference.observed_at_utc)
     assert event["decision"]["classification"] == "accepted"
     assert event["evidence"]["mode"] == "live"
     extension = event["extensions"]["hermes_weatherbot:weather:v1"]
