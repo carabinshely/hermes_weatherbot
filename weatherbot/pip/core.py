@@ -16,8 +16,11 @@ from typing import Any, cast
 from weatherbot.producer.model import HermesSignal
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_GIT_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$")
 _PRODUCER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_STRATEGY_VERSION_FILE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
+_RELEASE_REPOSITORY = "carabinshely/hermes_weatherbot"
 
 
 class PipExportError(RuntimeError):
@@ -84,6 +87,8 @@ def make_event_id(signal: HermesSignal) -> str:
 
 
 def load_release(repository_root: Path, strategy_version: str) -> ProducerRelease:
+    if not _STRATEGY_VERSION_FILE_RE.fullmatch(strategy_version):
+        raise PipExportError("strategy_version is not safe for immutable release lookup")
     path = repository_root / "config" / "producer-releases" / f"{strategy_version}.json"
     try:
         raw = path.read_bytes()
@@ -111,8 +116,12 @@ def load_release(repository_root: Path, strategy_version: str) -> ProducerReleas
     repository = str(data["repository"]).strip()
     revision = str(data["revision"]).strip()
     identity = str(data["decision_code_identity"]).strip()
-    if not repository or not revision or not identity:
-        raise PipExportError("producer release manifest contains blank identity fields")
+    if repository != _RELEASE_REPOSITORY:
+        raise PipExportError("producer release manifest repository mismatch")
+    if not _GIT_COMMIT_RE.fullmatch(revision):
+        raise PipExportError("producer release revision must be an immutable lowercase Git commit SHA")
+    if not identity:
+        raise PipExportError("producer release manifest contains blank decision-code identity")
     return ProducerRelease(
         strategy_version=strategy_version,
         repository=repository,
@@ -120,6 +129,41 @@ def load_release(repository_root: Path, strategy_version: str) -> ProducerReleas
         decision_code_identity=identity,
         manifest_sha256=hashlib.sha256(raw).hexdigest(),
     )
+
+
+def _market_reference_evidence(signal: HermesSignal, *, observed_at: str) -> tuple[dict[str, str], str]:
+    """Build and digest the exact executable-reference evidence Hermes can reproduce.
+
+    Polymarket's provider ``hash`` is preserved as source provenance but is not assumed to be a
+    SHA-256 value. PIP requires a SHA-256 content digest, so Hermes computes one over a stable,
+    producer-owned JSON projection of the executable reference used for the decision.
+    """
+    reference = signal.market_reference
+    projection = {
+        "schema": "hermes.executable-market-reference.v1",
+        "condition_id": signal.condition_id,
+        "token_id": signal.token_id,
+        "observed_at": observed_at,
+        "kind": reference.kind,
+        "reference_notional": canonical_decimal(reference.reference_notional),
+        "best_bid": canonical_decimal(reference.best_bid),
+        "best_ask": canonical_decimal(reference.best_ask),
+        "average_reference_price": canonical_decimal(reference.average_reference_price),
+        "all_in_reference_price": canonical_decimal(reference.all_in_reference_price),
+        "worst_reference_price": canonical_decimal(reference.worst_reference_price),
+        "probability_edge": canonical_decimal(reference.probability_edge),
+        "expected_return": canonical_decimal(reference.expected_return),
+        "provider_order_book_hash": reference.order_book_hash,
+        "quote_fingerprint": reference.quote_fingerprint,
+    }
+    encoded = json.dumps(
+        projection,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return projection, hashlib.sha256(encoded).hexdigest()
 
 
 def signal_to_event(
@@ -142,10 +186,7 @@ def signal_to_event(
 
     model_digest = _require_sha256(signal.artifact_sha256, label="model artifact digest")
     policy_digest = _require_sha256(signal.policy_fingerprint, label="producer policy digest")
-    order_book_digest = _require_sha256(
-        signal.market_reference.order_book_hash,
-        label="order-book evidence digest",
-    )
+    reference_evidence, reference_digest = _market_reference_evidence(signal, observed_at=observed_at)
 
     probability = canonical_decimal(signal.model_probability)
     executable_price = canonical_decimal(signal.market_reference.all_in_reference_price)
@@ -204,6 +245,7 @@ def signal_to_event(
             "expected_return": canonical_decimal(signal.market_reference.expected_return),
             "order_book_hash": signal.market_reference.order_book_hash,
             "quote_fingerprint": signal.market_reference.quote_fingerprint,
+            "evidence_schema": reference_evidence["schema"],
         },
         "eligibility": {
             "producer_public_claim": "not_asserted",
@@ -266,8 +308,8 @@ def signal_to_event(
             "mode": "live",
             "references": {
                 "decision_book": {
-                    "type": "order_book",
-                    "digest": {"algorithm": "sha256", "hex": order_book_digest},
+                    "type": "hermes.executable_market_reference.v1",
+                    "digest": {"algorithm": "sha256", "hex": reference_digest},
                     "observed_at": observed_at,
                 }
             },
