@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+from datetime import datetime
 from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -22,8 +23,8 @@ from weatherbot.producer.service import evaluate_candidate
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
-def make_signal() -> HermesSignal:
-    signal, evaluation = evaluate_candidate(candidate(), policy(), evaluated_at=NOW)
+def make_signal(evaluated_at: datetime = NOW) -> HermesSignal:
+    signal, evaluation = evaluate_candidate(candidate(), policy(), evaluated_at=evaluated_at)
     assert evaluation.accepted
     assert signal is not None
     return signal
