@@ -46,20 +46,26 @@ def check_authority_bundle(authority_dir: Path) -> None:
     if lock.get("commit") != "a21c3e2ec9e7d5fdd453df4d7cbf641989493af8":
         raise RuntimeError("PIP contract lock moved without explicit conformance review")
     bundle = _object(lock.get("authority_bundle"), label="PIP authority bundle")
+    authority_root = authority_dir.resolve()
     for repository_path, raw_entry in bundle.items():
         if not isinstance(repository_path, str):
             raise RuntimeError("PIP authority path must be a string")
         entry = _object(raw_entry, label=f"PIP authority entry {repository_path}")
         expected = entry.get("git_blob_sha")
         if not isinstance(expected, str):
-            raise RuntimeError(f"PIP authority entry {repository_path} lacks git_blob_sha")
-        local = REPOSITORY_ROOT / repository_path
-        if local.parent != authority_dir.resolve() and authority_dir.resolve() not in local.parents:
-            raise RuntimeError(f"PIP authority file escapes expected directory: {repository_path}")
+            raise RuntimeError(
+                f"PIP authority entry {repository_path} lacks git_blob_sha"
+            )
+        local = (REPOSITORY_ROOT / repository_path).resolve()
+        if authority_root not in local.parents:
+            raise RuntimeError(
+                f"PIP authority file escapes expected directory: {repository_path}"
+            )
         actual = _git_blob_sha(local.read_bytes())
         if actual != expected:
             raise RuntimeError(
-                f"PIP authority blob mismatch for {repository_path}: expected {expected}, got {actual}"
+                f"PIP authority blob mismatch for {repository_path}: "
+                f"expected {expected}, got {actual}"
             )
 
 
@@ -82,7 +88,10 @@ def check_version_support(authority_dir: Path) -> None:
     if version_one is None or version_one.get("state") != "active":
         raise RuntimeError("PIP SignalEnvelope v1 is not active in pinned authority")
     support = _object(version_one.get("support"), label="PIP v1 support policy")
-    if support.get("allow_new_generation") is not True or support.get("allow_new_ingestion") is not True:
+    if (
+        support.get("allow_new_generation") is not True
+        or support.get("allow_new_ingestion") is not True
+    ):
         raise RuntimeError("PIP SignalEnvelope v1 is not open for generation/ingestion")
 
 
@@ -103,7 +112,13 @@ def check_golden_vectors(authority_dir: Path) -> None:
             raise RuntimeError("PIP golden vector source/canonical_event must be strings")
         if not isinstance(expected_sha, str) or not isinstance(expected_length, int):
             raise RuntimeError("PIP golden vector digest/length are invalid")
-        event = _object(json.loads(expected_raw), label=f"PIP golden event {source_raw}")
+
+        # JCS is defined over I-JSON / binary64 number semantics. A canonical spelling such as
+        # 100000000000000000000 may be the serialization of an original binary64 1e20 value;
+        # parsing it back as an arbitrary-precision Python int would change the input domain and
+        # make a conforming RFC 8785 implementation reject the otherwise valid golden vector.
+        parsed = json.loads(expected_raw, parse_int=float, parse_float=float)
+        event = _object(parsed, label=f"PIP golden event {source_raw}")
         actual = canonical_event_bytes(event)
         expected = expected_raw.encode("utf-8")
         if actual != expected:
@@ -123,7 +138,9 @@ def check_delivery_authority(authority_dir: Path) -> None:
         raise RuntimeError("PIP delivery protocol authority changed")
     claim = _object(manifest.get("claim_policy"), label="PIP claim policy")
     if claim.get("maximum_claim_duration_ms") != 60_000:
-        raise RuntimeError("Hermes requires the pinned 60-second maximum PIP claim duration")
+        raise RuntimeError(
+            "Hermes requires the pinned 60-second maximum PIP claim duration"
+        )
     response = _object(manifest.get("response_policy"), label="PIP response policy")
     if response.get("max_result_body_bytes") != 65_536:
         raise RuntimeError("Hermes requires the pinned 65536-byte PIP result limit")
