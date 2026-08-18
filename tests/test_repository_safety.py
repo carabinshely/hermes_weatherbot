@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
+from typing import cast
 
 SENSITIVE_CONFIG_KEYS = {
     "telegram_bot_token",
@@ -78,7 +79,7 @@ def _is_ignored(path: str) -> bool:
 def _json_object(path: Path) -> dict[str, object]:
     decoded: object = json.loads(path.read_text(encoding="utf-8"))
     assert isinstance(decoded, dict), f"{path} must contain a JSON object"
-    return decoded
+    return cast(dict[str, object], decoded)
 
 
 def _sha256(path: Path) -> str:
