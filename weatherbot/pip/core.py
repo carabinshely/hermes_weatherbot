@@ -119,7 +119,9 @@ def load_release(repository_root: Path, strategy_version: str) -> ProducerReleas
     if repository != _RELEASE_REPOSITORY:
         raise PipExportError("producer release manifest repository mismatch")
     if not _GIT_COMMIT_RE.fullmatch(revision):
-        raise PipExportError("producer release revision must be an immutable lowercase Git commit SHA")
+        raise PipExportError(
+            "producer release revision must be an immutable lowercase Git commit SHA"
+        )
     if not identity:
         raise PipExportError("producer release manifest contains blank decision-code identity")
     return ProducerRelease(
@@ -131,7 +133,9 @@ def load_release(repository_root: Path, strategy_version: str) -> ProducerReleas
     )
 
 
-def _market_reference_evidence(signal: HermesSignal, *, observed_at: str) -> tuple[dict[str, str], str]:
+def _market_reference_evidence(
+    signal: HermesSignal, *, observed_at: str
+) -> tuple[dict[str, str], str]:
     """Build and digest the exact executable-reference evidence Hermes can reproduce.
 
     Polymarket's provider ``hash`` is preserved as source provenance but is not assumed to be a
@@ -186,7 +190,9 @@ def signal_to_event(
 
     model_digest = _require_sha256(signal.artifact_sha256, label="model artifact digest")
     policy_digest = _require_sha256(signal.policy_fingerprint, label="producer policy digest")
-    reference_evidence, reference_digest = _market_reference_evidence(signal, observed_at=observed_at)
+    reference_evidence, reference_digest = _market_reference_evidence(
+        signal, observed_at=observed_at
+    )
 
     probability = canonical_decimal(signal.model_probability)
     executable_price = canonical_decimal(signal.market_reference.all_in_reference_price)
