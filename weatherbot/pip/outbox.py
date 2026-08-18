@@ -386,6 +386,52 @@ class PipOutbox:
             self._rollback()
             raise
 
+    def operator_dead_letter(
+        self,
+        *,
+        event_id: str,
+        operator_id: str,
+        reason: str,
+        now: datetime | None = None,
+    ) -> bool:
+        """Explicitly retain a pending/retry item as an audited dead letter."""
+        if not operator_id.strip() or not reason.strip():
+            raise ValueError("operator identity and reason are required")
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        try:
+            self._begin()
+            cursor = self._connection.execute(
+                """
+                UPDATE pip_outbox
+                SET state='dead_letter',dead_letter_reason=?,dead_lettered_at=?
+                WHERE event_id=? AND state IN ('pending','retry_wait')
+                """,
+                (reason, _ts(current), event_id),
+            )
+            if cursor.rowcount != 1:
+                self._commit()
+                return False
+            self._connection.execute(
+                """
+                INSERT INTO pip_outbox_operator_audit(
+                    audit_id,event_id,operator_id,action,reason,occurred_at
+                ) VALUES(?,?,?,?,?,?)
+                """,
+                (
+                    uuid.uuid4().hex,
+                    event_id,
+                    operator_id,
+                    "dead_letter",
+                    reason,
+                    _ts(current),
+                ),
+            )
+            self._commit()
+            return True
+        except BaseException:
+            self._rollback()
+            raise
+
     def acknowledge(
         self,
         item: OutboxItem,
@@ -495,7 +541,10 @@ class PipOutbox:
         return cursor.rowcount == 1
 
     def summary(self) -> OutboxSummary:
-        counts = {state: 0 for state in ("pending", "retry_wait", "in_flight", "acknowledged", "dead_letter")}
+        counts = {
+            state: 0
+            for state in ("pending", "retry_wait", "in_flight", "acknowledged", "dead_letter")
+        }
         for row in self._connection.execute(
             "SELECT state,COUNT(*) AS count FROM pip_outbox GROUP BY state"
         ).fetchall():
