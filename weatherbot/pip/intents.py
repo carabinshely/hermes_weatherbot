@@ -89,6 +89,12 @@ class PipIntentStore:
         self._closed = True
 
     def stage(self, frozen: FrozenEnvelope, *, now: datetime | None = None) -> FrozenEnvelope:
+        # Lifecycle v1 permits exactly one signal.created per signal. Once the outbox owns that
+        # signal_id, later Hermes scan occurrences must not create a second envelope or conflict
+        # with the first immutable event bytes.
+        if self.has_outbox_signal(frozen.signal_id):
+            return frozen
+
         current = (now or datetime.now(UTC)).astimezone(UTC)
         row = self._connection.execute(
             "SELECT * FROM pip_publication_intent WHERE signal_id=?",
@@ -149,7 +155,7 @@ class PipIntentStore:
         return None if row is None else self._from_row(cast(sqlite3.Row, row))
 
     def discard(self, signal_id: str) -> bool:
-        """Remove staging only when the caller knows the Hermes signal did not commit."""
+        """Remove a staging row when its recovery role is known to be finished."""
         cursor = self._connection.execute(
             "DELETE FROM pip_publication_intent WHERE signal_id=?",
             (signal_id,),
@@ -180,11 +186,13 @@ class PipIntentStore:
         """Promote an exact staged intent into the durable outbox, then retire the intent.
 
         Enqueue happens before intent deletion. A crash between the two is harmless because
-        outbox enqueue is idempotent and the still-present intent can be promoted again.
+        outbox enqueue is idempotent and the still-present intent can be promoted again. If a
+        prior occurrence already established the signal's outbox row, promotion is also a
+        successful lifecycle-idempotent no-op.
         """
         frozen = self.get(signal_id)
         if frozen is None:
-            return False
+            return self.has_outbox_signal(signal_id)
         current = (now or datetime.now(UTC)).astimezone(UTC)
         with PipOutbox(self.path) as outbox:
             outbox.enqueue(frozen, now=current)
