@@ -53,14 +53,10 @@ def check_authority_bundle(authority_dir: Path) -> None:
         entry = _object(raw_entry, label=f"PIP authority entry {repository_path}")
         expected = entry.get("git_blob_sha")
         if not isinstance(expected, str):
-            raise RuntimeError(
-                f"PIP authority entry {repository_path} lacks git_blob_sha"
-            )
+            raise RuntimeError(f"PIP authority entry {repository_path} lacks git_blob_sha")
         local = (REPOSITORY_ROOT / repository_path).resolve()
         if authority_root not in local.parents:
-            raise RuntimeError(
-                f"PIP authority file escapes expected directory: {repository_path}"
-            )
+            raise RuntimeError(f"PIP authority file escapes expected directory: {repository_path}")
         actual = _git_blob_sha(local.read_bytes())
         if actual != expected:
             raise RuntimeError(
@@ -138,9 +134,7 @@ def check_delivery_authority(authority_dir: Path) -> None:
         raise RuntimeError("PIP delivery protocol authority changed")
     claim = _object(manifest.get("claim_policy"), label="PIP claim policy")
     if claim.get("maximum_claim_duration_ms") != 60_000:
-        raise RuntimeError(
-            "Hermes requires the pinned 60-second maximum PIP claim duration"
-        )
+        raise RuntimeError("Hermes requires the pinned 60-second maximum PIP claim duration")
     response = _object(manifest.get("response_policy"), label="PIP response policy")
     if response.get("max_result_body_bytes") != 65_536:
         raise RuntimeError("Hermes requires the pinned 65536-byte PIP result limit")
