@@ -16,12 +16,13 @@ from weatherbot.pip.core import (
     make_event_id,
     signal_to_event,
 )
+from weatherbot.producer.model import HermesSignal
 from weatherbot.producer.service import evaluate_candidate
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _signal():
+def make_signal() -> HermesSignal:
     signal, evaluation = evaluate_candidate(candidate(), policy(), evaluated_at=NOW)
     assert evaluation.accepted
     assert signal is not None
@@ -29,7 +30,7 @@ def _signal():
 
 
 def test_signal_created_mapping_uses_real_public_authority() -> None:
-    signal = _signal()
+    signal = make_signal()
     release = load_release(REPOSITORY_ROOT, signal.strategy_version)
     event = signal_to_event(signal, key_id="producer-key-test", release=release)
 
@@ -59,7 +60,7 @@ def test_signal_created_mapping_uses_real_public_authority() -> None:
 
 
 def test_freeze_signs_only_canonical_event_and_is_deterministic() -> None:
-    signal = _signal()
+    signal = make_signal()
     release = load_release(REPOSITORY_ROOT, signal.strategy_version)
     private_key = Ed25519PrivateKey.from_private_bytes(b"\x01" * 32)
 
