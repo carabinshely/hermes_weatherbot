@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
 
 from weatherbot.pip import (
@@ -19,6 +18,7 @@ from weatherbot.pip import (
     reconcile_signal_log,
 )
 from weatherbot.producer.config import load_producer_policy
+from weatherbot.runtime_control import ShutdownController
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -124,7 +124,11 @@ def dead_letter(event_id: str, operator_id: str, reason: str) -> int:
     return 0
 
 
-def run_worker(interval_seconds: float) -> int:
+def run_worker(
+    interval_seconds: float,
+    *,
+    controller: ShutdownController | None = None,
+) -> int:
     config = _config()
     if not config.enabled:
         print("ERROR: PIP export is disabled", file=sys.stderr)
@@ -132,15 +136,21 @@ def run_worker(interval_seconds: float) -> int:
     if interval_seconds <= 0:
         print("ERROR: --interval-seconds must be positive", file=sys.stderr)
         return 2
-    while True:
-        reconcile_signal_log(
-            _signal_log_path(),
-            config=config,
-            repository_root=REPOSITORY_ROOT,
-        )
-        attempted = deliver_once(config=config)
-        if not attempted:
-            time.sleep(interval_seconds)
+
+    shutdown = controller or ShutdownController()
+    with shutdown.installed():
+        while not shutdown.requested:
+            reconcile_signal_log(
+                _signal_log_path(),
+                config=config,
+                repository_root=REPOSITORY_ROOT,
+            )
+            attempted = deliver_once(config=config)
+            if shutdown.requested:
+                break
+            if not attempted:
+                shutdown.wait(interval_seconds)
+    return shutdown.exit_code
 
 
 def build_parser() -> argparse.ArgumentParser:
