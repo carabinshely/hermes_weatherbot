@@ -21,7 +21,7 @@ from weatherbot.pip.core import (
     load_private_key,
     load_release,
 )
-from weatherbot.pip.outbox import PipOutbox, OutboxItem
+from weatherbot.pip.outbox import OutboxItem, PipOutbox
 from weatherbot.producer.model import HermesSignal, SignalMarketReference
 
 MAX_RESULT_BYTES = 65_536
@@ -191,7 +191,9 @@ def reconcile_signal_log(
     except FileNotFoundError:
         return 0
     except OSError as exc:
-        raise PipExportError(f"cannot read Hermes signal log for PIP reconciliation: {exc}") from exc
+        raise PipExportError(
+            f"cannot read Hermes signal log for PIP reconciliation: {exc}"
+        ) from exc
     records = raw.splitlines(keepends=True)
     if records and not records[-1].endswith((b"\n", b"\r")):
         records = records[:-1]
@@ -205,7 +207,9 @@ def reconcile_signal_log(
             parsed = json.loads(decoded)
             signal = _signal_from_mapping(parsed)
         except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            raise PipExportError(f"corrupt committed Hermes signal log record {index}: {exc}") from exc
+            raise PipExportError(
+                f"corrupt committed Hermes signal log record {index}: {exc}"
+            ) from exc
         if signal.generated_at_utc.astimezone(UTC) + timedelta(days=7) <= datetime.now(UTC):
             continue
         enqueue_signal(signal, config=config, repository_root=repository_root)
@@ -267,7 +271,14 @@ def _parse_bound_result(body: bytes, item: OutboxItem) -> DeliveryResult:
             raise PipExportError("PIP acceptance result has no receipt_id")
         return DeliveryResult(str(disposition), str(disposition), receipt_id=receipt)
     if disposition == "retry":
-        allowed = {"contract", "protocol_version", "disposition", "event", "reason_code", "retry_after_ms"}
+        allowed = {
+            "contract",
+            "protocol_version",
+            "disposition",
+            "event",
+            "reason_code",
+            "retry_after_ms",
+        }
         if not set(data) <= allowed or "reason_code" not in data:
             raise PipExportError("PIP retry result has invalid fields")
         reason = data.get("reason_code")
@@ -282,14 +293,27 @@ def _parse_bound_result(body: bytes, item: OutboxItem) -> DeliveryResult:
             raise PipExportError("PIP retry result has invalid retry_after_ms")
         return DeliveryResult("retry", "retry", reason_code=reason, retry_after_ms=retry_after)
     if disposition == "rejected":
-        required = {"contract", "protocol_version", "disposition", "event", "category", "reason_code"}
+        required = {
+            "contract",
+            "protocol_version",
+            "disposition",
+            "event",
+            "category",
+            "reason_code",
+        }
         if set(data) != required:
             raise PipExportError("PIP rejection result has invalid fields")
         category = data.get("category")
         reason = data.get("reason_code")
         allowed_categories = {
-            "invalid_envelope", "authentication", "lifecycle", "identity_conflict",
-            "unsupported_version", "payload_limit", "policy", "other",
+            "invalid_envelope",
+            "authentication",
+            "lifecycle",
+            "identity_conflict",
+            "unsupported_version",
+            "payload_limit",
+            "policy",
+            "other",
         }
         if category not in allowed_categories or not isinstance(reason, str) or not reason:
             raise PipExportError("PIP rejection result has invalid category/reason")
@@ -297,13 +321,92 @@ def _parse_bound_result(body: bytes, item: OutboxItem) -> DeliveryResult:
     raise PipExportError("PIP delivery result has an unknown disposition")
 
 
-def _retry_delay(item: OutboxItem, config: PipExporterConfig, result: DeliveryResult | None) -> float:
+def _retry_delay(
+    item: OutboxItem, config: PipExporterConfig, result: DeliveryResult | None
+) -> float:
     exponent = min(max(item.attempt_count - 1, 0), 30)
     raw = min(config.max_delay_seconds, config.base_delay_seconds * (2**exponent))
     delay = random.uniform(raw / 2, raw)
     if result is not None and result.retry_after_ms is not None:
         delay = max(delay, result.retry_after_ms / 1000)
     return min(delay, config.max_delay_seconds)
+
+
+def _deliver_claimed(
+    *,
+    outbox: PipOutbox,
+    item: OutboxItem,
+    config: PipExporterConfig,
+    client: requests.Session,
+    now: datetime,
+) -> None:
+    """Deliver one already-claimed item using only its persisted frozen bytes."""
+    try:
+        response = client.post(
+            config.endpoint,
+            data=item.envelope_bytes,
+            headers={"Content-Type": "application/json"},
+            allow_redirects=False,
+            stream=True,
+            timeout=(5, 20),
+        )
+    except requests.RequestException as exc:
+        delay = _retry_delay(item, config, None)
+        outbox.retry(
+            item,
+            next_attempt_at=now + timedelta(seconds=delay),
+            result_class=f"network:{type(exc).__name__}",
+            http_status=None,
+            now=now,
+        )
+        return
+
+    status = response.status_code
+    try:
+        if 300 <= status < 400:
+            raise PipExportError("PIP redirects are never followed")
+        body = _bounded_body(response)
+        result = _parse_bound_result(body, item)
+    except PipExportError as exc:
+        delay = _retry_delay(item, config, None)
+        outbox.retry(
+            item,
+            next_attempt_at=now + timedelta(seconds=delay),
+            result_class=f"ambiguous:{type(exc).__name__}",
+            http_status=status,
+            now=now,
+        )
+        return
+    finally:
+        response.close()
+
+    if result.disposition in {"accepted", "already_accepted"}:
+        assert result.receipt_id is not None
+        outbox.acknowledge(
+            item,
+            receipt_id=result.receipt_id,
+            result_class=result.result_class,
+            http_status=status,
+            now=now,
+        )
+        return
+    if result.disposition == "rejected":
+        outbox.dead_letter(
+            item,
+            reason=result.reason_code or "pip.rejected",
+            result_class=result.result_class,
+            http_status=status,
+            now=now,
+        )
+        return
+    delay = _retry_delay(item, config, result)
+    outbox.retry(
+        item,
+        next_attempt_at=now + timedelta(seconds=delay),
+        result_class=result.result_class,
+        http_status=status,
+        now=now,
+    )
 
 
 def deliver_once(
@@ -313,78 +416,55 @@ def deliver_once(
     session: requests.Session | None = None,
     now: datetime | None = None,
 ) -> bool:
-    """Recover, claim, and make at most one bounded PIP delivery attempt."""
+    """Recover, claim, and make at most one bounded automatic PIP delivery attempt."""
     if not config.enabled:
         return False
     current = (now or datetime.now(UTC)).astimezone(UTC)
     worker = owner_id or f"{socket.gethostname()}:{os.getpid()}"
-    with PipOutbox(config.outbox_path) as outbox:
-        outbox.recover(now=current)
-        item = outbox.claim_due(owner_id=worker, now=current)
-        if item is None:
-            return False
-        client = session or requests.Session()
-        try:
-            response = client.post(
-                config.endpoint,
-                data=item.envelope_bytes,
-                headers={"Content-Type": "application/json"},
-                allow_redirects=False,
-                stream=True,
-                timeout=(5, 20),
-            )
-        except requests.RequestException as exc:
-            delay = _retry_delay(item, config, None)
-            outbox.retry(
-                item,
-                next_attempt_at=current + timedelta(seconds=delay),
-                result_class=f"network:{type(exc).__name__}",
-                http_status=None,
+    owned_session = session is None
+    client = session or requests.Session()
+    try:
+        with PipOutbox(config.outbox_path) as outbox:
+            outbox.recover(now=current)
+            item = outbox.claim_due(owner_id=worker, now=current)
+            if item is None:
+                return False
+            _deliver_claimed(outbox=outbox, item=item, config=config, client=client, now=current)
+            return True
+    finally:
+        if owned_session:
+            client.close()
+
+
+def deliver_dead_letter_once(
+    *,
+    config: PipExporterConfig,
+    event_id: str,
+    operator_id: str,
+    reason: str,
+    owner_id: str | None = None,
+    session: requests.Session | None = None,
+    now: datetime | None = None,
+) -> bool:
+    """Perform one explicit audited delivery attempt for a retained dead letter."""
+    if not config.enabled:
+        return False
+    current = (now or datetime.now(UTC)).astimezone(UTC)
+    worker = owner_id or f"{socket.gethostname()}:{os.getpid()}"
+    owned_session = session is None
+    client = session or requests.Session()
+    try:
+        with PipOutbox(config.outbox_path) as outbox:
+            outbox.recover(now=current)
+            item = outbox.claim_dead_letter_once(
+                event_id=event_id,
+                owner_id=worker,
+                operator_id=operator_id,
+                reason=reason,
                 now=current,
             )
+            _deliver_claimed(outbox=outbox, item=item, config=config, client=client, now=current)
             return True
-        try:
-            if 300 <= response.status_code < 400:
-                raise PipExportError("PIP redirects are never followed")
-            body = _bounded_body(response)
-            result = _parse_bound_result(body, item)
-        except PipExportError as exc:
-            delay = _retry_delay(item, config, None)
-            outbox.retry(
-                item,
-                next_attempt_at=current + timedelta(seconds=delay),
-                result_class=f"ambiguous:{type(exc).__name__}",
-                http_status=response.status_code,
-                now=current,
-            )
-            return True
-        finally:
-            response.close()
-        if result.disposition in {"accepted", "already_accepted"}:
-            assert result.receipt_id is not None
-            outbox.acknowledge(
-                item,
-                receipt_id=result.receipt_id,
-                result_class=result.result_class,
-                http_status=response.status_code,
-                now=current,
-            )
-            return True
-        if result.disposition == "rejected":
-            outbox.dead_letter(
-                item,
-                reason=result.reason_code or "pip.rejected",
-                result_class=result.result_class,
-                http_status=response.status_code,
-                now=current,
-            )
-            return True
-        delay = _retry_delay(item, config, result)
-        outbox.retry(
-            item,
-            next_attempt_at=current + timedelta(seconds=delay),
-            result_class=result.result_class,
-            http_status=response.status_code,
-            now=current,
-        )
-        return True
+    finally:
+        if owned_session:
+            client.close()
