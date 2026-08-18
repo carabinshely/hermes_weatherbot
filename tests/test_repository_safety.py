@@ -167,7 +167,7 @@ def test_promoted_paper_evidence_bundles_are_complete_and_checksums_match() -> N
         assert isinstance(summary.get("policy_fingerprint"), str) and summary["policy_fingerprint"]
 
         provenance = _json_object(directory / "provenance.json")
-        assert REQUIRED_PAPER_PROVENANCE_KEYS <= set(provenance)
+        assert set(provenance) >= REQUIRED_PAPER_PROVENANCE_KEYS
         assert provenance["experiment_id"] == experiment_id
         assert provenance["strategy_id"] == summary["strategy_id"]
         assert provenance["strategy_version"] == summary["strategy_version"]
