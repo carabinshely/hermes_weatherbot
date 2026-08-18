@@ -28,7 +28,7 @@ MANIFEST
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
+#  as to inject date/other infos into it.
 *.manifest
 *.spec
 
@@ -115,7 +115,7 @@ ipython_config.py
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
 #   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
+#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-into-version-control
 #poetry.lock
 #poetry.toml
 
@@ -135,7 +135,7 @@ ipython_config.py
 #   in the .venv directory. It is recommended not to include this directory in version control.
 .pixi
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+# PEP 582; used by e.g. github.com/David-OConnor/pyflow
 __pypackages__/
 
 # Celery stuff
@@ -193,9 +193,9 @@ cython_debug/
 .abstra/
 
 # Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
+#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore
 #  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
+#  and can be added to the global gitignore or merged into this file. However, if you prefer,
 #  you could uncomment the following to ignore the entire vscode folder
 # .vscode/
 
@@ -216,3 +216,26 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# -----------------------------------------------------------------------------
+# Hermes repository-owned artifact boundaries (#24)
+# -----------------------------------------------------------------------------
+# Local working/runtime data. These namespaces may contain producer signals,
+# calibration caches/datasets, legacy market snapshots, PAPER ledgers/results,
+# PIP outbox/dead-letter state, dashboards, logs, and ad-hoc simulations.
+/data/
+/state/
+/pip_tmp/
+
+# Machine metadata
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Legacy root-level generated outputs retained only for compatibility code paths
+/simulation*.json
+/sim_dashboard*.html
+
+# Intentionally committed deterministic inputs/evidence live outside ignored namespaces:
+#   tests/fixtures/**
+#   evidence/**
