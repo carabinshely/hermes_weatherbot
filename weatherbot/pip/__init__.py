@@ -16,6 +16,7 @@ from weatherbot.pip.core import (
 from weatherbot.pip.outbox import OutboxItem, OutboxSummary, PipOutbox
 from weatherbot.pip.runtime import (
     PipExporterConfig,
+    deliver_dead_letter_once,
     deliver_once,
     enqueue_signal,
     load_exporter_config,
@@ -33,6 +34,7 @@ __all__ = [
     "canonical_decimal",
     "canonical_event_bytes",
     "canonical_timestamp",
+    "deliver_dead_letter_once",
     "deliver_once",
     "enqueue_signal",
     "freeze_signal_envelope",
