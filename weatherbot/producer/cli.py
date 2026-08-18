@@ -15,7 +15,12 @@ from weatherbot.forecasting import (
     CalibrationRuntimeError,
     load_calibrated_probability_runtime,
 )
-from weatherbot.pip import PipExportError, enqueue_signal, load_exporter_config
+from weatherbot.pip import (
+    PipExportError,
+    load_exporter_config,
+    promote_staged_signal,
+    stage_signal,
+)
 from weatherbot.producer.config import ProducerPolicy, load_producer_policy
 from weatherbot.producer.scanner import collect_calibrated_candidates
 from weatherbot.producer.service import evaluate_candidate
@@ -59,26 +64,41 @@ def scan_once(policy: ProducerPolicy) -> tuple[int, list[str]]:
             detail = evaluation.detail or "producer policy rejected candidate"
             errors.append(f"{candidate.city_name} {candidate.horizon}: {reason_text}: {detail}")
             continue
-        try:
-            append_signal(policy.signal_log_path, signal)
-        except (OSError, TypeError, ValueError) as exc:
-            errors.append(
-                f"{candidate.city_name} {candidate.horizon}: signal persistence failed: {exc}"
-            )
-            continue
 
-        # PIP is a downstream publication mechanism. The real Hermes decision is already
-        # immutable and durably recorded above; exporter failures may affect only delivery state.
+        # Freeze exact signed bytes before the independent JSONL durability boundary. The staged
+        # intent is not deliverable; if staging fails, the Hermes decision still persists below.
+        staged_for_pip = False
         if pip_config is not None and pip_config.enabled:
             try:
-                enqueue_signal(
+                staged_for_pip = stage_signal(
                     signal,
                     config=pip_config,
                     repository_root=REPOSITORY_ROOT,
                 )
             except (PipExportError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
                 errors.append(
-                    f"{candidate.city_name} {candidate.horizon}: PIP enqueue failed: {exc}"
+                    f"{candidate.city_name} {candidate.horizon}: PIP staging failed: {exc}"
+                )
+
+        try:
+            append_signal(policy.signal_log_path, signal)
+        except (OSError, TypeError, ValueError) as exc:
+            errors.append(
+                f"{candidate.city_name} {candidate.horizon}: signal persistence failed: {exc}"
+            )
+            # A staged intent is deliberately left non-deliverable. Reconciliation promotes only
+            # intents whose signal_id is present in the committed, newline-terminated JSONL log.
+            continue
+
+        # The real Hermes decision is now immutable and durably recorded. Promotion is local
+        # SQLite only; the producer process never opens a PIP network request.
+        if staged_for_pip and pip_config is not None:
+            try:
+                if not promote_staged_signal(signal.signal_id, config=pip_config):
+                    raise PipExportError("staged PIP intent missing after signal commit")
+            except (PipExportError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
+                errors.append(
+                    f"{candidate.city_name} {candidate.horizon}: PIP promotion failed: {exc}"
                 )
 
         emitted += 1
