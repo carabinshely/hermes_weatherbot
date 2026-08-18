@@ -2,46 +2,72 @@
 
 Hermes is a **non-executing calibrated weather prediction-market signal producer**.
 It combines point-in-time weather evidence with read-only Polymarket market evidence,
-computes an approved calibrated probability, applies one versioned producer policy, and
-emits a stable typed `HermesSignal` with auditable calibration and market-reference
-provenance.
+computes a model probability, applies one versioned producer policy, and emits a stable
+`HermesSignal v1` with auditable model, weather, market-reference, and policy provenance.
 
-Hermes does **not** submit, cancel, redeem, sign, or manage real-money trades as a public
+Hermes does **not** submit, cancel, redeem, or manage real-money trades as a supported
 product capability.
 
-## Architecture
+## Product architecture
 
 ```text
-PUBLIC PRODUCER
+PUBLIC PRODUCT
 weather + read-only market evidence
         ↓
-CalibratedProbability
+calibrated model probability
         ↓
-versioned producer policy
+accepted/versioned producer policy
         ↓
-HermesSignal v1 + provenance
+HermesSignal v1
         ↓
-local JSONL output
+signed SignalEnvelope v1
         ↓
-optional future #54 PIP adapter
+durable PIP outbox
+        ↓
+Prediction Intelligence Platform (PIP)
+        ↓
+independent receipt / history / verification / resolution / scoring / publication
 
 INTERNAL STRATEGY R&D
-same calibrated/read-only evidence
+frozen historical/read-only evidence
         ↓
-PAPER simulation
+candidate strategy
         ↓
-hypothetical fills / sizing / portfolio state / P&L
+exact public evaluate_candidate() authority
+        ↓
+isolated PAPER simulation
+        ↓
+hypothetical fills / sizing / risk / P&L
+        ↓
+development evidence
+        ↓
+explicit reviewed strategy-promotion decision
 ```
 
-`PAPER` is retained only as an internal Research and Development (R&D) harness. Its
-bankroll, positions, ledger, fills, and Profit and Loss (P&L) cannot affect the public
-signal identity or payload. The PAPER command/runtime also has no import path to legacy
-wallet, approval, signing, or exchange-write code.
+Hermes owns weather and market inputs, calibrated model probability, producer strategy,
+provenance, signal generation, producer signing, and durable outbound publication. PIP
+owns independent receipt, prospective signal history, verification, resolution, scoring,
+publication, audience access, and monetization.
+
+PIP availability and delivery state cannot change whether Hermes generated a signal.
+PAPER bankroll, positions, fills, settlement, and Profit and Loss (P&L) cannot change a
+real `HermesSignal` or its `SignalEnvelope`, and PAPER results are never automatically
+published to PIP.
+
+## Evidence vocabulary
+
+| Evidence | Meaning | Does not prove |
+|---|---|---|
+| Model probability | Hermes estimate of outcome probability | Profitability |
+| Signal edge | Model probability relative to a read-only executable market reference | Actual trade return |
+| PAPER result | Hypothetical strategy-development evidence | Real execution or verified profitability |
+| Emitted `HermesSignal` | Real prospective producer decision | Correctness by itself |
+| PIP track record | Independently preserved, resolved, and scored emitted-signal history | PAPER trading performance |
 
 ## Current calibration activation state
 
-The calibrated runtime remains fail-closed until the pre-registered V3 evidence gate is
-completed and an artifact is explicitly accepted and pinned.
+The V3 calibration policy is frozen and implemented, but an accepted V3 artifact does not
+exist yet. Accepted-model public signal generation therefore remains fail-closed.
 
 ```text
 V3 policy                     = frozen / implemented
@@ -51,13 +77,16 @@ exact-run activation evidence = pending
 accepted-model signals        = fail closed
 ```
 
-Do not infer acceptance from the existence of the producer runtime. Issue #49 owns the
-untouched holdout evaluation; #50 owns accepted artifact/evidence pinning.
+Issue #49 owns the pre-registered untouched holdout evaluation and must not execute before
+2026-08-26. Issue #50 owns the explicit accept/reject decision and, only if accepted,
+artifact/approval/evidence pinning. The existence of the producer or PIP publication
+runtime must not be interpreted as calibration acceptance.
 
 ## Install
 
-Hermes' public producer uses the minimal locked dependency profile. No wallet, Web3,
-transaction-signing, or authenticated exchange package is required.
+The supported public producer and internal PAPER research surfaces use the minimal locked
+profile and require no wallet, Web3, transaction-signing, or authenticated exchange
+package.
 
 ```bash
 git clone https://github.com/carabinshely/hermes_weatherbot.git
@@ -71,12 +100,13 @@ For development and tests:
 uv sync --locked --all-groups
 ```
 
-Historical live-only optional dependencies remain quarantined for compatibility and are
-not part of the supported public product surface.
+Historical live-only dependencies remain quarantined for compatibility and regression
+coverage. Installing them does not create a supported execution mode.
 
 ## Public producer CLI
 
-The Command-Line Interface (CLI) is signal-oriented and has no execution mode selector:
+The public Command-Line Interface (CLI) is signal-oriented and has no execution-mode
+selector:
 
 ```bash
 uv run --no-dev python bot_v3.py scan
@@ -84,65 +114,29 @@ uv run --no-dev python bot_v3.py status
 uv run --no-dev python bot_v3.py run
 ```
 
-Public commands do not accept `--mode`, `--confirm-live`, `cancel`, `paper-reset`, wallet
-configuration, or trading-ledger commands.
+Public commands do not require wallet credentials and do not expose live order submission,
+cancellation, redemption, approval, bankroll, or trading-ledger controls.
 
-### Signal output
+Accepted signals are appended to the durable JSON Lines (JSONL) signal log configured by
+the producer policy. Logical signal identity binds producer/strategy identity, policy
+fingerprint, market/outcome identity, target date, calibrated model provenance, weather
+fingerprint, and stable read-only executable-market-reference economics. PAPER state,
+wallet state, processing timestamps, and PIP availability are excluded from logical signal
+identity.
 
-Accepted signals are appended to:
+## Producer policy and market reference
 
-```text
-state/signals-v1.jsonl
-```
+Decision-affecting public configuration lives in `config/producer.json`. The market-
+reference notional is a **read-only liquidity and executable-price probe**. It is not a bet
+size, customer recommendation, or execution instruction. Public producer schema v1 rejects
+insufficient depth rather than silently changing the configured reference notional.
 
-Each line is one typed `HermesSignal v1`. The logical `signal_id` is derived from:
-
-- producer and strategy identity/version;
-- versioned producer-policy fingerprint;
-- venue, event, market, condition, outcome, and token identity;
-- accepted decision classification;
-- target market date;
-- calibrated probability identity and model/artifact provenance;
-- exact weather fingerprint;
-- decision order-book hash and observation time;
-- fixed read-only market-reference notional;
-- stable executable market-reference economics such as bid/ask, all-in price, edge, and expected return.
-
-Local processing timestamps, wallet state, PAPER state, learning history, Telegram state,
-and future PIP availability are excluded from logical signal identity. The historical
-quote fingerprint is audit metadata rather than logical identity because it includes its
-local evaluation timestamp.
-
-## Producer policy
-
-Public decision-affecting configuration lives in:
-
-```text
-config/producer.json
-```
-
-Important fields include:
-
-- `strategy_id` and `strategy_version`;
-- volume and time-to-resolution filters;
-- forecast/event/order-book freshness limits and future-timestamp tolerance;
-- fixed `market_reference_notional`;
-- cost/slippage reserves;
-- minimum expected return;
-- signal log path.
-
-The reference notional is a **read-only liquidity and executable-price probe**. It is not
-a bet size, customer position recommendation, or execution instruction. Public producer
-schema v1 uses reject-on-insufficient-depth semantics so the reference probe is never
-silently reduced to a different notional.
-
-Changing decision-affecting policy changes `policy_fingerprint` and should be accompanied
-by an explicit strategy-version change.
+See `docs/executable-edge.md` for the read-only executable-reference contract.
 
 ## Internal PAPER strategy R&D
 
-PAPER is intentionally separate from the public CLI and has one supported command:
-deterministic evaluation of a frozen experiment.
+PAPER is a supported internal Research and Development (R&D) engine, not a public trading
+mode and not a path to real-money execution.
 
 ```bash
 uv run --no-dev python -m weatherbot.paper evaluate \
@@ -150,86 +144,82 @@ uv run --no-dev python -m weatherbot.paper evaluate \
   --output state/paper-experiments
 ```
 
-The manifest is intentionally small. It names a reviewed repository-owned factory under
-`weatherbot.paper.experiments.*` plus explicit arguments. Arbitrary import paths are
-rejected. The factory returns a `PaperExperimentSpec` containing:
+Experiments use frozen evidence and a reviewed repository-owned factory. PAPER first calls
+the exact public `weatherbot.producer.service.evaluate_candidate()` authority for every
+case. Only after the complete public decision batch exists may isolated hypothetical
+sizing, portfolio-risk, fills, or settlement be evaluated.
 
-- a candidate `ProducerPolicy` with explicit strategy identity/version;
-- frozen `CalibratedMarketCandidate` evidence, which is the same typed boundary consumed
-  by the public producer;
-- optional frozen execution order-book evidence;
-- optional simulated sizing, cost, bankroll, and portfolio-risk policy;
-- optional frozen settlement payout evidence for hypothetical realized P&L.
+Canonical `summary.json`, `evaluations.jsonl`, and `checksums.json` outputs are reproducible
+for the same experiment identity. They explicitly mark simulated fills, settlement, and
+P&L as **hypothetical development evidence**. PAPER cannot self-promote a model or strategy,
+grants no public/paid eligibility, and never emits PIP lifecycle events.
 
-For every case, PAPER first calls the exact public
-`weatherbot.producer.service.evaluate_candidate()` function. **All public producer
-decisions for the experiment are computed before any simulated ledger is allocated.**
-Only afterward may PAPER evaluate hypothetical sizing/risk/fills and settlement in an
-isolated temporary ledger. Settlements are applied in event-time order and cannot affect
-an earlier decision. Changing PAPER bankroll, positions, fills, or prior PAPER
-outcomes therefore cannot change the real `HermesSignal` decision or payload.
+See `docs/paper-trading.md` for the full internal experiment contract.
 
-Experiment identity binds the producer-policy fingerprint, strategy version, frozen
-evidence fingerprints, PAPER engine version, and optional economic policy. Canonical
-`summary.json`, `evaluations.jsonl`, and `checksums.json` artifacts can therefore be
-reproduced byte-for-byte for the same experiment.
+## PIP publication
 
-PAPER outputs explicitly mark fills, settlement, and Profit and Loss (P&L) as
-**hypothetical development evidence**. They are not verified profitability, cannot
-self-promote a strategy/model, do not grant public or paid eligibility, and are never
-automatically published to the Prediction Intelligence Platform (PIP).
+Hermes can publish already-made real public `HermesSignal v1` decisions to PIP:
 
-The older PAPER ledger/execution/valuation modules remain reusable implementation
-primitives and regression evidence from #15/#16/#27. They are no longer exposed as
-supported mutable `scan`, `run`, `status`, `resolve`, or `reset` PAPER command modes.
+```text
+HermesSignal v1
+  -> frozen signed intent
+  -> durable Hermes signal record
+  -> durable PIP SQLite outbox
+  -> idempotent POST /v1/events
+  -> event-bound PIP receipt
+```
+
+The PIP signing key is a dedicated **Ed25519 application-identity credential**. It has no
+wallet, exchange-write, transaction-signing, or funds-control authority and must never be
+reused as a wallet key.
+
+PIP delivery runs behind the separate `weatherbot.pip` worker boundary:
+
+```bash
+python -m weatherbot.pip status
+python -m weatherbot.pip reconcile
+python -m weatherbot.pip deliver-once
+python -m weatherbot.pip run
+python -m weatherbot.pip retry-dead-letter --event-id <event-id> --operator <id> --reason <reason>
+python -m weatherbot.pip dead-letter --event-id <event-id> --operator <id> --reason <reason>
+```
+
+PIP independently preserves, resolves, and scores the real emitted-signal history. Hermes
+PAPER trades/P&L and the historical financial ledger are not that public track record.
+
+See `docs/pip-publication.md` for signing, durable outbox, retry, receipt, dead-letter, and
+conformance details.
 
 ## Probability and provenance
 
-Hermes uses the fail-closed calibrated residual model built under #12/#47/#48. A public
-signal carries at least:
+Hermes uses the fail-closed calibrated residual model built under #12/#47/#48. A model-
+backed signal carries the model version, calibration artifact SHA-256 digest, forecast
+source and weather identity, selected calibration group/fallback/distribution, sample
+count, training cutoff, and `model_probability`.
 
-- `model_probability`;
-- `model_version`;
-- calibration artifact SHA-256 digest;
-- climate region and calibrated lead day;
-- forecast source and exact weather fingerprint;
-- calibration group/fallback/distribution identity;
-- calibration sample count and training cutoff;
-- read-only executable market reference and evidence hashes.
-
-`SHA-256` means Secure Hash Algorithm 256-bit.
-
-There is no public fallback to the historical global fixed `2°F` uncertainty path.
+There is no public fallback to the historical fixed `2°F` uncertainty path. Calibration
+validation is evidence about probabilistic quality; it is not a profitability claim.
 
 ## Non-execution security boundary
 
-Continuous Integration (CI) runs `scripts/ci/check_public_non_execution.py` over both
-supported runtime surfaces.
+Continuous Integration (CI) enforces separate transitive import-graph guards for the
+public producer and internal PAPER runtime. Supported surfaces must not reach quarantined
+legacy execution code, wallet/live dependency helpers, authenticated trading clients,
+Web3, exchange-write signing, approvals, cancellation, or redemption.
 
-The public import graph, rooted at `bot_v3.py` and `weatherbot.producer`, must not reach:
+Historical execution code and optional live dependencies are retained only for quarantine,
+compatibility, and regression purposes. They are not a supported Hermes product direction.
 
-- `bot_v3_legacy` / quarantined implementation;
-- `execution_modes`;
-- `weatherbot.paper`;
-- wallet/live dependency helpers;
-- authenticated Polymarket trading modules;
-- Web3 or signing packages.
+## Durable-state boundaries
 
-The internal PAPER CLI has a separate transitive guard that permits PAPER simulation
-modules but forbids legacy execution modules, wallet/live dependency helpers,
-authenticated trading clients, Web3, and signing packages.
+```text
+Hermes signal JSONL             = real producer signal record
+PIP SQLite outbox               = downstream delivery state
+PAPER/historical event ledger   = internal simulated/historical economics
+```
 
-The historical implementation remains quarantined only for historical compatibility and
-regression evidence while #59 simplifies the research engine. Neither the supported public
-producer nor the supported PAPER runtime imports it.
-
-## Relationship to PIP
-
-Issue #54 will map `HermesSignal` into PIP `SignalEnvelope v1`, sign it with a dedicated
-non-wallet producer identity, and deliver it through a durable outbox.
-
-PIP integration must not change strategy/model output. PIP unavailability cannot change
-whether Hermes generated a signal.
+Do not treat the internal financial/event ledger as the PIP track record and do not treat
+PAPER settlement as independent scoring of real emitted signals.
 
 ## Product boundary
 
@@ -237,27 +227,25 @@ Supported public capability:
 
 ```text
 weather evidence
-calibrated probability
-versioned edge policy
-stable signal identity
+calibrated model probability
+versioned signal policy
+stable HermesSignal identity
 read-only market reference
-provenance
-local output
-future one-way PIP publication
+model/input/policy provenance
+signed one-way PIP publication
 ```
 
 Not a supported public capability:
 
 ```text
 wallet management
-private-key handling
 exchange writes
 order submission/cancellation/redemption
 customer bankroll management
 real-money position sizing
 copy trading
 automatic execution
-PAPER P&L publication as real signals
+PAPER P&L publication as real history
 ```
 
 ## License
