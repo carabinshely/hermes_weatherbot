@@ -9,8 +9,9 @@ import time
 from pathlib import Path
 
 from weatherbot.pip import (
-    PipExportError,
     PipExporterConfig,
+    PipExportError,
+    PipIntentStore,
     PipOutbox,
     deliver_dead_letter_once,
     deliver_once,
@@ -42,8 +43,11 @@ def status() -> int:
     if not config.outbox_path.exists():
         print("  outbox state: not initialized")
         return 0
+    with PipIntentStore(config.outbox_path) as intents:
+        staged = intents.count()
     with PipOutbox(config.outbox_path) as outbox:
         summary = outbox.summary()
+    print(f"  staged_intents: {staged}")
     print(f"  pending: {summary.pending}")
     print(f"  retry_wait: {summary.retry_wait}")
     print(f"  in_flight: {summary.in_flight}")
