@@ -20,6 +20,7 @@ from weatherbot.pip.runtime import (
     deliver_once,
     enqueue_signal,
     load_exporter_config,
+    parse_delivery_result,
     reconcile_signal_log,
 )
 
@@ -42,6 +43,7 @@ __all__ = [
     "load_private_key",
     "load_release",
     "make_event_id",
+    "parse_delivery_result",
     "reconcile_signal_log",
     "signal_to_event",
 ]
