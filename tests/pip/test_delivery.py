@@ -16,7 +16,7 @@ from weatherbot.pip.outbox import PipOutbox
 from weatherbot.pip.runtime import MAX_RESULT_BYTES, PipExporterConfig
 
 
-class FakeAdapter(requests.adapters.BaseAdapter):
+class FakeSession(requests.Session):
     def __init__(
         self,
         *,
@@ -32,26 +32,24 @@ class FakeAdapter(requests.adapters.BaseAdapter):
         self.error = error
         self.send_count = 0
         self.last_body: bytes | str | None = None
+        self.last_allow_redirects: object = None
 
-    def send(
+    def post(
         self,
-        request: requests.PreparedRequest,
-        stream: bool = False,
-        timeout: float | tuple[float, float] | tuple[float, None] | None = None,
-        verify: bool | str = True,
-        cert: object = None,
-        proxies: dict[str, str] | None = None,
+        url: str,
+        data: object = None,
+        json: object = None,
+        **kwargs: object,
     ) -> requests.Response:
-        del stream, timeout, verify, cert, proxies
+        del json
         self.send_count += 1
-        body = request.body
-        self.last_body = body if isinstance(body, (bytes, str)) else None
+        self.last_body = data if isinstance(data, (bytes, str)) else None
+        self.last_allow_redirects = kwargs.get("allow_redirects")
         if self.error is not None:
             raise self.error
         response = requests.Response()
         response.status_code = self.status
-        response.request = request
-        response.url = request.url or ""
+        response.url = url
         if self.location is not None:
             response.headers["Location"] = self.location
         response.raw = urllib3.response.HTTPResponse(
@@ -59,9 +57,6 @@ class FakeAdapter(requests.adapters.BaseAdapter):
             preload_content=False,
         )
         return response
-
-    def close(self) -> None:
-        return None
 
 
 def _frozen() -> FrozenEnvelope:
@@ -82,12 +77,6 @@ def _config(tmp_path: Path) -> PipExporterConfig:
         signing_key_path=None,
         key_id=None,
     )
-
-
-def _session(adapter: FakeAdapter) -> requests.Session:
-    session = requests.Session()
-    session.mount("http://", adapter)
-    return session
 
 
 def _result_body(
@@ -127,29 +116,26 @@ def _enqueue(tmp_path: Path) -> tuple[PipExporterConfig, FrozenEnvelope]:
 
 def test_bound_acceptance_acks_and_sends_exact_frozen_bytes(tmp_path: Path) -> None:
     config, frozen = _enqueue(tmp_path)
-    adapter = FakeAdapter(
-        body=_result_body(frozen, "accepted", receipt_id="receipt-1"),
-    )
-    with _session(adapter) as session:
+    with FakeSession(body=_result_body(frozen, "accepted", receipt_id="receipt-1")) as session:
         assert deliver_once(
             config=config,
             session=session,
             now=frozen.generated_at,
             completion_now=frozen.generated_at + timedelta(seconds=1),
         )
+        assert session.last_body == frozen.envelope_bytes
+        assert session.last_allow_redirects is False
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().acknowledged == 1
-    assert adapter.last_body == frozen.envelope_bytes
 
 
 def test_already_accepted_original_receipt_acks_after_ambiguous_prior_attempt(
     tmp_path: Path,
 ) -> None:
     config, frozen = _enqueue(tmp_path)
-    adapter = FakeAdapter(
-        body=_result_body(frozen, "already_accepted", receipt_id="receipt-1"),
-    )
-    with _session(adapter) as session:
+    with FakeSession(
+        body=_result_body(frozen, "already_accepted", receipt_id="receipt-1")
+    ) as session:
         assert deliver_once(
             config=config,
             session=session,
@@ -164,8 +150,7 @@ def test_bare_202_and_malformed_success_remain_retryable(tmp_path: Path) -> None
     for index, body in enumerate((b"{}", b"not-json")):
         case_path = tmp_path / str(index)
         config, frozen = _enqueue(case_path)
-        adapter = FakeAdapter(status=202, body=body)
-        with _session(adapter) as session:
+        with FakeSession(status=202, body=body) as session:
             assert deliver_once(
                 config=config,
                 session=session,
@@ -179,16 +164,13 @@ def test_bare_202_and_malformed_success_remain_retryable(tmp_path: Path) -> None
 
 def test_bound_rejection_dead_letters(tmp_path: Path) -> None:
     config, frozen = _enqueue(tmp_path)
-    adapter = FakeAdapter(
-        status=400,
-        body=_result_body(
-            frozen,
-            "rejected",
-            category="authentication",
-            reason_code="authentication.revoked_key",
-        ),
+    body = _result_body(
+        frozen,
+        "rejected",
+        category="authentication",
+        reason_code="authentication.revoked_key",
     )
-    with _session(adapter) as session:
+    with FakeSession(status=400, body=body) as session:
         assert deliver_once(
             config=config,
             session=session,
@@ -201,8 +183,7 @@ def test_bound_rejection_dead_letters(tmp_path: Path) -> None:
 
 def test_network_failure_is_retryable(tmp_path: Path) -> None:
     config, frozen = _enqueue(tmp_path)
-    adapter = FakeAdapter(error=requests.Timeout("timeout"))
-    with _session(adapter) as session:
+    with FakeSession(error=requests.Timeout("timeout")) as session:
         assert deliver_once(
             config=config,
             session=session,
@@ -215,23 +196,22 @@ def test_network_failure_is_retryable(tmp_path: Path) -> None:
 
 def test_redirect_is_not_followed_and_remains_retryable(tmp_path: Path) -> None:
     config, frozen = _enqueue(tmp_path)
-    adapter = FakeAdapter(status=302, location="https://example.invalid/v1/events")
-    with _session(adapter) as session:
+    with FakeSession(status=302, location="https://example.invalid/v1/events") as session:
         assert deliver_once(
             config=config,
             session=session,
             now=frozen.generated_at,
             completion_now=frozen.generated_at + timedelta(seconds=1),
         )
-    assert adapter.send_count == 1
+        assert session.send_count == 1
+        assert session.last_allow_redirects is False
     with PipOutbox(config.outbox_path) as outbox:
         assert outbox.summary().retry_wait == 1
 
 
 def test_oversized_decoded_result_is_ambiguous_retry(tmp_path: Path) -> None:
     config, frozen = _enqueue(tmp_path)
-    adapter = FakeAdapter(body=b"x" * (MAX_RESULT_BYTES + 1))
-    with _session(adapter) as session:
+    with FakeSession(body=b"x" * (MAX_RESULT_BYTES + 1)) as session:
         assert deliver_once(
             config=config,
             session=session,
@@ -244,11 +224,8 @@ def test_oversized_decoded_result_is_ambiguous_retry(tmp_path: Path) -> None:
 
 def test_completion_after_lease_expiry_cannot_write_receipt(tmp_path: Path) -> None:
     config, frozen = _enqueue(tmp_path)
-    adapter = FakeAdapter(
-        body=_result_body(frozen, "accepted", receipt_id="too-late"),
-    )
     late = frozen.generated_at + timedelta(seconds=61)
-    with _session(adapter) as session:
+    with FakeSession(body=_result_body(frozen, "accepted", receipt_id="too-late")) as session:
         assert deliver_once(
             config=config,
             session=session,
@@ -271,8 +248,7 @@ def test_operator_one_shot_non_ack_returns_to_dead_letter(tmp_path: Path) -> Non
             reason="manual hold",
             now=frozen.generated_at,
         )
-    adapter = FakeAdapter(error=requests.Timeout("timeout"))
-    with _session(adapter) as session:
+    with FakeSession(error=requests.Timeout("timeout")) as session:
         assert deliver_dead_letter_once(
             config=config,
             event_id=frozen.event_id,
