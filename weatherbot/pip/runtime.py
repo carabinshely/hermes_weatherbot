@@ -150,23 +150,6 @@ def promote_staged_signal(
         return intents.promote(signal_id, now=now)
 
 
-def enqueue_signal(
-    signal: HermesSignal,
-    *,
-    config: PipExporterConfig,
-    repository_root: Path,
-    now: datetime | None = None,
-) -> bool:
-    """Durably stage and immediately promote one already-committed signal."""
-    if not config.enabled:
-        return False
-    stage_signal(signal, config=config, repository_root=repository_root, now=now)
-    promoted = promote_staged_signal(signal.signal_id, config=config, now=now)
-    if not promoted:
-        raise PipExportError("staged PIP signal disappeared before outbox promotion")
-    return True
-
-
 @dataclass(frozen=True, slots=True)
 class DeliveryResult:
     disposition: str
