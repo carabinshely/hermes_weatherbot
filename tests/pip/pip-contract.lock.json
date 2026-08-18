@@ -1,0 +1,8 @@
+{
+  "repository": "carabinshely/prediction-intelligence-platform",
+  "commit": "a21c3e2ec9e7d5fdd453df4d7cbf641989493af8",
+  "suite": "packages/signal-contract/conformance/suite-v1.json",
+  "contract": "pip.signal-envelope",
+  "schema_version": "1",
+  "delivery_protocol_version": "1"
+}
