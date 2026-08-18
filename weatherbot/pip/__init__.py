@@ -15,6 +15,7 @@ from weatherbot.pip.core import (
 )
 from weatherbot.pip.intents import PipIntentStore
 from weatherbot.pip.outbox import OutboxItem, OutboxSummary, PipOutbox
+from weatherbot.pip.reconcile import reconcile_signal_log, signal_from_mapping
 from weatherbot.pip.runtime import (
     PipExporterConfig,
     deliver_dead_letter_once,
@@ -23,7 +24,6 @@ from weatherbot.pip.runtime import (
     load_exporter_config,
     parse_delivery_result,
     promote_staged_signal,
-    reconcile_signal_log,
     retry_delay_bounds,
     stage_signal,
 )
@@ -52,6 +52,7 @@ __all__ = [
     "promote_staged_signal",
     "reconcile_signal_log",
     "retry_delay_bounds",
+    "signal_from_mapping",
     "signal_to_event",
     "stage_signal",
 ]
