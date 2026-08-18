@@ -85,14 +85,18 @@ jobs:
         run: uv run python scripts/ci/check_public_non_execution.py
 
       - name: Check formatting
-        run: |
-          uv run ruff format execution_modes.py runtime_security.py weatherbot tests scripts/ci/check_public_non_execution.py
-          git diff --exit-code -- execution_modes.py runtime_security.py weatherbot tests scripts/ci/check_public_non_execution.py
+        run: >
+          uv run ruff format --check
+          execution_modes.py runtime_security.py weatherbot tests
+          scripts/ci/check_public_non_execution.py
+          scripts/ci/check_pip_conformance.py scripts/ci/validate_pip_fixture.py
 
       - name: Lint maintained code
         run: >
           uv run ruff check
-          execution_modes.py runtime_security.py weatherbot tests scripts/ci/check_public_non_execution.py
+          execution_modes.py runtime_security.py weatherbot tests
+          scripts/ci/check_public_non_execution.py
+          scripts/ci/check_pip_conformance.py scripts/ci/validate_pip_fixture.py
 
       - name: Check critical legacy errors
         run: >
@@ -107,7 +111,7 @@ jobs:
         run: >
           python -m compileall -q
           execution_modes.py runtime_security.py weatherbot
-          bot_v1.py bot_v2.py bot_v3.py bot_v3_legacy.py bot_v3_legacy_impl.py tests
+          bot_v1.py bot_v2.py bot_v3.py bot_v3_legacy.py bot_v3_legacy_impl.py tests scripts/ci
 
       - name: Run tests
         run: uv run pytest
@@ -127,3 +131,51 @@ jobs:
           --cov=weatherbot.paper
           --cov-report=term-missing
           --cov-fail-under=70
+
+  pip-conformance:
+    name: PIP contract conformance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out Hermes
+        uses: actions/checkout@v6
+
+      - name: Check out pinned PIP authority
+        uses: actions/checkout@v6
+        with:
+          repository: carabinshely/prediction-intelligence-platform
+          ref: a21c3e2ec9e7d5fdd453df4d7cbf641989493af8
+          path: pip_contract
+          persist-credentials: false
+
+      - name: Set up Hermes Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+
+      - name: Install Hermes test and exporter dependencies
+        run: |
+          uv sync --locked --all-groups
+          uv pip install -r requirements-pip-export.txt
+
+      - name: Cross-check Hermes against pinned PIP vectors
+        run: >
+          PYTHONPATH=. uv run python scripts/ci/check_pip_conformance.py
+          pip_contract pip_tmp
+
+      - name: Set up PIP Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Self-test pinned PIP conformance authority
+        working-directory: pip_contract
+        run: uv run --frozen python -m scripts.conformance self-test
+
+      - name: Validate real Hermes envelope in PIP environment
+        working-directory: pip_contract
+        run: >
+          PYTHONPATH=. uv run --frozen python
+          ../scripts/ci/validate_pip_fixture.py ../pip_tmp
