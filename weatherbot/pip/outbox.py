@@ -292,26 +292,23 @@ class PipOutbox:
             raise ValueError("PIP claim lease must be between 1 and 60 seconds")
         current = (now or datetime.now(UTC)).astimezone(UTC)
         lease_expires = current + timedelta(seconds=lease_seconds)
+        minimum_generated_at = lease_expires - DELIVERY_HORIZON
         token = uuid.uuid4().hex
         try:
             self._begin()
-            rows = self._connection.execute(
+            row = self._connection.execute(
                 """
                 SELECT * FROM pip_outbox
-                WHERE state IN ('pending','retry_wait') AND next_attempt_at<=?
-                ORDER BY next_attempt_at,enqueued_at LIMIT 20
+                WHERE state IN ('pending','retry_wait')
+                  AND next_attempt_at<=? AND generated_at>=?
+                ORDER BY next_attempt_at,enqueued_at LIMIT 1
                 """,
-                (_ts(current),),
-            ).fetchall()
-            chosen: OutboxItem | None = None
-            for raw in rows:
-                candidate = self._from_row(cast(sqlite3.Row, raw))
-                if lease_expires <= candidate.generated_at + DELIVERY_HORIZON:
-                    chosen = candidate
-                    break
-            if chosen is None:
+                (_ts(current), _ts(minimum_generated_at)),
+            ).fetchone()
+            if row is None:
                 self._commit()
                 return None
+            chosen = self._from_row(cast(sqlite3.Row, row))
             cursor = self._connection.execute(
                 """
                 UPDATE pip_outbox SET state='in_flight',attempt_count=attempt_count+1,
