@@ -18,7 +18,7 @@ from weatherbot.forecasting import (
 from weatherbot.pip import (
     PipExportError,
     load_exporter_config,
-    promote_staged_signal,
+    reconcile_signal_log,
     stage_signal,
 )
 from weatherbot.producer.config import ProducerPolicy, load_producer_policy
@@ -67,10 +67,9 @@ def scan_once(policy: ProducerPolicy) -> tuple[int, list[str]]:
 
         # Freeze exact signed bytes before the independent JSONL durability boundary. The staged
         # intent is not deliverable; if staging fails, the Hermes decision still persists below.
-        staged_for_pip = False
         if pip_config is not None and pip_config.enabled:
             try:
-                staged_for_pip = stage_signal(
+                stage_signal(
                     signal,
                     config=pip_config,
                     repository_root=REPOSITORY_ROOT,
@@ -91,15 +90,20 @@ def scan_once(policy: ProducerPolicy) -> tuple[int, list[str]]:
             # complete JSONL records actually survived; never guess by deleting recovery state.
             continue
 
-        # The real Hermes decision is now immutable and durably recorded. Promotion is local
-        # SQLite only; the producer process never opens a PIP network request.
-        if staged_for_pip and pip_config is not None:
+        # The real Hermes decision is now immutable and durably recorded. Use the same lifecycle
+        # reconciler as the standalone worker so there is exactly one authoritative publication
+        # algorithm. It chooses the first durable occurrence for each logical signal_id and only
+        # performs local SQLite work; the producer process never opens a PIP network request.
+        if pip_config is not None and pip_config.enabled:
             try:
-                if not promote_staged_signal(signal.signal_id, config=pip_config):
-                    raise PipExportError("staged PIP intent missing after signal commit")
+                reconcile_signal_log(
+                    policy.signal_log_path,
+                    config=pip_config,
+                    repository_root=REPOSITORY_ROOT,
+                )
             except (PipExportError, OSError, sqlite3.Error, TypeError, ValueError) as exc:
                 errors.append(
-                    f"{candidate.city_name} {candidate.horizon}: PIP promotion failed: {exc}"
+                    f"{candidate.city_name} {candidate.horizon}: PIP reconciliation failed: {exc}"
                 )
 
         emitted += 1
