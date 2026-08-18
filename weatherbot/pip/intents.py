@@ -170,9 +170,7 @@ class PipIntentStore:
         complete newline-terminated signal records, so an absent signal_id is known not to have a
         committed Hermes record in the append-only authority.
         """
-        rows = self._connection.execute(
-            "SELECT signal_id FROM pip_publication_intent"
-        ).fetchall()
+        rows = self._connection.execute("SELECT signal_id FROM pip_publication_intent").fetchall()
         orphan_ids = [
             str(row["signal_id"])
             for row in rows
