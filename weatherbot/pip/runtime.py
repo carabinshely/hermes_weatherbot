@@ -1,4 +1,4 @@
-"""PIP exporter configuration, crash recovery, and bounded HTTP delivery."""
+"""PIP exporter configuration, staging, and bounded HTTP delivery."""
 
 from __future__ import annotations
 
@@ -7,8 +7,7 @@ import os
 import random
 import socket
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
-from decimal import Decimal
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
 from urllib.parse import urlparse
@@ -24,7 +23,7 @@ from weatherbot.pip.core import (
 )
 from weatherbot.pip.intents import PipIntentStore
 from weatherbot.pip.outbox import OutboxItem, PipOutbox
-from weatherbot.producer.model import HermesSignal, SignalMarketReference
+from weatherbot.producer.model import HermesSignal
 
 MAX_RESULT_BYTES = 65_536
 RETRY_BASE_SECONDS = 1.0
@@ -123,10 +122,15 @@ def stage_signal(
     """Freeze and durably stage one signal before its JSONL commit.
 
     The intent is not deliverable. It exists only to preserve exact signed bytes across a crash
-    between the Hermes signal fsync and durable outbox promotion.
+    between the Hermes signal fsync and durable outbox promotion. Once lifecycle v1 already owns
+    ``signal.created`` for this signal_id, a later Hermes observation is an idempotent no-op and
+    does not require current signing-key material.
     """
     if not config.enabled:
         return False
+    with PipIntentStore(config.outbox_path) as intents:
+        if intents.has_outbox_signal(signal.signal_id):
+            return True
     frozen = _freeze_for_config(signal, config=config, repository_root=repository_root)
     with PipIntentStore(config.outbox_path) as intents:
         intents.stage(frozen, now=now)
@@ -153,12 +157,7 @@ def enqueue_signal(
     repository_root: Path,
     now: datetime | None = None,
 ) -> bool:
-    """Durably stage and immediately promote one already-committed signal.
-
-    Producer scan code should prefer ``stage_signal`` before signal fsync followed by
-    ``promote_staged_signal`` after fsync. This helper is for reconciliation and explicit local
-    enqueue of decisions that are already known to be committed.
-    """
+    """Durably stage and immediately promote one already-committed signal."""
     if not config.enabled:
         return False
     stage_signal(signal, config=config, repository_root=repository_root, now=now)
@@ -166,116 +165,6 @@ def enqueue_signal(
     if not promoted:
         raise PipExportError("staged PIP signal disappeared before outbox promotion")
     return True
-
-
-def _signal_from_mapping(value: object) -> HermesSignal:
-    if not isinstance(value, dict):
-        raise PipExportError("Hermes signal log record must be an object")
-    data = cast(dict[str, object], value)
-    market_reference_raw = data.get("market_reference")
-    if not isinstance(market_reference_raw, dict):
-        raise PipExportError("Hermes signal log has invalid market_reference")
-    ref = cast(dict[str, object], market_reference_raw)
-    reference = SignalMarketReference(
-        kind=str(ref["kind"]),
-        order_book_hash=str(ref["order_book_hash"]),
-        observed_at_utc=datetime.fromisoformat(str(ref["observed_at_utc"])),
-        reference_notional=Decimal(str(ref["reference_notional"])),
-        best_bid=Decimal(str(ref["best_bid"])),
-        best_ask=Decimal(str(ref["best_ask"])),
-        average_reference_price=Decimal(str(ref["average_reference_price"])),
-        all_in_reference_price=Decimal(str(ref["all_in_reference_price"])),
-        worst_reference_price=Decimal(str(ref["worst_reference_price"])),
-        probability_edge=Decimal(str(ref["probability_edge"])),
-        expected_return=Decimal(str(ref["expected_return"])),
-        quote_fingerprint=str(ref["quote_fingerprint"]),
-    )
-    return HermesSignal(
-        signal_id=str(data["signal_id"]),
-        producer_id=str(data["producer_id"]),
-        strategy_id=str(data["strategy_id"]),
-        strategy_version=str(data["strategy_version"]),
-        policy_fingerprint=str(data["policy_fingerprint"]),
-        generated_at_utc=datetime.fromisoformat(str(data["generated_at_utc"])),
-        venue=str(data["venue"]),
-        event_id=str(data["event_id"]),
-        market_id=str(data["market_id"]),
-        condition_id=str(data["condition_id"]),
-        outcome=str(data["outcome"]),
-        token_id=str(data["token_id"]),
-        question=str(data["question"]),
-        city_slug=str(data["city_slug"]),
-        city_name=str(data["city_name"]),
-        climate_region=str(data["climate_region"]),
-        lead_days=int(cast(int, data["lead_days"])),
-        market_date=date.fromisoformat(str(data["market_date"])),
-        market_timezone=str(data["market_timezone"]),
-        bucket_key=str(data["bucket_key"]),
-        bucket_label=str(data["bucket_label"]),
-        forecast_temperature_f=Decimal(str(data["forecast_temperature_f"])),
-        model_probability=Decimal(str(data["model_probability"])),
-        classification=str(data["classification"]),
-        market_reference=reference,
-        model_version=str(data["model_version"]),
-        artifact_sha256=str(data["artifact_sha256"]),
-        calibration_fingerprint=str(data["calibration_fingerprint"]),
-        weather_fingerprint=str(data["weather_fingerprint"]),
-        forecast_source=str(data["forecast_source"]),
-        calibration_group_key=str(data["calibration_group_key"]),
-        fallback_level=str(data["fallback_level"]),
-        distribution_type=str(data["distribution_type"]),
-        calibration_sample_count=int(cast(int, data["calibration_sample_count"])),
-        training_cutoff=date.fromisoformat(str(data["training_cutoff"])),
-        contract=str(data.get("contract", "hermes.signal")),
-        schema_version=str(data.get("schema_version", "1")),
-    )
-
-
-def reconcile_signal_log(
-    signal_log_path: Path,
-    *,
-    config: PipExporterConfig,
-    repository_root: Path,
-    now: datetime | None = None,
-) -> int:
-    """Recover exact staged bytes or create a first envelope for every committed JSONL record."""
-    if not config.enabled:
-        return 0
-    current = (now or datetime.now(UTC)).astimezone(UTC)
-    try:
-        raw = signal_log_path.read_bytes()
-    except FileNotFoundError:
-        return 0
-    except OSError as exc:
-        raise PipExportError(
-            f"cannot read Hermes signal log for PIP reconciliation: {exc}"
-        ) from exc
-    records = raw.splitlines(keepends=True)
-    if records and not records[-1].endswith((b"\n", b"\r")):
-        records = records[:-1]
-    promoted = 0
-    for index, line in enumerate(records, start=1):
-        payload = line.rstrip(b"\r\n")
-        if not payload:
-            continue
-        try:
-            decoded = payload.decode("utf-8", errors="strict")
-            parsed = json.loads(decoded)
-            signal = _signal_from_mapping(parsed)
-        except (UnicodeDecodeError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
-            raise PipExportError(
-                f"corrupt committed Hermes signal log record {index}: {exc}"
-            ) from exc
-
-        with PipIntentStore(config.outbox_path) as intents:
-            if intents.has_outbox_signal(signal.signal_id):
-                continue
-            if intents.get(signal.signal_id) is None:
-                frozen = _freeze_for_config(signal, config=config, repository_root=repository_root)
-                intents.stage(frozen, now=current)
-            if intents.promote(signal.signal_id, now=current):
-                promoted += 1
-    return promoted
 
 
 @dataclass(frozen=True, slots=True)
