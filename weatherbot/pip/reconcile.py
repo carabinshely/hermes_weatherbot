@@ -162,6 +162,11 @@ def reconcile_signal_log(
     for signal in signals:
         by_signal.setdefault(signal.signal_id, []).append(signal)
 
+    # The complete-record parse above is authoritative. Staging rows whose signal_id is absent
+    # from that durable set came from attempts that never committed and can now be retired safely.
+    with PipIntentStore(config.outbox_path) as intents:
+        intents.discard_orphans(set(by_signal))
+
     promoted = 0
     for signal_id, occurrences in by_signal.items():
         first = occurrences[0]
