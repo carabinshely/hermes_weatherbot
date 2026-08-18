@@ -70,6 +70,36 @@ def test_stale_claimant_cannot_ack_after_lease_expiry(tmp_path: Path) -> None:
         )
 
 
+def test_claim_skips_many_due_rows_whose_lease_would_cross_horizon(tmp_path: Path) -> None:
+    frozen = _frozen()
+    current = frozen.generated_at + timedelta(days=7, seconds=-30)
+    with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
+        # These twenty rows sort first by next_attempt_at, but a fresh 60-second automatic lease
+        # would cross their delivery horizon. They must not hide a later eligible row.
+        for index in range(20):
+            near_horizon = replace(
+                frozen,
+                event_id=f"{frozen.event_id}-near-{index}",
+                signal_id=f"{frozen.signal_id}-near-{index}",
+            )
+            outbox.enqueue(
+                near_horizon,
+                now=frozen.generated_at + timedelta(microseconds=index),
+            )
+
+        eligible = replace(
+            frozen,
+            event_id=f"{frozen.event_id}-eligible",
+            signal_id=f"{frozen.signal_id}-eligible",
+            generated_at=current - timedelta(days=1),
+        )
+        outbox.enqueue(eligible, now=current - timedelta(days=1))
+
+        claimed = outbox.claim_due(owner_id="worker-a", now=current, lease_seconds=60)
+        assert claimed is not None
+        assert claimed.event_id == eligible.event_id
+
+
 def test_delivery_horizon_retains_item_as_dead_letter(tmp_path: Path) -> None:
     frozen = _frozen()
     with PipOutbox(tmp_path / "outbox.sqlite3") as outbox:
