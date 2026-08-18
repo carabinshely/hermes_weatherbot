@@ -4,5 +4,23 @@
   "suite": "packages/signal-contract/conformance/suite-v1.json",
   "contract": "pip.signal-envelope",
   "schema_version": "1",
-  "delivery_protocol_version": "1"
+  "delivery_protocol_version": "1",
+  "authority_bundle": {
+    "tests/pip/authority/signal-envelope-v1.schema.json": {
+      "source": "packages/signal-contract/schema/signal-envelope-v1.schema.json",
+      "git_blob_sha": "ce34a29a76986015dcf5bbcf8c20f37e932e05a6"
+    },
+    "tests/pip/authority/version-support-matrix.json": {
+      "source": "packages/signal-contract/schema/version-support-matrix.json",
+      "git_blob_sha": "86f50ffc7d645d635124094bdf76f17e8c4153f5"
+    },
+    "tests/pip/authority/golden-manifest.json": {
+      "source": "packages/signal-contract/tests/golden/manifest.json",
+      "git_blob_sha": "b48aba82ec792b709122003ca85f1fffd3b89151"
+    },
+    "tests/pip/authority/delivery-manifest.json": {
+      "source": "packages/signal-contract/tests/delivery/manifest.json",
+      "git_blob_sha": "11ee7e55ebd59f71f52ef51892904cb62e12fef6"
+    }
+  }
 }
