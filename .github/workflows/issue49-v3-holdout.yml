@@ -29,6 +29,11 @@ jobs:
     timeout-minutes: 180
 
     steps:
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Verify finalized-history guard before any holdout network access
         shell: bash
         run: |
@@ -110,11 +115,6 @@ jobs:
               weatherbot/forecasting/calibration_v3_fit.py \
               weatherbot/forecasting/calibration_v3_train.py
           } | tee "$ISSUE49_OUT/provenance.txt"
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
 
       - name: Set up uv
         uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
