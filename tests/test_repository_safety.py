@@ -29,10 +29,21 @@ def test_local_environment_file_is_not_tracked() -> None:
     assert ".DS_Store" not in tracked
 
 
-def test_workflows_do_not_use_pull_request_target() -> None:
+def test_only_hardened_pip_sync_uses_pull_request_target() -> None:
+    pip_sync_workflow = Path(".github/workflows/pip-project-sync.yml")
+
     for workflow in Path(".github/workflows").glob("*.yml"):
         content = workflow.read_text(encoding="utf-8")
-        assert "pull_request_target:" not in content
+        if workflow != pip_sync_workflow:
+            assert "pull_request_target:" not in content
+            continue
+
+        assert "pull_request_target:" in content
+        assert "permissions: {}" in content
+        assert "uses:" not in content
+        assert "actions/checkout" not in content
+        assert "github.head_ref" not in content
+        assert "github.event.pull_request.head" not in content
 
 
 def test_legacy_bots_load_credentials_from_environment_only() -> None:
