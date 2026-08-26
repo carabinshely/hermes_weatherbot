@@ -1,0 +1,417 @@
+name: Issue 50 exact-head validation e619
+
+on:
+  push:
+    branches:
+      - automation/issue49-v3-holdout-20260826
+    paths:
+      - .github/workflows/issue50-exact-head-validation-e619.yml
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  TARGET_HEAD: e619b2a58e557f7b2bf3468c602d2bb807326bdb
+  CURRENT_MAIN: 06539505c97720134c6c7dc688d9c86b2cbdbfec
+  FROZEN_SCIENTIFIC_SHA: fa9f389e21861d66599367160fcac58763b7dec7
+  ACCEPTED_ARTIFACT_SHA256: b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550
+  ACCEPTED_ARTIFACT_FILE_SHA256: d0690aff605a8a9ca57c2dde260e64a806f60c30e5d3f5662150fae3ab72ae20
+  ACCEPTANCE_REFERENCE: https://github.com/carabinshely/hermes_weatherbot/issues/49#issuecomment-5426735276
+
+concurrency:
+  group: issue50-exact-head-validation-e619
+  cancel-in-progress: false
+
+jobs:
+  invariant-gates:
+    name: Frozen science and activation invariants
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 20
+    steps:
+      - name: Check out corrected exact PR head
+        uses: actions/checkout@v6
+        with:
+          ref: e619b2a58e557f7b2bf3468c602d2bb807326bdb
+          fetch-depth: 0
+          clean: true
+
+      - name: Prove exact head and current main ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+          git merge-base --is-ancestor "$CURRENT_MAIN" HEAD
+          git merge-base --is-ancestor "$FROZEN_SCIENTIFIC_SHA" HEAD
+          echo "validated_head=$(git rev-parse HEAD)"
+          echo "current_main_is_ancestor=true"
+          echo "frozen_scientific_head_is_ancestor=true"
+
+      - name: Prove no post-holdout scientific or dependency drift
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import subprocess
+
+          base = os.environ["FROZEN_SCIENTIFIC_SHA"]
+          changed = subprocess.check_output(
+              ["git", "diff", "--name-only", f"{base}..HEAD"], text=True
+          ).splitlines()
+          allowed_exact = {
+              ".github/actionlint.yaml",
+              "artifacts/calibration/accepted/b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550.json",
+              "config/calibration-approval.json",
+              "docs/forecast-calibration-runbook.md",
+              "docs/forecast-calibration-v3.md",
+              "docs/forecast-calibration.md",
+              "tests/forecasting/test_accepted_calibration_runtime.py",
+              "tests/test_repository_safety.py",
+          }
+          allowed_prefixes = ("evidence/calibration/issue12-v3-final-holdout/",)
+          unexpected = [
+              path for path in changed
+              if path not in allowed_exact and not path.startswith(allowed_prefixes)
+          ]
+          if unexpected:
+              raise SystemExit(f"unexpected post-holdout drift: {unexpected}")
+
+          dependency_files = {
+              "pyproject.toml",
+              "uv.lock",
+              "requirements-pip-export.txt",
+              "requirements-pip-conformance.txt",
+          }
+          changed_dependencies = sorted(dependency_files.intersection(changed))
+          if changed_dependencies:
+              raise SystemExit(
+                  f"post-holdout dependency drift is forbidden: {changed_dependencies}"
+              )
+          scientific = [
+              path for path in changed
+              if path.startswith("weatherbot/forecasting/") and path.endswith(".py")
+          ]
+          if scientific:
+              raise SystemExit(f"post-holdout scientific code drift: {scientific}")
+          print("post_holdout_scientific_drift=false")
+          print("post_holdout_dependency_drift=false")
+          print("post_holdout_changed_files=")
+          for path in changed:
+              print(path)
+          PY
+
+      - name: Verify accepted artifact and separate approval identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact="artifacts/calibration/accepted/$ACCEPTED_ARTIFACT_SHA256.json"
+          test -f "$artifact"
+          test "$(sha256sum "$artifact" | cut -d' ' -f1)" = "$ACCEPTED_ARTIFACT_FILE_SHA256"
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          approval = json.loads(Path("config/calibration-approval.json").read_text(encoding="utf-8"))
+          expected = os.environ["ACCEPTED_ARTIFACT_SHA256"]
+          assert approval["schema_version"] == 1
+          assert approval["decision"] == "accepted"
+          assert approval["model_version"] == "issue12-v3-final-holdout"
+          assert approval["artifact_sha256"] == expected
+          assert approval["artifact_path"] == f"artifacts/calibration/accepted/{expected}.json"
+          assert approval["acceptance_reference"] == os.environ["ACCEPTANCE_REFERENCE"]
+          print("accepted_artifact_identity=true")
+          print("separate_approval_identity=true")
+          PY
+
+  quality:
+    name: Python ${{ matrix.python-version }} exact-tree quality
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        python-version: ["3.12", "3.13"]
+    steps:
+      - name: Check out corrected exact PR head
+        uses: actions/checkout@v6
+        with:
+          ref: e619b2a58e557f7b2bf3468c602d2bb807326bdb
+          fetch-depth: 0
+          clean: true
+
+      - name: Prove exact checkout
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_HEAD"
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          enable-cache: true
+          cache-dependency-glob: |
+            uv.lock
+            requirements-pip-export.txt
+            requirements-pip-conformance.txt
+
+      - name: Verify lock file
+        run: uv lock --check
+
+      - name: Install minimal runtime and development tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .venv
+          uv sync --locked --all-groups --python "$(command -v python)"
+
+      - name: Verify wallet/live packages are absent from minimal profile
+        run: |
+          uv run python - <<'PY'
+          from importlib.util import find_spec
+          forbidden = ("eth_account", "polymarket", "web3")
+          present = [name for name in forbidden if find_spec(name) is not None]
+          if present:
+              raise SystemExit(f"minimal profile unexpectedly installed: {present}")
+          PY
+
+      - name: Verify PIP-disabled imports without exporter dependencies
+        run: |
+          uv run python - <<'PY'
+          from importlib.util import find_spec
+          unexpected = [name for name in ("cryptography", "rfc8785") if find_spec(name)]
+          if unexpected:
+              raise SystemExit(f"minimal profile unexpectedly has PIP exporter deps: {unexpected}")
+          import weatherbot.pip
+          import weatherbot.producer.cli
+          PY
+          uv run python bot_v3.py --help
+          uv run python -m weatherbot.pip --help
+
+      - name: Install pinned PIP exporter profile
+        run: uv pip install -r requirements-pip-export.txt
+
+      - name: Verify exporter profile does not pull wallet/live packages
+        run: |
+          uv run python - <<'PY'
+          from importlib.util import find_spec
+          required = ("cryptography", "rfc8785")
+          missing = [name for name in required if find_spec(name) is None]
+          if missing:
+              raise SystemExit(f"PIP exporter profile missing: {missing}")
+          forbidden = ("eth_account", "polymarket", "web3")
+          present = [name for name in forbidden if find_spec(name) is not None]
+          if present:
+              raise SystemExit(f"PIP exporter profile unexpectedly installed: {present}")
+          PY
+
+      - name: Verify public and internal command imports
+        run: |
+          uv run python bot_v3.py --help
+          uv run python -m weatherbot.paper --help
+          uv run python -m weatherbot.pip --help
+          uv run python -m weatherbot.resolution --help
+          uv run python -m weatherbot.resolution.observation_cli --help
+
+      - name: Enforce public non-execution boundary
+        run: uv run python scripts/ci/check_public_non_execution.py
+
+      - name: Check formatting
+        run: >
+          uv run ruff format --check
+          execution_modes.py runtime_security.py weatherbot tests
+          scripts/ci/check_public_non_execution.py
+          scripts/ci/check_pip_conformance.py scripts/ci/validate_pip_fixture.py
+
+      - name: Lint maintained code
+        run: >
+          uv run ruff check
+          execution_modes.py runtime_security.py weatherbot tests
+          scripts/ci/check_public_non_execution.py
+          scripts/ci/check_pip_conformance.py scripts/ci/validate_pip_fixture.py
+
+      - name: Check critical legacy errors
+        run: >
+          uv run ruff check
+          --select E9,F63,F7,F82
+          bot_v1.py bot_v2.py bot_v3.py bot_v3_legacy.py bot_v3_legacy_impl.py
+
+      - name: Type-check maintained code
+        run: uv run pyright execution_modes.py runtime_security.py weatherbot tests
+
+      - name: Compile Python sources
+        run: >
+          python -m compileall -q
+          execution_modes.py runtime_security.py weatherbot
+          bot_v1.py bot_v2.py bot_v3.py bot_v3_legacy.py bot_v3_legacy_impl.py tests scripts/ci
+
+      - name: Run full test suite
+        run: uv run pytest
+
+      - name: Re-prove pinned accepted calibration runtime
+        run: uv run pytest -q tests/forecasting/test_accepted_calibration_runtime.py
+
+      - name: Check focused PIP exporter coverage
+        if: matrix.python-version == '3.12'
+        run: >
+          PYTHONPATH=. uv run pytest -q tests/pip
+          --cov=weatherbot.pip
+          --cov-report=term-missing
+          --cov-fail-under=70
+
+      - name: Check focused paper coverage
+        if: matrix.python-version == '3.12'
+        run: >
+          PYTHONPATH=. uv run pytest -q tests/paper
+          --cov=weatherbot.paper
+          --cov-report=term-missing
+          --cov-fail-under=70
+
+  pip-conformance:
+    name: PIP contract conformance on exact tree
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 30
+    steps:
+      - name: Check out corrected exact PR head
+        uses: actions/checkout@v6
+        with:
+          ref: e619b2a58e557f7b2bf3468c602d2bb807326bdb
+          clean: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          cache-dependency-glob: |
+            uv.lock
+            requirements-pip-export.txt
+            requirements-pip-conformance.txt
+
+      - name: Install Hermes and conformance dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .venv pip_tmp
+          uv sync --locked --all-groups --python "$(command -v python)"
+          uv pip install -r requirements-pip-export.txt -r requirements-pip-conformance.txt
+
+      - name: Verify vendored authority and generate a real Hermes fixture
+        run: >
+          PYTHONPATH=. uv run python scripts/ci/check_pip_conformance.py
+          tests/pip/authority pip_tmp
+
+      - name: Validate the real Hermes envelope against pinned PIP authority
+        run: >
+          PYTHONPATH=. uv run python scripts/ci/validate_pip_fixture.py
+          tests/pip/authority pip_tmp
+
+  security:
+    name: Current-tree security and dependency audit
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 60
+    steps:
+      - name: Check out corrected exact PR head
+        uses: actions/checkout@v6
+        with:
+          ref: e619b2a58e557f7b2bf3468c602d2bb807326bdb
+          clean: true
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.24.x"
+
+      - name: Install actionlint and Gitleaks
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+
+      - name: Validate repository workflows
+        run: "$(go env GOPATH)/bin/actionlint"
+
+      - name: Verify Gitleaks detects a generated canary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/gitleaks-canary
+          mkdir -p /tmp/gitleaks-canary
+          cat > /tmp/gitleaks-canary.toml <<'EOF'
+          title = "CI canary"
+
+          [extend]
+          useDefault = true
+
+          [[rules]]
+          id = "ci-secret-canary"
+          description = "Generated CI scanner canary"
+          regex = '''GITLEAKS_CANARY_[A-Za-z0-9]{32}'''
+          EOF
+          printf 'TOKEN=%s%s\n' 'GITLEAKS_CANARY_' '0123456789abcdefghijklmnopqrstuv' > /tmp/gitleaks-canary/canary.env
+          if "$(go env GOPATH)/bin/gitleaks" dir /tmp/gitleaks-canary --config /tmp/gitleaks-canary.toml --redact --no-banner; then
+            echo "Gitleaks failed to detect the generated canary" >&2
+            exit 1
+          fi
+
+      - name: Scan current tree for secrets
+        run: >
+          $(go env GOPATH)/bin/gitleaks dir .
+          --redact --no-banner
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install audit tooling and all optional packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .venv
+          uv sync --locked --all-groups --extra live --python "$(command -v python)"
+
+      - name: Export dependency sets
+        run: |
+          uv export --locked --no-dev --format requirements-txt --output-file /tmp/runtime-minimal.txt
+          uv export --locked --no-dev --extra live --format requirements-txt --output-file /tmp/runtime-live.txt
+
+      - name: Audit minimal runtime dependencies
+        run: uv run pip-audit --requirement /tmp/runtime-minimal.txt
+
+      - name: Audit live optional dependency set
+        run: uv run pip-audit --requirement /tmp/runtime-live.txt
+
+  codeql:
+    name: CodeQL exact-tree analysis
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 45
+    steps:
+      - name: Check out corrected exact PR head
+        uses: actions/checkout@v6
+        with:
+          ref: e619b2a58e557f7b2bf3468c602d2bb807326bdb
+          clean: true
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: python
+
+      - name: Perform CodeQL analysis of exact tree
+        uses: github/codeql-action/analyze@v4
