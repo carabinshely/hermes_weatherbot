@@ -195,7 +195,10 @@ def test_pull_request_target_is_limited_to_trusted_project_sync_workflow() -> No
             assert workflow.name == "pip-project-sync.yml"
             assert "permissions: {}" in content
             assert "pull_request_target" in content
+            assert "uses:" not in content
             assert "actions/checkout" not in content
+            assert "github.head_ref" not in content
+            assert "github.event.pull_request.head" not in content
     assert users == ["pip-project-sync.yml"]
 
 
