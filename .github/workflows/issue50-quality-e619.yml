@@ -1,5 +1,5 @@
 name: Issue 50 corrected quality e619
-# Trigger after workflow registration; target tree remains immutable e619b2a5.
+# Supplemental validation is hermetic; target tree remains immutable e619b2a5.
 
 on:
   push:
@@ -15,17 +15,16 @@ env:
   TARGET_HEAD: e619b2a58e557f7b2bf3468c602d2bb807326bdb
 
 concurrency:
-  group: issue50-corrected-quality-e619
+  group: issue50-corrected-quality-e619-hosted
   cancel-in-progress: false
 
 jobs:
   quality:
     name: Python ${{ matrix.python-version }} corrected exact-tree quality
-    runs-on: hermes-weather-calibration
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         python-version: ["3.12", "3.13"]
     steps:
