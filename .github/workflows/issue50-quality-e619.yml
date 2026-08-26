@@ -1,4 +1,5 @@
 name: Issue 50 corrected quality e619
+# Trigger after workflow registration; target tree remains immutable e619b2a5.
 
 on:
   push:
