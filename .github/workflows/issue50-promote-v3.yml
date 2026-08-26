@@ -325,7 +325,9 @@ jobs:
               "evidence/calibration/issue12-v3-final-holdout/",
           )
           changed = []
-          for line in subprocess.check_output(["git", "status", "--porcelain"], text=True).splitlines():
+          for line in subprocess.check_output(
+              ["git", "status", "--porcelain", "-uall"], text=True
+          ).splitlines():
               path = line[3:]
               changed.append(path)
               assert path in allowed_exact or path.startswith(allowed_prefixes), path
