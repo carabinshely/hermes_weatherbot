@@ -2,3 +2,8 @@ self-hosted-runner:
   labels:
     - hermes-weather-calibration
     - pip-project-sync-hermes
+
+paths:
+  .github/workflows/pip-project-sync.yml:
+    ignore:
+      - 'shellcheck reported issue in this script: SC2016:'
