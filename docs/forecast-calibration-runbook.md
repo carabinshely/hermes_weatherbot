@@ -1,13 +1,14 @@
 # Issue #12 calibration runbook
 
-This runbook performs the expensive historical collection locally and then fits versioned
-calibration artifacts from a frozen dataset. It intentionally keeps the full network sweep
-out of GitHub-hosted CI.
+This runbook documents the historical collection, reproducible fitting, final one-shot V3
+holdout, and accepted-artifact promotion path. Expensive provider collection remains
+outside ordinary GitHub-hosted CI, and raw cache/working datasets remain outside Git.
 
-The current V3 policy is documented in `docs/forecast-calibration-v3.md`. In particular,
-`2026-07-14..2026-08-10` is now **development evidence**, not an untouched holdout. The
-registered final V3 holdout is `2026-08-11..2026-08-24` and belongs exclusively to Issue
-#49 after the existing finalization guard.
+The current V3 policy is documented in `docs/forecast-calibration-v3.md`.
+`2026-07-14..2026-08-10` is **development evidence**, not an untouched holdout. The
+registered final V3 holdout `2026-08-11..2026-08-24` was evaluated exactly once by Issue
+#49 after the finalized-history guard opened and must not be evaluated again as an
+untouched holdout.
 
 ## Prerequisites
 
@@ -18,9 +19,11 @@ uv sync --locked --all-groups
 ```
 
 Historical collection/reproduction work starts from the Issue #12 calibration branch.
-Issue #47 V3 development replay runs from the stacked `agent/issue-47-v3-policy` branch.
+Issue #47 V3 development replay used the stacked `agent/issue-47-v3-policy` branch. The
+final accepted state is carried by the Issue #12 branch with the content-addressed artifact
+and separate approval file.
 
-## 1. Collect the frozen historical dataset
+## 1. Collect the frozen development dataset
 
 The frozen development dataset is 2026-04-05 through 2026-08-10. The Single Runs archive
 documents most model archives from 2026-04-02. Because the calibration dataset includes
@@ -64,16 +67,16 @@ or substitute another observation source.
 
 Do not delete a partially populated cache after a provider or parser failure. Fix the cause
 and rerun the same command so completed immutable entries are reused. For self-hosted
-Actions reruns, reuse the same runner `_work` directory and keep `checkout` configured with
-`clean: false`; moving to a fresh runner workspace discards the preserved HTTP cache.
+Actions reruns, preserve the calibration cache deliberately rather than treating a fresh
+runner workspace as equivalent evidence.
 
-Issue #47 closure must **not** run a fresh network sweep. Reuse the already-frozen
+Issue #47 closure did **not** require a fresh network sweep. It reused the already-frozen
 2026-04-05..2026-08-10 dataset and cache evidence produced by the calibration branch.
 
 ## 2. Prove offline reproducibility
 
-After the original online collection succeeds, rerun with network disabled and write to
-temporary output paths:
+After an online collection succeeds, rerun with network disabled and write to temporary
+output paths:
 
 ```bash
 PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sweep \
@@ -102,15 +105,16 @@ start_date = 2026-04-05
 end_date   = 2026-08-10
 ```
 
-Abort if any real observation/market date after 2026-08-10 appears in the replay inputs.
+Abort if any real observation/market date after 2026-08-10 appears in the development replay
+inputs.
 
 ## 3. Historical V1/V2 reproduction
 
 The old chronological split was:
 
 ```text
-training:             2026-04-05 .. 2026-07-13
-historical evaluation: 2026-07-14 .. 2026-08-10
+training:               2026-04-05 .. 2026-07-13
+historical evaluation:  2026-07-14 .. 2026-08-10
 ```
 
 V1 and V2 already inspected that second interval. It therefore must never again be called
@@ -133,12 +137,14 @@ PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_train \
   --report-out <historical-report-output>
 ```
 
-Do not use a rejected V1/V2 artifact for runtime configuration.
+Do not use a rejected V1/V2 artifact for runtime configuration. The strict runtime also
+blocks the known rejected V1/V2 artifact identities even if an approval file is forged to
+say otherwise.
 
-## 4. Run the frozen V3 development replay
+## 4. Reproduce the frozen V3 development replay
 
-Issue #47 may replay the already-inspected July 14-August 10 interval **only as development
-evidence**. Run from `agent/issue-47-v3-policy` using the dedicated V3 trainer:
+Issue #47 replayed the already-inspected July 14-August 10 interval **only as development
+evidence** using the dedicated V3 trainer:
 
 ```text
 dataset:             2026-04-05 .. 2026-08-10
@@ -198,68 +204,131 @@ validation_end   = 2026-08-10
 ```
 
 Review the development scores, diagnostics, fitted/omitted group counts, and fixed-2°F
-baseline comparison, but **do not tune the frozen V3 policy from those scores**. Mechanical
-failures, checksum mismatches, non-determinism, unsafe runtime distributions, or broken
-fallback behavior block Issue #47. Better or worse development scores do not accept or
-reject V3.
+baseline comparison, but do not reinterpret those scores as final holdout evidence.
 
-The development artifact is not an accepted runtime artifact and must not be configured by
-Issue #48.
+The development artifact is not the accepted runtime artifact and must not be configured as
+such.
 
-## 5. Quarantine the final V3 holdout
+## 5. Final V3 holdout — historical record, do not rerun
 
-The registered final forward V3 holdout is:
+The registered final forward V3 holdout was:
 
 ```text
 2026-08-11 .. 2026-08-24
 ```
 
-Issue #47 must not read those outcomes. Issue #49 owns the one-time final evaluation after
-the complete interval is finalized under the two-day guard. Do not extend the Issue #47
-dataset, inspect provider outcome pages for those dates, or place those observations in any
-fixture/report used by the V3 closure work.
+Issue #49 evaluated it exactly once after the all-market two-day finalized-history guard
+opened on `2026-08-26`. The successful one-shot workflow run is `32977283488`; its frozen
+scientific source is `fa9f389e21861d66599367160fcac58763b7dec7`.
 
-## 6. Review development evidence before closing Issue #47
+The final execution extended the preserved cache only through `2026-08-24`, verified that
+all pre-existing cache objects remained byte-identical, built the normalized dataset,
+proved byte-identical offline replay, fitted V3 with training data ending `2026-08-10`,
+evaluated `2026-08-11..2026-08-24`, and reproduced the artifact/report without provider
+re-read.
 
-Record at least:
+Final integrity/result summary:
 
-- dataset and manifest SHA-256 identities;
-- development artifact and report SHA-256 identities;
-- byte-identical reproduction result;
-- evaluation sample count;
-- forecast bias, MAE, and RMSE;
-- mean realized-bin log score;
-- mean ranked probability score;
-- reliability bins;
-- calibrated-versus-fixed-2°F score deltas;
-- fitted and omitted group counts;
-- empirical-versus-normal training diagnostics;
-- fallback/group coverage where available.
+```text
+validation samples:                 252 / 252
+holdout exclusions/source gaps:     0
+online/offline replay:              byte-identical
+artifact/report reproduction:       byte-identical
+fitted groups:                      76
+omitted groups:                     0
+V3 mean log score:                  2.4458898555
+fixed-2°F mean log score:           2.8138595051
+V3 mean ranked probability score:   1.6188143448
+fixed-2°F ranked probability score: 1.8472967783
+final decision:                     ACCEPT
+```
 
-Label the evidence explicitly as **development-only** and state that it is neither the final
-V3 holdout nor an accepted production artifact.
+Do **not** rerun this interval for model selection, threshold tuning, or another purportedly
+untouched evaluation. Reliability evidence, including under-confidence in several middle
+probability bands, is retained for monitoring/future-development work only.
 
-## 7. Runtime integration is separate
+## 6. Promote the accepted artifact without re-reading providers
 
-Issue #48 may implement the fail-closed research/PAPER calibrated probability boundary in
-parallel with the final holdout wait. It may remove the fixed-2°F scanner path and prebuild
-complete model provenance handling, but it must configure **no rejected or unaccepted
-artifact**.
+Issue #50 promotion is an offline evidence operation. It must consume the already-reviewed
+successful Issue #49 artifact rather than refreshing weather/observation sources or fitting
+a modified policy.
 
-Activation of a concrete V3 artifact remains blocked on Issue #49 acceptance. Therefore do
-not interpret the absence of a final accepted artifact as a reason to delay #48's fail-closed
-implementation.
+Accepted runtime identity:
 
-## 8. Commit only reviewed evidence
+```text
+model version:       issue12-v3-final-holdout
+canonical SHA-256:   b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550
+artifact path:       artifacts/calibration/accepted/b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550.json
+approval path:       config/calibration-approval.json
+```
 
-The raw cache is working data and can be large. Do not commit the raw Weather Underground or
-Open-Meteo cache. Do not commit the Issue #47 development artifact merely because the replay
-succeeded.
+The approval is separate from the artifact and points to the authoritative Issue #49 final
+acceptance record. The artifact path is content-addressed by the canonical artifact identity
+verified by the runtime loader. The artifact JSON file byte SHA-256 is separate transport
+evidence and must not be substituted as `artifact_sha256` in approval.
 
-For Issue #47, record compact reproducibility evidence in the pull request: exact command,
-branch/head SHA, dataset/manifest SHA-256 values, development artifact/report SHA-256 values,
-frozen date boundaries, fitted/omitted counts, main development metrics, and confirmation
-that the second run was byte-identical.
+The reviewed compact evidence lives at:
 
-Issue #49 will separately decide which final accepted artifact/manifest/exclusion/holdout
-evidence belongs in Git if V3 passes the registered final evaluation.
+```text
+evidence/calibration/issue12-v3-final-holdout/
+```
+
+It contains the manifest, exclusion report, holdout report, compact review summary,
+checksums, provenance, and README. It intentionally excludes:
+
+- the raw provider HTTP cache;
+- cache-before/cache-after working snapshots;
+- the multi-megabyte normalized `dataset.jsonl`.
+
+Those larger inputs remain reproducibility working data and source-workflow artifacts, not
+repository runtime payloads.
+
+## 7. Validate exact compatible runtime provenance
+
+Loading the accepted artifact is necessary but not sufficient. Before a model probability
+can back a public signal, the forecast input must carry explicit model-run provenance
+matching the exact calibration-compatible ECMWF 18Z vintage for the target date and lead.
+
+Repository tests must retain all three cases:
+
+1. the pinned accepted V3 artifact loads and evaluates a compatible exact-run forecast;
+2. a different model-run vintage is rejected;
+3. missing model-run provenance is rejected.
+
+The broader runtime tests must continue to prove missing/malformed/rejected approvals,
+corrupt or checksum-mismatched artifacts, contract mismatches, decision-window violations,
+and known rejected V1/V2 identities fail closed.
+
+Do not weaken provenance checks to make an operational forecast fit the artifact. If the
+runtime forecast cannot prove the compatible run identity, probability generation must
+reject and the source/provenance integration must be fixed separately.
+
+## 8. Review final evidence and repository scope
+
+For the accepted V3 state, retain at least:
+
+- one-shot workflow run and artifact identity;
+- frozen scientific source SHA;
+- canonical accepted artifact identity and artifact-file byte SHA-256;
+- dataset and manifest identities;
+- validation sample count and holdout exclusion count;
+- byte-identical online/offline and artifact/report replay results;
+- forecast bias, MAE, RMSE;
+- both proper-score comparisons against fixed 2°F;
+- reliability evidence;
+- fitted/omitted group counts and runtime distribution types;
+- separate approval reference and exact-run compatibility tests.
+
+No final-evidence update may modify the frozen scientific policy and then reuse the August
+11-24 holdout as though it were untouched.
+
+## 9. Product boundary after acceptance
+
+The accepted artifact enables calibrated probability semantics for compatible public signal
+inputs. Internal PAPER experiments may replay the same accepted model semantics, but PAPER
+state/economics remain separate from real signal identity, publication eligibility, and
+model acceptance.
+
+This runbook does not authorize or describe a supported wallet, live exchange-write, order,
+cancellation, redemption, customer-execution, or copy-trading path. V3 acceptance and
+Issue #50 activation are signal-generation/runtime-provenance decisions only.
