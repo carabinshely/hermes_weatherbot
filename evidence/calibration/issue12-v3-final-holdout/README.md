@@ -18,3 +18,15 @@ The canonical calibration artifact identity is the identity verified by the stri
 runtime loader and therefore names the accepted artifact file. The JSON file byte
 SHA-256 is recorded separately as transport/file evidence; the two hashes are not
 interchangeable.
+
+## Protected integration discipline
+
+Promotion is not complete merely because the artifact exists on a feature branch. The
+accepted artifact, separate approval, and this reviewed evidence bundle must enter `main`
+through the repository's protected pull-request path. The protected path requires the
+standard Python, workflow-lint, secret-scan, dependency-audit, and CodeQL checks and permits
+only squash integration. After merge, verify the accepted artifact and approval identities
+again from `main` before closing Issue #50 / Issue #12.
+
+A merge or CI retrigger must not refit V3, refresh provider data, change the frozen scientific
+policy, or evaluate the 2026-08-11..2026-08-24 holdout again.
