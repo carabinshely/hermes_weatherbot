@@ -53,13 +53,13 @@ def test_repository_accepted_v3_loads_and_preserves_exact_run_provenance() -> No
 def test_repository_accepted_v3_rejects_wrong_model_run_vintage() -> None:
     runtime = _runtime()
     weather = _exact_weather()
+    model_run = weather.forecast.model_run_initialized_at_utc
+    assert model_run is not None
     wrong_run = replace(
         weather,
         forecast=replace(
             weather.forecast,
-            model_run_initialized_at_utc=(
-                weather.forecast.model_run_initialized_at_utc + timedelta(hours=6)
-            ),
+            model_run_initialized_at_utc=model_run + timedelta(hours=6),
         ),
     )
 
