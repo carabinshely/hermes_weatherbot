@@ -1,0 +1,16 @@
+{
+  "capture_contract_ids": [
+    "open-meteo:single-runs:ecmwf_ifs025:hourly-temperature_2m:bias-corrected:market-local-day-max:v1"
+  ],
+  "dataset_sha256": "808ba4c064c96b5df65997bb367ee3d6268ca30386148473932627d4cbb37aca",
+  "end_date": "2026-08-24",
+  "forecast_contract_id": "open-meteo:ecmwf_ifs025:daily-temperature_2m_max:bias-corrected:market-local-day:v1",
+  "manifest_sha256": "7cab8e59e30a058876d33420b776b327e657c54d4bed3ec1437f03488d1a6c18",
+  "observation_contract_id": "polymarket:wunderground:airport-daily-high:whole-degree-f:finalized-history:v1",
+  "parity_report_sha256s": [
+    "2681b27f96cc17d6911c3e2817662effb9151d8134f3af6a98c5687bbf81e1d2"
+  ],
+  "record_count": 2490,
+  "schema_version": 1,
+  "start_date": "2026-04-05"
+}

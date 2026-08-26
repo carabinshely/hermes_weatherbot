@@ -1,0 +1,1554 @@
+{
+  "artifact_sha256": "b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550",
+  "baseline_comparison": {
+    "calibrated_better_mean_log_score": true,
+    "calibrated_better_mean_ranked_probability_score": true,
+    "calibrated_minus_baseline_mean_log_score": -0.3679696495875171,
+    "calibrated_minus_baseline_mean_ranked_probability_score": -0.2284824334609794,
+    "fixed_sigma_f": 2.0
+  },
+  "dataset_manifest_sha256": "7cab8e59e30a058876d33420b776b327e657c54d4bed3ec1437f03488d1a6c18",
+  "dataset_sha256": "808ba4c064c96b5df65997bb367ee3d6268ca30386148473932627d4cbb37aca",
+  "evaluation_kind": "final_holdout",
+  "fitted_group_count": 76,
+  "fitting_policy": "v3-normal-runtime-v1",
+  "forecast_contract_id": "open-meteo:ecmwf_ifs025:daily-temperature_2m_max:bias-corrected:market-local-day:v1",
+  "group_fit_decisions": [
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=atlanta|lead=D+0|season=JJA",
+      "city": "atlanta",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.0452168367346937,
+        "jarque_bera": 0.1733950891771937,
+        "normal_selection_crps": 1.0387842204759656,
+        "normality_p_value": 0.9169543915139418
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=atlanta|lead=D+0|season=MAM",
+      "city": "atlanta",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.6435606060606058,
+        "jarque_bera": 56.69730382335156,
+        "normal_selection_crps": 1.633659756260461,
+        "normality_p_value": 4.879068386558846e-13
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=atlanta|lead=D+1|season=JJA",
+      "city": "atlanta",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.6825573979591837,
+        "jarque_bera": 0.07334399821150688,
+        "normal_selection_crps": 1.6758628675918936,
+        "normality_p_value": 0.9639922738272295
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=atlanta|lead=D+1|season=MAM",
+      "city": "atlanta",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.2091081267217632,
+        "jarque_bera": 171.9980282454463,
+        "normal_selection_crps": 1.371001900601784,
+        "normality_p_value": 4.478192078409228e-38
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=atlanta|lead=D+2|season=JJA",
+      "city": "atlanta",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.7558673469387756,
+        "jarque_bera": 0.12998720764912705,
+        "normal_selection_crps": 1.7525019623640021,
+        "normality_p_value": 0.9370734570444632
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=atlanta|lead=D+2|season=MAM",
+      "city": "atlanta",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.9424242424242424,
+        "jarque_bera": 25.725095819427395,
+        "normal_selection_crps": 2.0186701051064975,
+        "normality_p_value": 2.5933815664841508e-06
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=chicago|lead=D+0|season=JJA",
+      "city": "chicago",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.901339285714286,
+        "jarque_bera": 6.099088561890351,
+        "normal_selection_crps": 1.890434728565678,
+        "normality_p_value": 0.0473805116738964
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=chicago|lead=D+0|season=MAM",
+      "city": "chicago",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 2.900432098765432,
+        "jarque_bera": 2.694950671224226,
+        "normal_selection_crps": 2.804865883542428,
+        "normality_p_value": 0.25989558218524617
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 57,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=chicago|lead=D+1|season=JJA",
+      "city": "chicago",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.5102997448979594,
+        "jarque_bera": 2.7540030910739004,
+        "normal_selection_crps": 1.523757119078455,
+        "normality_p_value": 0.25233403196350607
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=chicago|lead=D+1|season=MAM",
+      "city": "chicago",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 2.58258024691358,
+        "jarque_bera": 0.9183066346009386,
+        "normal_selection_crps": 2.5708798351656648,
+        "normality_p_value": 0.6318183687866044
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 57,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=chicago|lead=D+2|season=JJA",
+      "city": "chicago",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.7140943877551018,
+        "jarque_bera": 2.2150974952754923,
+        "normal_selection_crps": 1.7313847438055638,
+        "normality_p_value": 0.3303677841667898
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=chicago|lead=D+2|season=MAM",
+      "city": "chicago",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 2.480148148148148,
+        "jarque_bera": 0.36407591741187856,
+        "normal_selection_crps": 2.4135985193822087,
+        "normality_p_value": 0.8335696985881291
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 57,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=dallas|lead=D+0|season=JJA",
+      "city": "dallas",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.5348852040816328,
+        "jarque_bera": 18.673579367994126,
+        "normal_selection_crps": 1.6686471902929731,
+        "normality_p_value": 8.812188156124152e-05
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=dallas|lead=D+0|season=MAM",
+      "city": "dallas",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 2.1021794386458277,
+        "jarque_bera": 0.4065412573310531,
+        "normal_selection_crps": 2.0735081570411436,
+        "normality_p_value": 0.8160573630237962
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=dallas|lead=D+1|season=JJA",
+      "city": "dallas",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.7064413265306122,
+        "jarque_bera": 7.725029794523759,
+        "normal_selection_crps": 1.8718398474601134,
+        "normality_p_value": 0.021015082237386584
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=dallas|lead=D+1|season=MAM",
+      "city": "dallas",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.9776053215077605,
+        "jarque_bera": 101.16792223638248,
+        "normal_selection_crps": 2.078210489916729,
+        "normality_p_value": 1.0756347233649122e-22
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=dallas|lead=D+2|season=JJA",
+      "city": "dallas",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.859279336734694,
+        "jarque_bera": 2.2477073904618794,
+        "normal_selection_crps": 1.8854749312398373,
+        "normality_p_value": 0.3250248314105399
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=dallas|lead=D+2|season=MAM",
+      "city": "dallas",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 2.1047861121626736,
+        "jarque_bera": 25.509613555930862,
+        "normal_selection_crps": 2.332603902059993,
+        "normality_p_value": 2.8884030744260157e-06
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=miami|lead=D+0|season=JJA",
+      "city": "miami",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 0.9325573979591837,
+        "jarque_bera": 0.5186647504694505,
+        "normal_selection_crps": 0.8848505175598472,
+        "normality_p_value": 0.771566530813447
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=miami|lead=D+0|season=MAM",
+      "city": "miami",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 0.9453355686550214,
+        "jarque_bera": 0.9566038703413289,
+        "normal_selection_crps": 0.9462696500725662,
+        "normality_p_value": 0.6198350187334026
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=miami|lead=D+1|season=JJA",
+      "city": "miami",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 0.8302295918367345,
+        "jarque_bera": 0.15798394463571344,
+        "normal_selection_crps": 0.8250458670976185,
+        "normality_p_value": 0.9240473423736623
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=miami|lead=D+1|season=MAM",
+      "city": "miami",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 0.7765399383483857,
+        "jarque_bera": 0.1412102508808401,
+        "normal_selection_crps": 0.7675049600251964,
+        "normality_p_value": 0.9318297753610962
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=miami|lead=D+2|season=JJA",
+      "city": "miami",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 0.8014987244897959,
+        "jarque_bera": 0.31205925058915357,
+        "normal_selection_crps": 0.7847386738395591,
+        "normality_p_value": 0.8555338445534164
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=miami|lead=D+2|season=MAM",
+      "city": "miami",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.0464982964685523,
+        "jarque_bera": 0.6787620972428962,
+        "normal_selection_crps": 1.0468625061799655,
+        "normality_p_value": 0.7122110103531228
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=nyc|lead=D+0|season=JJA",
+      "city": "nyc",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.6904336734693877,
+        "jarque_bera": 0.7758691658268775,
+        "normal_selection_crps": 1.660863489343321,
+        "normality_p_value": 0.6784567244747165
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=nyc|lead=D+0|season=MAM",
+      "city": "nyc",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.565306473829201,
+        "jarque_bera": 44.57136371605568,
+        "normal_selection_crps": 1.560857297807665,
+        "normality_p_value": 2.0962899082786963e-10
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=nyc|lead=D+1|season=JJA",
+      "city": "nyc",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.8770089285714284,
+        "jarque_bera": 0.29309602466453033,
+        "normal_selection_crps": 1.8411421600791322,
+        "normality_p_value": 0.8636842638434229
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=nyc|lead=D+1|season=MAM",
+      "city": "nyc",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.7676825068870523,
+        "jarque_bera": 15.516089637787978,
+        "normal_selection_crps": 1.7749058459645346,
+        "normality_p_value": 0.0004272911961810921
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=nyc|lead=D+2|season=JJA",
+      "city": "nyc",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 2.4692602040816323,
+        "jarque_bera": 2.410699528716754,
+        "normal_selection_crps": 2.3280139931799497,
+        "normality_p_value": 0.29958719626261515
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=nyc|lead=D+2|season=MAM",
+      "city": "nyc",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 2.3310089531680442,
+        "jarque_bera": 3.611010725981391,
+        "normal_selection_crps": 2.2656359278374265,
+        "normality_p_value": 0.16439135827305834
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=seattle|lead=D+0|season=JJA",
+      "city": "seattle",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.0830994897959183,
+        "jarque_bera": 3.3687014187319426,
+        "normal_selection_crps": 1.025475972300695,
+        "normality_p_value": 0.18556487838691096
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=seattle|lead=D+0|season=MAM",
+      "city": "seattle",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.493707482993197,
+        "jarque_bera": 11.34158197989959,
+        "normal_selection_crps": 1.56834447098241,
+        "normality_p_value": 0.003445139127641636
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 53,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=seattle|lead=D+1|season=JJA",
+      "city": "seattle",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.2269451530612245,
+        "jarque_bera": 0.060514805051873635,
+        "normal_selection_crps": 1.1900213036984777,
+        "normality_p_value": 0.9701957705630794
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=seattle|lead=D+1|season=MAM",
+      "city": "seattle",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.546072974644403,
+        "jarque_bera": 33.65873616245773,
+        "normal_selection_crps": 1.6570578747255937,
+        "normality_p_value": 4.910190123383676e-08
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 53,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=seattle|lead=D+2|season=JJA",
+      "city": "seattle",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.4223214285714287,
+        "jarque_bera": 0.5001466719489678,
+        "normal_selection_crps": 1.3948986431606898,
+        "normality_p_value": 0.778743671051258
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "city_source_lead_season|open_meteo_ecmwf_ifs025|city=seattle|lead=D+2|season=MAM",
+      "city": "seattle",
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.5848381776953209,
+        "jarque_bera": 11.53839149917099,
+        "normal_selection_crps": 1.6363062850931902,
+        "normality_p_value": 0.0031222675896682515
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "city_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 53,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northeast|lead=D+0|season=JJA",
+      "city": null,
+      "climate_region": "northeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.6904336734693877,
+        "jarque_bera": 0.7758691658268775,
+        "normal_selection_crps": 1.660863489343321,
+        "normality_p_value": 0.6784567244747165
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northeast|lead=D+0|season=MAM",
+      "city": null,
+      "climate_region": "northeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.565306473829201,
+        "jarque_bera": 44.57136371605568,
+        "normal_selection_crps": 1.560857297807665,
+        "normality_p_value": 2.0962899082786963e-10
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northeast|lead=D+1|season=JJA",
+      "city": null,
+      "climate_region": "northeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.8770089285714284,
+        "jarque_bera": 0.29309602466453033,
+        "normal_selection_crps": 1.8411421600791322,
+        "normality_p_value": 0.8636842638434229
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northeast|lead=D+1|season=MAM",
+      "city": null,
+      "climate_region": "northeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.7676825068870523,
+        "jarque_bera": 15.516089637787978,
+        "normal_selection_crps": 1.7749058459645346,
+        "normality_p_value": 0.0004272911961810921
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northeast|lead=D+2|season=JJA",
+      "city": null,
+      "climate_region": "northeast",
+      "diagnostics": {
+        "empirical_selection_crps": 2.4692602040816323,
+        "jarque_bera": 2.410699528716754,
+        "normal_selection_crps": 2.3280139931799497,
+        "normality_p_value": 0.29958719626261515
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northeast|lead=D+2|season=MAM",
+      "city": null,
+      "climate_region": "northeast",
+      "diagnostics": {
+        "empirical_selection_crps": 2.3310089531680442,
+        "jarque_bera": 3.611010725981391,
+        "normal_selection_crps": 2.2656359278374265,
+        "normality_p_value": 0.16439135827305834
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 56,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northwest|lead=D+0|season=JJA",
+      "city": null,
+      "climate_region": "northwest",
+      "diagnostics": {
+        "empirical_selection_crps": 1.0830994897959183,
+        "jarque_bera": 3.3687014187319426,
+        "normal_selection_crps": 1.025475972300695,
+        "normality_p_value": 0.18556487838691096
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northwest|lead=D+0|season=MAM",
+      "city": null,
+      "climate_region": "northwest",
+      "diagnostics": {
+        "empirical_selection_crps": 1.493707482993197,
+        "jarque_bera": 11.34158197989959,
+        "normal_selection_crps": 1.56834447098241,
+        "normality_p_value": 0.003445139127641636
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 53,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northwest|lead=D+1|season=JJA",
+      "city": null,
+      "climate_region": "northwest",
+      "diagnostics": {
+        "empirical_selection_crps": 1.2269451530612245,
+        "jarque_bera": 0.060514805051873635,
+        "normal_selection_crps": 1.1900213036984777,
+        "normality_p_value": 0.9701957705630794
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northwest|lead=D+1|season=MAM",
+      "city": null,
+      "climate_region": "northwest",
+      "diagnostics": {
+        "empirical_selection_crps": 1.546072974644403,
+        "jarque_bera": 33.65873616245773,
+        "normal_selection_crps": 1.6570578747255937,
+        "normality_p_value": 4.910190123383676e-08
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 53,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northwest|lead=D+2|season=JJA",
+      "city": null,
+      "climate_region": "northwest",
+      "diagnostics": {
+        "empirical_selection_crps": 1.4223214285714287,
+        "jarque_bera": 0.5001466719489678,
+        "normal_selection_crps": 1.3948986431606898,
+        "normality_p_value": 0.778743671051258
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=northwest|lead=D+2|season=MAM",
+      "city": null,
+      "climate_region": "northwest",
+      "diagnostics": {
+        "empirical_selection_crps": 1.5848381776953209,
+        "jarque_bera": 11.53839149917099,
+        "normal_selection_crps": 1.6363062850931902,
+        "normality_p_value": 0.0031222675896682515
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 53,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=ohio_valley|lead=D+0|season=JJA",
+      "city": null,
+      "climate_region": "ohio_valley",
+      "diagnostics": {
+        "empirical_selection_crps": 1.901339285714286,
+        "jarque_bera": 6.099088561890351,
+        "normal_selection_crps": 1.890434728565678,
+        "normality_p_value": 0.0473805116738964
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=ohio_valley|lead=D+0|season=MAM",
+      "city": null,
+      "climate_region": "ohio_valley",
+      "diagnostics": {
+        "empirical_selection_crps": 2.900432098765432,
+        "jarque_bera": 2.694950671224226,
+        "normal_selection_crps": 2.804865883542428,
+        "normality_p_value": 0.25989558218524617
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 57,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=ohio_valley|lead=D+1|season=JJA",
+      "city": null,
+      "climate_region": "ohio_valley",
+      "diagnostics": {
+        "empirical_selection_crps": 1.5102997448979594,
+        "jarque_bera": 2.7540030910739004,
+        "normal_selection_crps": 1.523757119078455,
+        "normality_p_value": 0.25233403196350607
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=ohio_valley|lead=D+1|season=MAM",
+      "city": null,
+      "climate_region": "ohio_valley",
+      "diagnostics": {
+        "empirical_selection_crps": 2.58258024691358,
+        "jarque_bera": 0.9183066346009386,
+        "normal_selection_crps": 2.5708798351656648,
+        "normality_p_value": 0.6318183687866044
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 57,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=ohio_valley|lead=D+2|season=JJA",
+      "city": null,
+      "climate_region": "ohio_valley",
+      "diagnostics": {
+        "empirical_selection_crps": 1.7140943877551018,
+        "jarque_bera": 2.2150974952754923,
+        "normal_selection_crps": 1.7313847438055638,
+        "normality_p_value": 0.3303677841667898
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=ohio_valley|lead=D+2|season=MAM",
+      "city": null,
+      "climate_region": "ohio_valley",
+      "diagnostics": {
+        "empirical_selection_crps": 2.480148148148148,
+        "jarque_bera": 0.36407591741187856,
+        "normal_selection_crps": 2.4135985193822087,
+        "normality_p_value": 0.8335696985881291
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 57,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=southeast|lead=D+0|season=JJA",
+      "city": null,
+      "climate_region": "southeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.1103077168367348,
+        "jarque_bera": 0.8573306557459623,
+        "normal_selection_crps": 1.0918109301515595,
+        "normality_p_value": 0.6513778907303542
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 140,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=southeast|lead=D+0|season=MAM",
+      "city": null,
+      "climate_region": "southeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.2759440349029636,
+        "jarque_bera": 108.13255226898424,
+        "normal_selection_crps": 1.3013947540364144,
+        "normality_p_value": 3.306089587089878e-24
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 108,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=southeast|lead=D+1|season=JJA",
+      "city": null,
+      "climate_region": "southeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.291828762755102,
+        "jarque_bera": 1.6964837188965376,
+        "normal_selection_crps": 1.2858602628442737,
+        "normality_p_value": 0.4281670484425185
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 140,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=southeast|lead=D+1|season=MAM",
+      "city": null,
+      "climate_region": "southeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.08246547314578,
+        "jarque_bera": 414.8050385764228,
+        "normal_selection_crps": 1.1692979420803313,
+        "normality_p_value": 8.43782162716071e-91
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 108,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=southeast|lead=D+2|season=JJA",
+      "city": null,
+      "climate_region": "southeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.3931361607142854,
+        "jarque_bera": 3.0273269126132796,
+        "normal_selection_crps": 1.390880275767488,
+        "normality_p_value": 0.2201021645055352
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 140,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=southeast|lead=D+2|season=MAM",
+      "city": null,
+      "climate_region": "southeast",
+      "diagnostics": {
+        "empirical_selection_crps": 1.5671557093425608,
+        "jarque_bera": 71.09584860957929,
+        "normal_selection_crps": 1.607644656672147,
+        "normality_p_value": 3.645294592254486e-16
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 108,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=south|lead=D+0|season=JJA",
+      "city": null,
+      "climate_region": "south",
+      "diagnostics": {
+        "empirical_selection_crps": 1.5348852040816328,
+        "jarque_bera": 18.673579367994126,
+        "normal_selection_crps": 1.6686471902929731,
+        "normality_p_value": 8.812188156124152e-05
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=south|lead=D+0|season=MAM",
+      "city": null,
+      "climate_region": "south",
+      "diagnostics": {
+        "empirical_selection_crps": 2.1021794386458277,
+        "jarque_bera": 0.4065412573310531,
+        "normal_selection_crps": 2.0735081570411436,
+        "normality_p_value": 0.8160573630237962
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=south|lead=D+1|season=JJA",
+      "city": null,
+      "climate_region": "south",
+      "diagnostics": {
+        "empirical_selection_crps": 1.7064413265306122,
+        "jarque_bera": 7.725029794523759,
+        "normal_selection_crps": 1.8718398474601134,
+        "normality_p_value": 0.021015082237386584
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=south|lead=D+1|season=MAM",
+      "city": null,
+      "climate_region": "south",
+      "diagnostics": {
+        "empirical_selection_crps": 1.9776053215077605,
+        "jarque_bera": 101.16792223638248,
+        "normal_selection_crps": 2.078210489916729,
+        "normality_p_value": 1.0756347233649122e-22
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=south|lead=D+2|season=JJA",
+      "city": null,
+      "climate_region": "south",
+      "diagnostics": {
+        "empirical_selection_crps": 1.859279336734694,
+        "jarque_bera": 2.2477073904618794,
+        "normal_selection_crps": 1.8854749312398373,
+        "normality_p_value": 0.3250248314105399
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 70,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "region_source_lead_season|open_meteo_ecmwf_ifs025|region=south|lead=D+2|season=MAM",
+      "city": null,
+      "climate_region": "south",
+      "diagnostics": {
+        "empirical_selection_crps": 2.1047861121626736,
+        "jarque_bera": 25.509613555930862,
+        "normal_selection_crps": 2.332603902059993,
+        "normality_p_value": 2.8884030744260157e-06
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "region_source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 52,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "source_lead_season|open_meteo_ecmwf_ifs025|lead=D+0|season=JJA",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.5216438137755102,
+        "jarque_bera": 14.919620234442306,
+        "normal_selection_crps": 1.5188219478580833,
+        "normality_p_value": 0.0005757654890592123
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 420,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "source_lead_season|open_meteo_ecmwf_ifs025|lead=D+0|season=MAM",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.716552254813058,
+        "jarque_bera": 86.76139237768747,
+        "normal_selection_crps": 1.732801617857652,
+        "normality_p_value": 1.445449835615268e-19
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 326,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "source_lead_season|open_meteo_ecmwf_ifs025|lead=D+1|season=JJA",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.6566184807256237,
+        "jarque_bera": 2.0713620902090066,
+        "normal_selection_crps": 1.6551787099358142,
+        "normality_p_value": 0.35498453809951597
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 420,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "source_lead_season|open_meteo_ecmwf_ifs025|lead=D+1|season=MAM",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.577844674246652,
+        "jarque_bera": 343.3792246687732,
+        "normal_selection_crps": 1.6132392767330317,
+        "normality_p_value": 2.729912725943039e-75
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 326,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "source_lead_season|open_meteo_ecmwf_ifs025|lead=D+2|season=JJA",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.8526077097505669,
+        "jarque_bera": 1.7164692797439964,
+        "normal_selection_crps": 1.853236857157423,
+        "normality_p_value": 0.42390977556529646
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 420,
+      "season": "JJA"
+    },
+    {
+      "calibration_group_key": "source_lead_season|open_meteo_ecmwf_ifs025|lead=D+2|season=MAM",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.8527376883370539,
+        "jarque_bera": 96.37484402689374,
+        "normal_selection_crps": 1.872480530800591,
+        "normality_p_value": 1.1815946676793473e-21
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "source_lead_season",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 326,
+      "season": "MAM"
+    },
+    {
+      "calibration_group_key": "source_lead|open_meteo_ecmwf_ifs025|lead=D+0",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.7070490280570716,
+        "jarque_bera": 75.87058350189149,
+        "normal_selection_crps": 1.6977359176291749,
+        "normality_p_value": 3.348976678117297e-17
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 0,
+      "level": "source_lead",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 746,
+      "season": null
+    },
+    {
+      "calibration_group_key": "source_lead|open_meteo_ecmwf_ifs025|lead=D+1",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.9195783999587503,
+        "jarque_bera": 156.05406257166308,
+        "normal_selection_crps": 1.9093030829143856,
+        "normality_p_value": 1.2980483613748912e-34
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 1,
+      "level": "source_lead",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 746,
+      "season": null
+    },
+    {
+      "calibration_group_key": "source_lead|open_meteo_ecmwf_ifs025|lead=D+2",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 2.0395423213193973,
+        "jarque_bera": 56.10051565713891,
+        "normal_selection_crps": 2.026652133817794,
+        "normality_p_value": 6.575485267958952e-13
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": 2,
+      "level": "source_lead",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 746,
+      "season": null
+    },
+    {
+      "calibration_group_key": "source|open_meteo_ecmwf_ifs025",
+      "city": null,
+      "climate_region": null,
+      "diagnostics": {
+        "empirical_selection_crps": 1.8900602571059335,
+        "jarque_bera": 292.30607318089835,
+        "normal_selection_crps": 1.8806103682797473,
+        "normality_p_value": 3.361574149600952e-64
+      },
+      "forecast_source": "open_meteo_ecmwf_ifs025",
+      "lead_days": null,
+      "level": "source",
+      "omission_reason": null,
+      "runtime_distribution_type": "normal",
+      "runtime_eligible": true,
+      "sample_count": 2238,
+      "season": null
+    }
+  ],
+  "min_sample_count": 30,
+  "model_version": "issue12-v3-final-holdout",
+  "observation_contract_id": "polymarket:wunderground:airport-daily-high:whole-degree-f:finalized-history:v1",
+  "omitted_group_count": 0,
+  "schema_version": 2,
+  "training_end": "2026-08-10",
+  "training_start": "2026-04-05",
+  "validation": {
+    "baseline_mean_log_score": 2.8138595050543542,
+    "baseline_mean_ranked_probability_score": 1.8472967782676364,
+    "baseline_sigma_f": 2.0,
+    "forecast_bias_f": 0.031349206349206335,
+    "mae_f": 2.5734126984126986,
+    "mean_log_score": 2.445889855466837,
+    "mean_ranked_probability_score": 1.618814344806657,
+    "reliability_bins": [
+      {
+        "count": 46747,
+        "lower_probability": 0.0,
+        "mean_predicted_probability": 0.0007246323177629157,
+        "observed_frequency": 0.0011551543414550667,
+        "upper_probability": 0.1
+      },
+      {
+        "count": 333,
+        "lower_probability": 0.1,
+        "mean_predicted_probability": 0.14527940477375575,
+        "observed_frequency": 0.15615615615615616,
+        "upper_probability": 0.2
+      },
+      {
+        "count": 227,
+        "lower_probability": 0.2,
+        "mean_predicted_probability": 0.24889888691915413,
+        "observed_frequency": 0.31718061674008813,
+        "upper_probability": 0.3
+      },
+      {
+        "count": 199,
+        "lower_probability": 0.3,
+        "mean_predicted_probability": 0.3468522426583012,
+        "observed_frequency": 0.46733668341708545,
+        "upper_probability": 0.4
+      },
+      {
+        "count": 185,
+        "lower_probability": 0.4,
+        "mean_predicted_probability": 0.44880379749639066,
+        "observed_frequency": 0.6162162162162163,
+        "upper_probability": 0.5
+      },
+      {
+        "count": 190,
+        "lower_probability": 0.5,
+        "mean_predicted_probability": 0.548967728410175,
+        "observed_frequency": 0.6736842105263158,
+        "upper_probability": 0.6
+      },
+      {
+        "count": 202,
+        "lower_probability": 0.6,
+        "mean_predicted_probability": 0.652575801819204,
+        "observed_frequency": 0.7425742574257426,
+        "upper_probability": 0.7
+      },
+      {
+        "count": 235,
+        "lower_probability": 0.7,
+        "mean_predicted_probability": 0.7542419324372178,
+        "observed_frequency": 0.8170212765957446,
+        "upper_probability": 0.8
+      },
+      {
+        "count": 319,
+        "lower_probability": 0.8,
+        "mean_predicted_probability": 0.8556973430407965,
+        "observed_frequency": 0.9028213166144201,
+        "upper_probability": 0.9
+      },
+      {
+        "count": 17135,
+        "lower_probability": 0.9,
+        "mean_predicted_probability": 0.9980003932405731,
+        "observed_frequency": 0.9993580391012548,
+        "upper_probability": 1.0
+      }
+    ],
+    "rmse_f": 3.1191993783509195,
+    "sample_count": 252
+  },
+  "validation_end": "2026-08-24",
+  "validation_start": "2026-08-11"
+}

@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "decision": "accepted",
+  "model_version": "issue12-v3-final-holdout",
+  "artifact_path": "artifacts/calibration/accepted/b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550.json",
+  "artifact_sha256": "b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550",
+  "forecast_contract_id": "open-meteo:ecmwf_ifs025:daily-temperature_2m_max:bias-corrected:market-local-day:v1",
+  "observation_contract_id": "polymarket:wunderground:airport-daily-high:whole-degree-f:finalized-history:v1",
+  "acceptance_reference": "https://github.com/carabinshely/hermes_weatherbot/issues/49#issuecomment-5426735276",
+  "accepted_at_utc": "2026-08-26T14:22:27Z"
+}

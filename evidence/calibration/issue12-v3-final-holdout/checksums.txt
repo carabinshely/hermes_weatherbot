@@ -1,0 +1,8 @@
+808ba4c064c96b5df65997bb367ee3d6268ca30386148473932627d4cbb37aca  /srv/github-runners/hermes-weather-calibration/_work/_temp/issue49-v3-final-holdout/dataset.jsonl
+84b80ed1846c7929d5c6d04bade06c6346ce909d8c2b67767105223fe7ce25d7  /srv/github-runners/hermes-weather-calibration/_work/_temp/issue49-v3-final-holdout/dataset-manifest.json
+35b051fe6a027bc02c848ce27b27db872e1dbaa26f3cad1ea9af7810e4e03354  /srv/github-runners/hermes-weather-calibration/_work/_temp/issue49-v3-final-holdout/dataset-exclusions.json
+d0690aff605a8a9ca57c2dde260e64a806f60c30e5d3f5662150fae3ab72ae20  /srv/github-runners/hermes-weather-calibration/_work/_temp/issue49-v3-final-holdout/calibration-artifact.json
+d2e1887b08fd97f4239e8333c7597d8fefa802fe4fe62c4d5f782abc912af7b2  /srv/github-runners/hermes-weather-calibration/_work/_temp/issue49-v3-final-holdout/holdout-report.json
+c5808645104eb8f6ce6a272147723dd3dd27d7336c8f5726d258f2166b1ab028  /srv/github-runners/hermes-weather-calibration/_work/_temp/issue49-v3-final-holdout/review-summary.json
+7c6ae6433d90b26d7a05269738753852b8141c99e3c5bbdc0af091f00cfce3a3  /srv/github-runners/hermes-weather-calibration/_work/_temp/issue49-v3-final-holdout/cache-before.json
+faa31944d4e49775aaecbb448ac837f1e1351ee2f032d601c177aa549fec7dc3  /srv/github-runners/hermes-weather-calibration/_work/_temp/issue49-v3-final-holdout/cache-after.json
