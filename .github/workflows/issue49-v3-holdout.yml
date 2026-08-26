@@ -1,0 +1,335 @@
+name: Issue 49 one-shot V3 holdout
+
+on:
+  push:
+    branches:
+      - automation/issue49-v3-holdout-20260826
+    paths:
+      - .github/workflows/issue49-v3-holdout.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue49-v3-final-holdout-once
+  cancel-in-progress: false
+
+env:
+  SCIENTIFIC_SOURCE_SHA: fa9f389e21861d66599367160fcac58763b7dec7
+  CREATED_AT_UTC: 2026-08-26T07:14:00Z
+  HOLDOUT_START: 2026-08-11
+  HOLDOUT_END: 2026-08-24
+  TRAINING_END: 2026-08-10
+  MODEL_VERSION: issue12-v3-final-holdout
+
+jobs:
+  evaluate:
+    name: Evaluate frozen V3 final holdout exactly once
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 180
+
+    steps:
+      - name: Verify finalized-history guard before any holdout network access
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from datetime import date, datetime, timedelta, timezone
+          from zoneinfo import ZoneInfo
+
+          target = date(2026, 8, 24)
+          now_utc = datetime.now(timezone.utc)
+          seattle_today = now_utc.astimezone(ZoneInfo("America/Los_Angeles")).date()
+          latest_allowed = seattle_today - timedelta(days=2)
+          print(f"now_utc={now_utc.isoformat()}")
+          print(f"seattle_today={seattle_today.isoformat()}")
+          print(f"latest_finalized_target={latest_allowed.isoformat()}")
+          if target > latest_allowed:
+              raise SystemExit(
+                  f"finalized-history guard still closed: {target} > {latest_allowed}"
+              )
+          PY
+
+      - name: Preserve reusable cache and freeze pre-existing cache identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          persistent_cache="$(dirname "$(dirname "$GITHUB_WORKSPACE")")/issue12-calibration-cache"
+          legacy_cache="$GITHUB_WORKSPACE/data/calibration/issue12-v1/cache"
+          out="$RUNNER_TEMP/issue49-v3-final-holdout"
+          mkdir -p "$persistent_cache" "$out"
+          if [ -d "$legacy_cache" ]; then
+            cp -a -n "$legacy_cache/." "$persistent_cache/"
+          fi
+          echo "ISSUE12_CACHE_DIR=$persistent_cache" >> "$GITHUB_ENV"
+          echo "ISSUE49_OUT=$out" >> "$GITHUB_ENV"
+          ISSUE12_CACHE_DIR="$persistent_cache" ISSUE49_OUT="$out" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["ISSUE12_CACHE_DIR"])
+          out = Path(os.environ["ISSUE49_OUT"])
+          entries = {}
+          for path in sorted(root.rglob("*")):
+              if path.is_file():
+                  rel = path.relative_to(root).as_posix()
+                  entries[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+          (out / "cache-before.json").write_text(
+              json.dumps(entries, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(f"preserved_cache_file_count={len(entries)}")
+          PY
+          du -sh "$persistent_cache"
+
+      - name: Check out exact frozen scientific source
+        uses: actions/checkout@v6
+        with:
+          ref: fa9f389e21861d66599367160fcac58763b7dec7
+          clean: true
+
+      - name: Verify exact source and frozen V3 policy files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SCIENTIFIC_SOURCE_SHA"
+          {
+            echo "workflow_event_sha=$GITHUB_SHA"
+            echo "scientific_source_sha=$(git rev-parse HEAD)"
+            echo "workflow_ref=$GITHUB_REF"
+            echo "runner_name=$RUNNER_NAME"
+            echo "created_at_utc=$CREATED_AT_UTC"
+            echo "training_end=$TRAINING_END"
+            echo "holdout_start=$HOLDOUT_START"
+            echo "holdout_end=$HOLDOUT_END"
+            echo "model_version=$MODEL_VERSION"
+            sha256sum \
+              weatherbot/forecasting/calibration_policy.py \
+              weatherbot/forecasting/calibration_v3_math.py \
+              weatherbot/forecasting/calibration_v3_fit.py \
+              weatherbot/forecasting/calibration_v3_train.py
+          } | tee "$ISSUE49_OUT/provenance.txt"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .venv
+          uv sync --locked --all-groups --python "$(command -v python)"
+          PYTHONPATH=. uv run python - <<'PY'
+          import sys
+          print(sys.version)
+          if sys.version_info[:2] != (3, 12):
+              raise SystemExit(f"calibration requires Python 3.12, got {sys.version_info[:2]}")
+          PY
+
+      - name: Extend preserved frozen dataset only through 2026-08-24
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_retry \
+            --max-attempts 3 \
+            --retry-backoff-seconds 10 \
+            --request-max-attempts 4 \
+            --request-retry-backoff-seconds 3 \
+            -- \
+            --start-date 2026-04-05 \
+            --end-date 2026-08-24 \
+            --cache-dir "$ISSUE12_CACHE_DIR" \
+            --records-out "$ISSUE49_OUT/dataset.jsonl" \
+            --manifest-out "$ISSUE49_OUT/dataset-manifest.json" \
+            --exclusions-out "$ISSUE49_OUT/dataset-exclusions.json" \
+            --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
+            --unavailable-runs-evidence tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json \
+            --timeout-seconds 30 \
+            --request-delay-seconds 1.0
+
+      - name: Prove every pre-existing cache object is unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          ISSUE12_CACHE_DIR="$ISSUE12_CACHE_DIR" ISSUE49_OUT="$ISSUE49_OUT" python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path(os.environ["ISSUE12_CACHE_DIR"])
+          out = Path(os.environ["ISSUE49_OUT"])
+          before = json.loads((out / "cache-before.json").read_text(encoding="utf-8"))
+          after = {}
+          for path in sorted(root.rglob("*")):
+              if path.is_file():
+                  rel = path.relative_to(root).as_posix()
+                  after[rel] = hashlib.sha256(path.read_bytes()).hexdigest()
+          for rel, expected in before.items():
+              observed = after.get(rel)
+              if observed is None:
+                  raise SystemExit(f"pre-existing cache object disappeared: {rel}")
+              if observed != expected:
+                  raise SystemExit(f"pre-existing cache object changed: {rel}")
+          (out / "cache-after.json").write_text(
+              json.dumps(after, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print(f"cache_before_count={len(before)}")
+          print(f"cache_after_count={len(after)}")
+          print(f"cache_new_file_count={len(set(after) - set(before))}")
+          PY
+
+      - name: Prove byte-identical offline replay
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_sparse_sweep \
+            --start-date 2026-04-05 \
+            --end-date 2026-08-24 \
+            --cache-dir "$ISSUE12_CACHE_DIR" \
+            --records-out "$ISSUE49_OUT/dataset-offline.jsonl" \
+            --manifest-out "$ISSUE49_OUT/dataset-manifest-offline.json" \
+            --exclusions-out "$ISSUE49_OUT/dataset-exclusions-offline.json" \
+            --parity-evidence tests/fixtures/forecasting/ecmwf_single_run_parity_2026-04-18.json \
+            --unavailable-runs-evidence tests/fixtures/forecasting/open_meteo_unavailable_runs_2026-08-13.json \
+            --offline
+          cmp "$ISSUE49_OUT/dataset.jsonl" "$ISSUE49_OUT/dataset-offline.jsonl"
+          cmp "$ISSUE49_OUT/dataset-manifest.json" "$ISSUE49_OUT/dataset-manifest-offline.json"
+          cmp "$ISSUE49_OUT/dataset-exclusions.json" "$ISSUE49_OUT/dataset-exclusions-offline.json"
+          echo "offline_replay_byte_identical=true"
+
+      - name: Fit frozen V3 and evaluate the registered holdout exactly once
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_v3_train \
+            --records "$ISSUE49_OUT/dataset.jsonl" \
+            --manifest "$ISSUE49_OUT/dataset-manifest.json" \
+            --evaluation-kind final_holdout \
+            --model-version "$MODEL_VERSION" \
+            --created-at-utc "$CREATED_AT_UTC" \
+            --training-end "$TRAINING_END" \
+            --validation-start "$HOLDOUT_START" \
+            --validation-end "$HOLDOUT_END" \
+            --min-sample-count 30 \
+            --artifact-out "$ISSUE49_OUT/calibration-artifact.json" \
+            --report-out "$ISSUE49_OUT/holdout-report.json"
+
+      - name: Prove deterministic V3 artifact/report reproduction without re-reading providers
+        shell: bash
+        run: |
+          set -euo pipefail
+          PYTHONPATH=. uv run python -m weatherbot.forecasting.calibration_v3_train \
+            --records "$ISSUE49_OUT/dataset.jsonl" \
+            --manifest "$ISSUE49_OUT/dataset-manifest.json" \
+            --evaluation-kind final_holdout \
+            --model-version "$MODEL_VERSION" \
+            --created-at-utc "$CREATED_AT_UTC" \
+            --training-end "$TRAINING_END" \
+            --validation-start "$HOLDOUT_START" \
+            --validation-end "$HOLDOUT_END" \
+            --min-sample-count 30 \
+            --artifact-out "$ISSUE49_OUT/calibration-artifact-replay.json" \
+            --report-out "$ISSUE49_OUT/holdout-report-replay.json"
+          cmp "$ISSUE49_OUT/calibration-artifact.json" "$ISSUE49_OUT/calibration-artifact-replay.json"
+          cmp "$ISSUE49_OUT/holdout-report.json" "$ISSUE49_OUT/holdout-report-replay.json"
+          echo "v3_artifact_report_byte_identical=true"
+
+      - name: Produce compact review evidence and frozen accept/reject result
+        shell: bash
+        run: |
+          set -euo pipefail
+          ISSUE49_OUT="$ISSUE49_OUT" python - <<'PY'
+          import json
+          import os
+          from collections import Counter
+          from pathlib import Path
+
+          out = Path(os.environ["ISSUE49_OUT"])
+          report = json.loads((out / "holdout-report.json").read_text(encoding="utf-8"))
+          exclusions = json.loads((out / "dataset-exclusions.json").read_text(encoding="utf-8"))
+          validation = report["validation"]
+          baseline = report["baseline_comparison"]
+          decisions = report["group_fit_decisions"]
+          levels = Counter(item["level"] for item in decisions if item["runtime_eligible"])
+          omitted = Counter(
+              item["omission_reason"] for item in decisions if not item["runtime_eligible"]
+          )
+          accept = bool(
+              baseline["calibrated_better_mean_log_score"]
+              and baseline["calibrated_better_mean_ranked_probability_score"]
+          )
+          summary = {
+              "decision": "ACCEPT" if accept else "REJECT",
+              "decision_rule": "both proper probabilistic scores strictly better than fixed-2F baseline",
+              "model_version": report["model_version"],
+              "fitting_policy": report["fitting_policy"],
+              "evaluation_kind": report["evaluation_kind"],
+              "artifact_sha256": report["artifact_sha256"],
+              "dataset_sha256": report["dataset_sha256"],
+              "dataset_manifest_sha256": report["dataset_manifest_sha256"],
+              "training_start": report["training_start"],
+              "training_end": report["training_end"],
+              "validation_start": report["validation_start"],
+              "validation_end": report["validation_end"],
+              "min_sample_count": report["min_sample_count"],
+              "fitted_group_count": report["fitted_group_count"],
+              "omitted_group_count": report["omitted_group_count"],
+              "runtime_group_levels": dict(sorted(levels.items())),
+              "omission_reasons": dict(sorted((str(k), v) for k, v in omitted.items())),
+              "validation": validation,
+              "baseline_comparison": baseline,
+              "exclusions": exclusions,
+          }
+          (out / "review-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+          )
+          print("--- ISSUE49_REVIEW_SUMMARY_BEGIN ---")
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          print("--- ISSUE49_REVIEW_SUMMARY_END ---")
+          PY
+
+      - name: Record exact file checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum \
+            "$ISSUE49_OUT/dataset.jsonl" \
+            "$ISSUE49_OUT/dataset-manifest.json" \
+            "$ISSUE49_OUT/dataset-exclusions.json" \
+            "$ISSUE49_OUT/calibration-artifact.json" \
+            "$ISSUE49_OUT/holdout-report.json" \
+            "$ISSUE49_OUT/review-summary.json" \
+            "$ISSUE49_OUT/cache-before.json" \
+            "$ISSUE49_OUT/cache-after.json" \
+            | tee "$ISSUE49_OUT/checksums.txt"
+          wc -l "$ISSUE49_OUT/dataset.jsonl"
+          du -sh "$ISSUE12_CACHE_DIR"
+
+      - name: Upload compact one-shot holdout evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue49-v3-final-holdout
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            ${{ runner.temp }}/issue49-v3-final-holdout/cache-before.json
+            ${{ runner.temp }}/issue49-v3-final-holdout/cache-after.json
+            ${{ runner.temp }}/issue49-v3-final-holdout/provenance.txt
+            ${{ runner.temp }}/issue49-v3-final-holdout/dataset.jsonl
+            ${{ runner.temp }}/issue49-v3-final-holdout/dataset-manifest.json
+            ${{ runner.temp }}/issue49-v3-final-holdout/dataset-exclusions.json
+            ${{ runner.temp }}/issue49-v3-final-holdout/calibration-artifact.json
+            ${{ runner.temp }}/issue49-v3-final-holdout/holdout-report.json
+            ${{ runner.temp }}/issue49-v3-final-holdout/review-summary.json
+            ${{ runner.temp }}/issue49-v3-final-holdout/checksums.txt
