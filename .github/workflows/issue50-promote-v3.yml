@@ -1,0 +1,351 @@
+name: Issue 50 promote accepted V3
+
+on:
+  push:
+    branches:
+      - automation/issue49-v3-holdout-20260826
+    paths:
+      - .github/workflows/issue50-promote-v3.yml
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: issue50-promote-accepted-v3-once
+  cancel-in-progress: false
+
+env:
+  TARGET_BRANCH: agent/issue-12-calibrated-uncertainty
+  FROZEN_SCIENTIFIC_SHA: fa9f389e21861d66599367160fcac58763b7dec7
+  SOURCE_RUN_ID: "32977283488"
+  SOURCE_ARTIFACT_ID: "9610674744"
+  SOURCE_ARTIFACT_NAME: issue49-v3-final-holdout
+  SOURCE_ARTIFACT_ZIP_SHA256: 627fd0f1d420b3ace3bf43522e5e06fc870ba6d538c8948f35caa6b8cf3082ce
+  ACCEPTED_ARTIFACT_SHA256: b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550
+  ACCEPTED_ARTIFACT_FILE_SHA256: d0690aff605a8a9ca57c2dde260e64a806f60c30e5d3f5662150fae3ab72ae20
+  DATASET_SHA256: 808ba4c064c96b5df65997bb367ee3d6268ca30386148473932627d4cbb37aca
+  MANIFEST_SHA256: 7cab8e59e30a058876d33420b776b327e657c54d4bed3ec1437f03488d1a6c18
+  MANIFEST_FILE_SHA256: 84b80ed1846c7929d5c6d04bade06c6346ce909d8c2b67767105223fe7ce25d7
+  EXCLUSIONS_FILE_SHA256: 35b051fe6a027bc02c848ce27b27db872e1dbaa26f3cad1ea9af7810e4e03354
+  REPORT_FILE_SHA256: d2e1887b08fd97f4239e8333c7597d8fefa802fe4fe62c4d5f782abc912af7b2
+  REVIEW_FILE_SHA256: c5808645104eb8f6ce6a272147723dd3dd27d7336c8f5726d258f2166b1ab028
+  ACCEPTANCE_REFERENCE: https://github.com/carabinshely/hermes_weatherbot/issues/49#issuecomment-5426735276
+  ACCEPTED_AT_UTC: "2026-08-26T14:22:27Z"
+  MODEL_VERSION: issue12-v3-final-holdout
+  FORECAST_CONTRACT_ID: open-meteo:ecmwf_ifs025:daily-temperature_2m_max:bias-corrected:market-local-day:v1
+  OBSERVATION_CONTRACT_ID: polymarket:wunderground:airport-daily-high:whole-degree-f:finalized-history:v1
+
+jobs:
+  promote:
+    name: Pin reviewed V3 artifact and approval
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out exact pre-activation PR head
+        uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+          fetch-depth: 0
+          clean: true
+
+      - name: Prove PR head has not drifted before promotion
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FROZEN_SCIENTIFIC_SHA"
+          test "$(git status --porcelain)" = ""
+          echo "pre_activation_head=$(git rev-parse HEAD)"
+
+      - name: Download the already-reviewed one-shot evidence only
+        uses: actions/download-artifact@v5
+        with:
+          name: issue49-v3-final-holdout
+          path: ${{ runner.temp }}/issue49-v3-final-holdout
+          github-token: ${{ github.token }}
+          run-id: 32977283488
+
+      - name: Verify frozen evidence before writing repository files
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/issue49-v3-final-holdout"
+          test -f "$src/calibration-artifact.json"
+          test -f "$src/dataset-manifest.json"
+          test -f "$src/dataset-exclusions.json"
+          test -f "$src/holdout-report.json"
+          test -f "$src/review-summary.json"
+          test -f "$src/checksums.txt"
+          test -f "$src/provenance.txt"
+          test "$(sha256sum "$src/calibration-artifact.json" | cut -d' ' -f1)" = "$ACCEPTED_ARTIFACT_FILE_SHA256"
+          test "$(sha256sum "$src/dataset-manifest.json" | cut -d' ' -f1)" = "$MANIFEST_FILE_SHA256"
+          test "$(sha256sum "$src/dataset-exclusions.json" | cut -d' ' -f1)" = "$EXCLUSIONS_FILE_SHA256"
+          test "$(sha256sum "$src/holdout-report.json" | cut -d' ' -f1)" = "$REPORT_FILE_SHA256"
+          test "$(sha256sum "$src/review-summary.json" | cut -d' ' -f1)" = "$REVIEW_FILE_SHA256"
+          SRC="$src" python3 - <<'PY'
+          import json
+          import os
+          from datetime import date
+          from pathlib import Path
+
+          src = Path(os.environ["SRC"])
+          artifact_wrapper = json.loads((src / "calibration-artifact.json").read_text(encoding="utf-8"))
+          artifact = artifact_wrapper["artifact"]
+          report = json.loads((src / "holdout-report.json").read_text(encoding="utf-8"))
+          review = json.loads((src / "review-summary.json").read_text(encoding="utf-8"))
+          manifest = json.loads((src / "dataset-manifest.json").read_text(encoding="utf-8"))
+          exclusions = json.loads((src / "dataset-exclusions.json").read_text(encoding="utf-8"))
+
+          expected_artifact = os.environ["ACCEPTED_ARTIFACT_SHA256"]
+          expected_dataset = os.environ["DATASET_SHA256"]
+          expected_manifest = os.environ["MANIFEST_SHA256"]
+          expected_model = os.environ["MODEL_VERSION"]
+          expected_forecast_contract = os.environ["FORECAST_CONTRACT_ID"]
+          expected_observation_contract = os.environ["OBSERVATION_CONTRACT_ID"]
+
+          assert artifact_wrapper["artifact_sha256"] == expected_artifact
+          assert artifact["model_version"] == expected_model
+          assert artifact["forecast_contract_id"] == expected_forecast_contract
+          assert artifact["observation_contract_id"] == expected_observation_contract
+          assert artifact["dataset_sha256"] == expected_dataset
+          assert artifact["training_end"] == "2026-08-10"
+          assert artifact["validation_start"] == "2026-08-11"
+          assert artifact["validation_end"] == "2026-08-24"
+
+          assert manifest["dataset_sha256"] == expected_dataset
+          assert manifest["manifest_sha256"] == expected_manifest
+          assert manifest["end_date"] == "2026-08-24"
+          assert report["artifact_sha256"] == expected_artifact
+          assert report["dataset_sha256"] == expected_dataset
+          assert report["dataset_manifest_sha256"] == expected_manifest
+          assert review["decision"] == "ACCEPT"
+          assert review["artifact_sha256"] == expected_artifact
+          assert review["validation"]["sample_count"] == 252
+          assert review["baseline_comparison"]["calibrated_better_mean_log_score"] is True
+          assert review["baseline_comparison"]["calibrated_better_mean_ranked_probability_score"] is True
+
+          start = date(2026, 8, 11)
+          end = date(2026, 8, 24)
+          holdout_exclusions = [
+              row for row in exclusions["exclusions"]
+              if start <= date.fromisoformat(row["market_date"]) <= end
+          ]
+          assert holdout_exclusions == []
+          print("reviewed_evidence_identity=true")
+          print("holdout_sample_count=252")
+          print("holdout_exclusion_count=0")
+          PY
+
+      - name: Promote only the reviewed compact bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/issue49-v3-final-holdout"
+          accepted_dir="artifacts/calibration/accepted"
+          evidence_dir="evidence/calibration/issue12-v3-final-holdout"
+          mkdir -p "$accepted_dir" "$evidence_dir" config
+
+          cp "$src/calibration-artifact.json" "$accepted_dir/$ACCEPTED_ARTIFACT_SHA256.json"
+          cp "$src/dataset-manifest.json" "$evidence_dir/dataset-manifest.json"
+          cp "$src/dataset-exclusions.json" "$evidence_dir/dataset-exclusions.json"
+          cp "$src/holdout-report.json" "$evidence_dir/holdout-report.json"
+          cp "$src/review-summary.json" "$evidence_dir/review-summary.json"
+          cp "$src/checksums.txt" "$evidence_dir/checksums.txt"
+          cp "$src/provenance.txt" "$evidence_dir/provenance.txt"
+
+          cat > config/calibration-approval.json <<EOF
+          {
+            "schema_version": 1,
+            "decision": "accepted",
+            "model_version": "$MODEL_VERSION",
+            "artifact_path": "artifacts/calibration/accepted/$ACCEPTED_ARTIFACT_SHA256.json",
+            "artifact_sha256": "$ACCEPTED_ARTIFACT_SHA256",
+            "forecast_contract_id": "$FORECAST_CONTRACT_ID",
+            "observation_contract_id": "$OBSERVATION_CONTRACT_ID",
+            "acceptance_reference": "$ACCEPTANCE_REFERENCE",
+            "accepted_at_utc": "$ACCEPTED_AT_UTC"
+          }
+          EOF
+
+          cat > "$evidence_dir/README.md" <<EOF
+          # Issue #49 accepted V3 holdout evidence
+
+          This directory is the compact reviewed evidence promoted by Issue #50 from the
+          one-shot Issue #49 holdout run. It intentionally excludes the raw HTTP cache,
+          cache snapshots, and the multi-megabyte normalized dataset.
+
+          - acceptance decision: $ACCEPTANCE_REFERENCE
+          - source workflow run: https://github.com/carabinshely/hermes_weatherbot/actions/runs/$SOURCE_RUN_ID
+          - source Actions artifact ID: $SOURCE_ARTIFACT_ID
+          - source Actions artifact ZIP SHA-256: $SOURCE_ARTIFACT_ZIP_SHA256
+          - frozen scientific source: $FROZEN_SCIENTIFIC_SHA
+          - canonical accepted artifact identity: $ACCEPTED_ARTIFACT_SHA256
+          - accepted artifact JSON byte SHA-256: $ACCEPTED_ARTIFACT_FILE_SHA256
+          - dataset identity: $DATASET_SHA256
+          - manifest identity: $MANIFEST_SHA256
+
+          The canonical calibration artifact identity is the identity verified by the strict
+          runtime loader and therefore names the accepted artifact file. The JSON file byte
+          SHA-256 is recorded separately as transport/file evidence; the two hashes are not
+          interchangeable.
+          EOF
+
+          cat > tests/forecasting/test_accepted_calibration_runtime.py <<'PY'
+          from __future__ import annotations
+
+          from dataclasses import replace
+          from datetime import UTC, date, datetime, timedelta
+          from pathlib import Path
+
+          import pytest
+
+          from tests.quoting.helpers import weather_snapshot
+          from weatherbot.forecasting.contracts import expected_calibration_model_run
+          from weatherbot.forecasting.runtime import (
+              CalibrationCompatibilityError,
+              load_calibrated_probability_runtime,
+          )
+          from weatherbot.markets import TemperatureBucket, TemperatureUnit
+
+          _ROOT = Path(__file__).resolve().parents[2]
+          _ARTIFACT_SHA256 = "b5c8ad0d90d248459c1253dfa12f5fdb5bfd7e85b9d36ec415eb2a1e63596550"
+
+
+          def _runtime():
+              return load_calibrated_probability_runtime(repository_root=_ROOT)
+
+
+          def _exact_weather():
+              return weather_snapshot(
+                  issued_at=datetime(2026, 8, 6, 4, 16, tzinfo=UTC),
+                  model_run_initialized_at_utc=expected_calibration_model_run(
+                      target_date=date(2026, 8, 6), lead_days=0
+                  ),
+              )
+
+
+          def test_repository_accepted_v3_loads_and_preserves_exact_run_provenance() -> None:
+              runtime = _runtime()
+              result = runtime.probability(
+                  city="chicago",
+                  climate_region="ohio_valley",
+                  lead_days=0,
+                  weather=_exact_weather(),
+                  bucket=TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT),
+              )
+
+              assert result.model_version == "issue12-v3-final-holdout"
+              assert result.artifact_sha256 == _ARTIFACT_SHA256
+              assert result.training_cutoff == date(2026, 8, 10)
+              assert result.fallback_level == "city_source_lead_season"
+              assert result.calibration_sample_count == 70
+              assert result.distribution_type == "normal"
+              assert 0 < result.model_probability < 1
+
+
+          def test_repository_accepted_v3_rejects_wrong_model_run_vintage() -> None:
+              runtime = _runtime()
+              weather = _exact_weather()
+              wrong_run = replace(
+                  weather,
+                  forecast=replace(
+                      weather.forecast,
+                      model_run_initialized_at_utc=(
+                          weather.forecast.model_run_initialized_at_utc + timedelta(hours=6)
+                      ),
+                  ),
+              )
+
+              with pytest.raises(CalibrationCompatibilityError, match="18Z vintage"):
+                  runtime.probability(
+                      city="chicago",
+                      climate_region="ohio_valley",
+                      lead_days=0,
+                      weather=wrong_run,
+                      bucket=TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT),
+                  )
+
+
+          def test_repository_accepted_v3_rejects_missing_model_run_provenance() -> None:
+              runtime = _runtime()
+              weather = _exact_weather()
+              missing_run = replace(
+                  weather,
+                  forecast=replace(weather.forecast, model_run_initialized_at_utc=None),
+              )
+
+              with pytest.raises(CalibrationCompatibilityError, match="cannot be proven"):
+                  runtime.probability(
+                      city="chicago",
+                      climate_region="ohio_valley",
+                      lead_days=0,
+                      weather=missing_run,
+                      bucket=TemperatureBucket.bounded(86, 86, TemperatureUnit.FAHRENHEIT),
+                  )
+          PY
+
+      - name: Verify promoted runtime approval and repository scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          root = Path.cwd()
+          approval = json.loads((root / "config/calibration-approval.json").read_text(encoding="utf-8"))
+          expected = os.environ["ACCEPTED_ARTIFACT_SHA256"]
+          assert approval == {
+              "schema_version": 1,
+              "decision": "accepted",
+              "model_version": os.environ["MODEL_VERSION"],
+              "artifact_path": f"artifacts/calibration/accepted/{expected}.json",
+              "artifact_sha256": expected,
+              "forecast_contract_id": os.environ["FORECAST_CONTRACT_ID"],
+              "observation_contract_id": os.environ["OBSERVATION_CONTRACT_ID"],
+              "acceptance_reference": os.environ["ACCEPTANCE_REFERENCE"],
+              "accepted_at_utc": os.environ["ACCEPTED_AT_UTC"],
+          }
+          PY
+
+          test "$(sha256sum "artifacts/calibration/accepted/$ACCEPTED_ARTIFACT_SHA256.json" | cut -d' ' -f1)" = "$ACCEPTED_ARTIFACT_FILE_SHA256"
+          git diff --check
+
+          python3 - <<'PY'
+          import subprocess
+
+          allowed_exact = {
+              "config/calibration-approval.json",
+              "tests/forecasting/test_accepted_calibration_runtime.py",
+          }
+          allowed_prefixes = (
+              "artifacts/calibration/accepted/",
+              "evidence/calibration/issue12-v3-final-holdout/",
+          )
+          changed = []
+          for line in subprocess.check_output(["git", "status", "--porcelain"], text=True).splitlines():
+              path = line[3:]
+              changed.append(path)
+              assert path in allowed_exact or path.startswith(allowed_prefixes), path
+          assert changed
+          print("promotion_scope_files=")
+          for path in sorted(changed):
+              print(path)
+          PY
+
+      - name: Commit the accepted artifact, approval, evidence and exact-run test
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            "artifacts/calibration/accepted/$ACCEPTED_ARTIFACT_SHA256.json" \
+            config/calibration-approval.json \
+            evidence/calibration/issue12-v3-final-holdout \
+            tests/forecasting/test_accepted_calibration_runtime.py
+          git commit -m "feat(calibration): pin accepted V3 artifact (#50)"
+          git push origin "HEAD:$TARGET_BRANCH"
+          echo "promoted_head=$(git rev-parse HEAD)"
