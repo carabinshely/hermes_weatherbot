@@ -162,6 +162,24 @@ def test_bare_202_and_malformed_success_remain_retryable(tmp_path: Path) -> None
             assert outbox.summary().acknowledged == 0
 
 
+def test_retryable_http_status_never_acks_bound_acceptance(tmp_path: Path) -> None:
+    for index, status in enumerate((202, 429, 500, 503)):
+        case_path = tmp_path / str(index)
+        config, frozen = _enqueue(case_path)
+        body = _result_body(frozen, "accepted", receipt_id=f"receipt-{status}")
+        with FakeSession(status=status, body=body) as session:
+            assert deliver_once(
+                config=config,
+                session=session,
+                now=frozen.generated_at,
+                completion_now=frozen.generated_at + timedelta(seconds=1),
+            )
+        with PipOutbox(config.outbox_path) as outbox:
+            assert outbox.summary().retry_wait == 1
+            assert outbox.summary().acknowledged == 0
+            assert outbox.summary().dead_letter == 0
+
+
 def test_bound_rejection_dead_letters(tmp_path: Path) -> None:
     config, frozen = _enqueue(tmp_path)
     body = _result_body(
