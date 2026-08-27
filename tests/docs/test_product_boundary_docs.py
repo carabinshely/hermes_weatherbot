@@ -53,7 +53,10 @@ def test_readme_states_current_public_paper_and_pip_boundaries() -> None:
         "python -m weatherbot.paper evaluate",
         "hypothetical development evidence",
         "pip independently preserves, resolves, and scores",
-        "accepted v3 artifact          = absent",
+        "accepted v3 artifact          = pinned / approved",
+        "exact-run activation evidence = required",
+        "accepted-model signals        = provenance gated",
+        "missing or mismatched provenance fails",
     )
 
     missing = [phrase for phrase in required if phrase not in text]
