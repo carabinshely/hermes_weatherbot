@@ -276,6 +276,15 @@ def _finish_time(value: datetime | None) -> datetime:
     return (value or datetime.now(UTC)).astimezone(UTC)
 
 
+def _terminal_status_matches_result(status: int, result: DeliveryResult) -> bool:
+    """Return whether HTTP status and body jointly authorize a terminal transition."""
+    if result.disposition in {"accepted", "already_accepted"}:
+        return 200 <= status < 300 and status != 202
+    if result.disposition == "rejected":
+        return 400 <= status < 500 and status != 429
+    return False
+
+
 def _deliver_claimed(
     *,
     outbox: PipOutbox,
@@ -327,6 +336,22 @@ def _deliver_claimed(
         response.close()
 
     finished = _finish_time(completion_now)
+    if result.disposition == "retry" or not _terminal_status_matches_result(status, result):
+        retry_result = result if result.disposition == "retry" else None
+        delay = _retry_delay(item, retry_result)
+        result_class = (
+            result.result_class
+            if result.disposition == "retry"
+            else f"http:{status}:{result.result_class}"
+        )
+        outbox.retry(
+            item,
+            next_attempt_at=finished + timedelta(seconds=delay),
+            result_class=result_class,
+            http_status=status,
+            now=finished,
+        )
+        return
     if result.disposition in {"accepted", "already_accepted"}:
         assert result.receipt_id is not None
         outbox.acknowledge(
@@ -346,14 +371,7 @@ def _deliver_claimed(
             now=finished,
         )
         return
-    delay = _retry_delay(item, result)
-    outbox.retry(
-        item,
-        next_attempt_at=finished + timedelta(seconds=delay),
-        result_class=result.result_class,
-        http_status=status,
-        now=finished,
-    )
+    raise AssertionError(f"unhandled PIP delivery disposition: {result.disposition}")
 
 
 def deliver_once(
