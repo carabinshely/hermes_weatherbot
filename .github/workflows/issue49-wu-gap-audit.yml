@@ -1,0 +1,209 @@
+name: Issue 49 frozen Weather Underground gap audit
+
+on:
+  push:
+    branches:
+      - automation/issue49-v3-holdout-20260826
+    paths:
+      - .github/workflows/issue49-wu-gap-audit.yml
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: issue49-frozen-wu-gap-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: Audit frozen holdout observation cadence without provider access
+    runs-on: hermes-weather-calibration
+    timeout-minutes: 30
+
+    steps:
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download completed Issue 49 evidence only
+        uses: actions/download-artifact@v4
+        with:
+          name: issue49-v3-final-holdout
+          path: ${{ runner.temp }}/issue49-frozen-evidence
+          github-token: ${{ github.token }}
+          run-id: 32977283488
+
+      - name: Check out exact frozen scientific source
+        uses: actions/checkout@v6
+        with:
+          ref: fa9f389e21861d66599367160fcac58763b7dec7
+          clean: true
+
+      - name: Audit SHA-matched frozen holdout HTML cadence
+        shell: bash
+        run: |
+          set -euo pipefail
+          persistent_cache="$(dirname "$(dirname "$GITHUB_WORKSPACE")")/issue12-calibration-cache"
+          evidence="$RUNNER_TEMP/issue49-frozen-evidence"
+          out="$RUNNER_TEMP/issue49-wu-gap-audit"
+          mkdir -p "$out"
+          test -d "$persistent_cache"
+          test -f "$evidence/cache-after.json"
+          CACHE_DIR="$persistent_cache" EVIDENCE_DIR="$evidence" OUT_DIR="$out" python - <<'PY'
+          from __future__ import annotations
+
+          import hashlib
+          import json
+          import os
+          from collections import Counter
+          from datetime import UTC, date, datetime, timedelta
+          from html.parser import HTMLParser
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          HOLDOUT_START = date(2026, 8, 11)
+          HOLDOUT_END = date(2026, 8, 24)
+          CITY_TZ = {
+              "atlanta": "America/New_York",
+              "chicago": "America/Chicago",
+              "dallas": "America/Chicago",
+              "miami": "America/New_York",
+              "nyc": "America/New_York",
+              "seattle": "America/Los_Angeles",
+          }
+
+          class Parser(HTMLParser):
+              def __init__(self) -> None:
+                  super().__init__(convert_charrefs=True)
+                  self.capture = False
+                  self.parts: list[str] = []
+                  self.scripts: list[str] = []
+
+              def handle_starttag(self, tag, attrs):
+                  values = {k.lower(): (v or "") for k, v in attrs}
+                  if tag.lower() == "script" and values.get("type", "").lower() == "application/json":
+                      self.capture = True
+                      self.parts = []
+
+              def handle_data(self, data):
+                  if self.capture:
+                      self.parts.append(data)
+
+              def handle_endtag(self, tag):
+                  if tag.lower() == "script" and self.capture:
+                      self.scripts.append("".join(self.parts))
+                      self.capture = False
+                      self.parts = []
+
+          def rows_from_html(raw: bytes):
+              parser = Parser()
+              parser.feed(raw.decode("utf-8"))
+              parser.close()
+              candidates = []
+              for script in parser.scripts:
+                  if not script.strip():
+                      continue
+                  try:
+                      value = json.loads(script)
+                  except json.JSONDecodeError:
+                      continue
+                  if not isinstance(value, list) or not value:
+                      continue
+                  if all(isinstance(item, dict) and "ts" in item and "temp" in item for item in value):
+                      candidates.append(value)
+              if len(candidates) != 1:
+                  raise RuntimeError(f"expected one observation series, found {len(candidates)}")
+              return candidates[0]
+
+          cache = Path(os.environ["CACHE_DIR"])
+          evidence = Path(os.environ["EVIDENCE_DIR"])
+          out = Path(os.environ["OUT_DIR"])
+          expected = json.loads((evidence / "cache-after.json").read_text(encoding="utf-8"))
+
+          records = []
+          threshold_counts = Counter()
+          day = HOLDOUT_START
+          while day <= HOLDOUT_END:
+              for city, tz_name in CITY_TZ.items():
+                  rel = f"observations/{city}/{day.isoformat()}.html"
+                  path = cache / rel
+                  if not path.is_file():
+                      raise SystemExit(f"missing frozen cache object: {rel}")
+                  raw = path.read_bytes()
+                  observed_hash = hashlib.sha256(raw).hexdigest()
+                  expected_hash = expected.get(rel)
+                  if expected_hash is None:
+                      raise SystemExit(f"Issue 49 cache-after snapshot lacks {rel}")
+                  if observed_hash != expected_hash:
+                      raise SystemExit(f"frozen cache hash mismatch: {rel}")
+
+                  rows = rows_from_html(raw)
+                  tz = ZoneInfo(tz_name)
+                  timestamps = []
+                  for row in rows:
+                      if row.get("temp") is None:
+                          continue
+                      ts = row.get("ts")
+                      if isinstance(ts, bool) or not isinstance(ts, int):
+                          raise SystemExit(f"invalid timestamp in {rel}")
+                      instant = datetime.fromtimestamp(ts / 1000, tz=UTC)
+                      if instant.astimezone(tz).date() != day:
+                          raise SystemExit(f"off-day observation in {rel}: {instant.isoformat()}")
+                      timestamps.append(instant)
+                  timestamps = sorted(set(timestamps))
+                  if len(timestamps) < 2:
+                      raise SystemExit(f"too few timestamped observations in {rel}")
+                  gaps = [
+                      (right - left).total_seconds() / 60
+                      for left, right in zip(timestamps, timestamps[1:])
+                  ]
+                  max_gap = max(gaps)
+                  for minutes in (90, 120, 180, 240):
+                      if max_gap > minutes:
+                          threshold_counts[f"days_max_gap_gt_{minutes}m"] += 1
+                  records.append(
+                      {
+                          "city": city,
+                          "market_date": day.isoformat(),
+                          "raw_sha256": observed_hash,
+                          "observation_count": len(timestamps),
+                          "first_local": timestamps[0].astimezone(tz).isoformat(),
+                          "last_local": timestamps[-1].astimezone(tz).isoformat(),
+                          "max_internal_gap_minutes": max_gap,
+                          "gap_minutes": gaps,
+                      }
+                  )
+              day += timedelta(days=1)
+
+          summary = {
+              "audit_kind": "post-acceptance-frozen-source-integrity-only",
+              "provider_access": False,
+              "source_run_id": 32977283488,
+              "frozen_scientific_sha": "fa9f389e21861d66599367160fcac58763b7dec7",
+              "holdout_start": HOLDOUT_START.isoformat(),
+              "holdout_end": HOLDOUT_END.isoformat(),
+              "holdout_city_days": len(records),
+              "all_raw_hashes_match_issue49_cache_after": True,
+              "max_gap_minutes_overall": max(item["max_internal_gap_minutes"] for item in records),
+              "min_observation_count": min(item["observation_count"] for item in records),
+              "max_observation_count": max(item["observation_count"] for item in records),
+              **dict(sorted(threshold_counts.items())),
+          }
+          (out / "wu-gap-audit.json").write_text(
+              json.dumps({"summary": summary, "records": records}, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(summary, indent=2, sort_keys=True))
+          worst = sorted(records, key=lambda item: item["max_internal_gap_minutes"], reverse=True)[:10]
+          print("worst_city_days=")
+          print(json.dumps(worst, indent=2, sort_keys=True))
+          PY
+
+      - name: Upload frozen source-integrity audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: issue49-wu-gap-audit
+          retention-days: 30
+          path: ${{ runner.temp }}/issue49-wu-gap-audit/wu-gap-audit.json
