@@ -66,21 +66,25 @@ published to PIP.
 
 ## Current calibration activation state
 
-The V3 calibration policy is frozen and implemented, but an accepted V3 artifact does not
-exist yet. Accepted-model public signal generation therefore remains fail-closed.
+The frozen V3 calibration completed its pre-registered final holdout and was accepted under
+the frozen decision rule. The reviewed content-addressed artifact and separate approval are
+pinned. Accepted-model probability generation is available only when the input proves the
+exact compatible ECMWF 18Z model-run provenance; missing or mismatched provenance fails
+closed.
 
 ```text
-V3 policy                     = frozen / implemented
+V3 policy                     = frozen / accepted
 calibrated probability core   = implemented
-accepted V3 artifact          = absent
-exact-run activation evidence = pending
-accepted-model signals        = fail closed
+accepted V3 artifact          = pinned / approved
+exact-run activation evidence = required
+accepted-model signals        = provenance gated
 ```
 
-Issue #49 owns the pre-registered untouched holdout evaluation and must not execute before
-2026-08-26. Issue #50 owns the explicit accept/reject decision and, only if accepted,
-artifact/approval/evidence pinning. The existence of the producer or PIP publication
-runtime must not be interpreted as calibration acceptance.
+Issue #49 is the historical one-shot acceptance record for the `2026-08-11..2026-08-24`
+holdout and that interval must not be rerun as though untouched. Issue #50 owns accepted-
+artifact promotion and calibrated signal activation. Artifact acceptance does not bypass
+exact-run provenance, producer policy, publication boundaries, or the non-execution product
+boundary.
 
 ## Install
 
