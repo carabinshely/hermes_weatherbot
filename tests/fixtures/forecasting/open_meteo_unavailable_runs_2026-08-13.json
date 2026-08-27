@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "provider": "Open-Meteo Single Runs API",
+  "model": "ecmwf_ifs025",
+  "entries": [
+    {
+      "run_initialized_at_utc": "2026-06-10T18:00:00+00:00",
+      "http_status": 400,
+      "observed_at_utc": "2026-08-13T12:28:49+00:00",
+      "observed_in_workflow_run": 31700087146,
+      "observed_request_url": "https://single-runs-api.open-meteo.com/v1/forecast?latitude=40.7772&longitude=-73.8726&hourly=temperature_2m&temperature_unit=fahrenheit&timezone=America%2FNew_York&models=ecmwf_ifs025&bias_correction=true&run=2026-06-10T18%3A00",
+      "response_body": "{\"reason\":\"The requested model run is not available. Model: ecmwf_ifs025, run: 2026-06-10T18:00Z\",\"error\":true}",
+      "response_body_sha256": "51951f13cbca15a5ae3c6163ac7c4cd046f92e5b4781098cea74d29dd3c2e8d6",
+      "reason": "The requested model run is not available. Model: ecmwf_ifs025, run: 2026-06-10T18:00Z"
+    }
+  ]
+}

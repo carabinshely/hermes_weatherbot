@@ -1,0 +1,13 @@
+workflow_event_sha=7c9dd134efc5f62161d12a4ca6329c48d56f1f72
+scientific_source_sha=fa9f389e21861d66599367160fcac58763b7dec7
+workflow_ref=refs/heads/automation/issue49-v3-holdout-20260826
+runner_name=hermes-repo-ephemeral-98204991693
+created_at_utc=2026-08-26T07:14:00Z
+training_end=2026-08-10
+holdout_start=2026-08-11
+holdout_end=2026-08-24
+model_version=issue12-v3-final-holdout
+226e7355164125f12c971636a630a85fabfabdab34b52f68f82b229204d82ec1  weatherbot/forecasting/calibration_policy.py
+d60c521f95d7be5ed7cf1c7a855f1d5e900bd56a6c80a36eeaa81375f82f6d08  weatherbot/forecasting/calibration_v3_math.py
+9ef1d433d713bd1371e338209cf2b319b32dd749d9f23f07a12a772fa2c339e9  weatherbot/forecasting/calibration_v3_fit.py
+37c69f6bb97c125dd08e9e2001af624b4cef7b1d79865133b77572baf7799be6  weatherbot/forecasting/calibration_v3_train.py

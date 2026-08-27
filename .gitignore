@@ -76,7 +76,7 @@ db.sqlite3-journal
 instance/
 .webassets-cache
 
-# Scrapy stuff:
+# Scrapy stuff
 .scrapy
 
 # Sphinx documentation
@@ -132,7 +132,7 @@ ipython_config.py
 #   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
 #pixi.lock
 #   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
+#   in the .venv directory. It is recommended not to include this directory from version control.
 .pixi
 
 # PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
@@ -216,3 +216,26 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# -----------------------------------------------------------------------------
+# Hermes repository-owned artifact boundaries (#24)
+# -----------------------------------------------------------------------------
+# Local working/runtime data. These namespaces may contain producer signals,
+# calibration caches/datasets, legacy market snapshots, PAPER ledgers/results,
+# PIP outbox/dead-letter state, dashboards, logs, and ad-hoc simulations.
+/data/
+/state/
+/pip_tmp/
+
+# Machine metadata
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# Legacy root-level generated outputs retained only for compatibility code paths
+/simulation*.json
+/sim_dashboard*.html
+
+# Intentionally committed deterministic inputs/evidence live outside ignored namespaces:
+#   tests/fixtures/**
+#   evidence/**

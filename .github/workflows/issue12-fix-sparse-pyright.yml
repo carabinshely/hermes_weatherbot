@@ -1,0 +1,74 @@
+name: Fix issue 12 sparse forecast day mapping
+
+on:
+  push:
+    branches:
+      - agent/issue-12-calibrated-uncertainty
+    paths:
+      - .github/workflows/issue12-fix-sparse-pyright.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: agent/issue-12-calibrated-uncertainty
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uv sync --locked --all-groups
+      - name: Correct previous-day 18Z expectations
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = [
+              Path("tests/forecasting/test_calibration_sparse_forecast_gap.py"),
+              Path("tests/forecasting/test_calibration_sparse_public_api.py"),
+          ]
+          replacements = (
+              ("date(2026, 6, 10), registry)) == {0}", "date(2026, 6, 11), registry)) == {0}"),
+              ("date(2026, 6, 11), registry)) == {1}", "date(2026, 6, 12), registry)) == {1}"),
+              ("date(2026, 6, 12), registry)) == {2}", "date(2026, 6, 13), registry)) == {2}"),
+              ("date(2026, 6, 13), registry) == {}", "date(2026, 6, 14), registry) == {}"),
+              ("market_date=date(2026, 6, 10),", "market_date=date(2026, 6, 11),"),
+          )
+          changed = 0
+          for path in files:
+              text = path.read_text(encoding="utf-8")
+              for old, new in replacements:
+                  count = text.count(old)
+                  text = text.replace(old, new)
+                  changed += count
+              path.write_text(text, encoding="utf-8")
+          if changed != 5:
+              raise SystemExit(f"expected five date corrections, got {changed}")
+          PY
+      - name: Validate corrected tests
+        run: |
+          uv run ruff format --check \
+            tests/forecasting/test_calibration_sparse_forecast_gap.py \
+            tests/forecasting/test_calibration_sparse_public_api.py
+          uv run pyright \
+            tests/forecasting/test_calibration_sparse_forecast_gap.py \
+            tests/forecasting/test_calibration_sparse_public_api.py
+          PYTHONPATH=. uv run pytest -q \
+            tests/forecasting/test_calibration_sparse_forecast_gap.py \
+            tests/forecasting/test_calibration_sparse_public_api.py
+      - name: Commit corrected tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            tests/forecasting/test_calibration_sparse_forecast_gap.py \
+            tests/forecasting/test_calibration_sparse_public_api.py
+          git diff --cached --quiet && { echo "No changes"; exit 0; }
+          git commit -m "Fix sparse calibration forecast-day mapping"
+          git push origin HEAD:agent/issue-12-calibrated-uncertainty

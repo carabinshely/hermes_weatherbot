@@ -3,16 +3,35 @@ from __future__ import annotations
 from pathlib import Path
 
 
-def test_bot_monitor_invokes_real_resolution_cycle() -> None:
+def test_public_bot_does_not_mix_resolution_ledger_commands_into_signal_cli() -> None:
     source = Path("bot_v3.py").read_text(encoding="utf-8")
-    assert "resolve_ledger_positions" in source
-    assert "run_resolution_monitor_cycle" in source
-    assert 'choices=("scan", "run", "status", "resolve", "cancel", "paper-reset")' in source
-    assert 'elif args.command == "resolve":' in source
+    cli_source = Path("weatherbot/producer/cli.py").read_text(encoding="utf-8")
+
+    assert "run_resolution_monitor_cycle" not in source
+    assert "resolve_ledger_positions" not in source
+    assert 'choices=("scan", "run", "status")' in cli_source
 
 
-def test_resolution_command_does_not_call_live_order_functions() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
+def test_internal_paper_uses_frozen_settlement_not_resolution_monitor() -> None:
+    cli_source = Path("weatherbot/paper/cli.py").read_text(encoding="utf-8")
+    experiment_source = Path("weatherbot/paper/experiment.py").read_text(encoding="utf-8")
+
+    assert '"evaluate"' in cli_source
+    assert '"resolve"' not in cli_source
+    assert "run_resolution_cycle" not in cli_source
+    assert "run_resolution_monitor_cycle" not in cli_source
+    assert "bot_v3_legacy" not in cli_source
+
+    assert "PaperSettlementEvidence" in experiment_source
+    assert "MarketResolved(" in experiment_source
+    assert "PositionSettled(" in experiment_source
+    assert "run_resolution_cycle" not in experiment_source
+    assert "run_resolution_monitor_cycle" not in experiment_source
+    assert "Wunderground" not in experiment_source
+
+
+def test_quarantined_resolution_cycle_remains_read_only() -> None:
+    source = Path("bot_v3_legacy_impl.py").read_text(encoding="utf-8")
     resolution_start = source.index("def run_resolution_monitor_cycle")
     resolution_end = source.index("\n\ndef run_loop", resolution_start)
     block = source[resolution_start:resolution_end]

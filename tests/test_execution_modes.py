@@ -17,7 +17,6 @@ from execution_modes import (
     resolve_execution_context,
     run_live_operation,
 )
-from weatherbot.paper import PaperRuntimeConfig
 
 
 @pytest.mark.parametrize("value", [None, "", "disabled", "automatic", 1])
@@ -86,62 +85,7 @@ def test_non_live_gate_never_calls_live_callback(mode: ExecutionMode) -> None:
         require_live(context, operation="test live call")
 
 
-def test_research_status_runs_without_wallet_credentials() -> None:
-    environment = os.environ.copy()
-    environment.pop("PK", None)
-    environment.pop("WALLET", None)
-    completed = subprocess.run(
-        [sys.executable, "bot_v3.py", "status", "--mode", "research"],
-        cwd=Path.cwd(),
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert completed.returncode == 0, completed.stderr
-    assert "Execution mode: RESEARCH" in completed.stdout
-    assert "Wallet access: disabled" in completed.stdout
-
-
-def test_paper_status_uses_isolated_ledger_without_wallet_credentials(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    import bot_v3
-
-    environment_runtime = PaperRuntimeConfig.from_mapping(
-        {
-            "paper_ledger_path": str(tmp_path / "paper.sqlite3"),
-            "paper_archive_directory": str(tmp_path / "archive"),
-        },
-        base_dir=tmp_path,
-    )
-    monkeypatch.setattr(bot_v3, "PAPER_RUNTIME", environment_runtime)
-    monkeypatch.delenv("PK", raising=False)
-    monkeypatch.delenv("WALLET", raising=False)
-
-    bot_v3.show_status(
-        ExecutionContext(mode=ExecutionMode.PAPER, configured_mode=ExecutionMode.PAPER)
-    )
-    output = capsys.readouterr().out
-
-    assert "Wallet access: disabled" in output
-    assert "Paper ledger:" in output
-    assert str(environment_runtime.ledger_path) in output
-    assert "Starting cash:" in output
-    assert "Available cash:" in output
-    assert "Market value:" in output
-    assert "Realized P/L:" in output
-    assert "Unrealized P/L:" in output
-    assert "Fees:" in output
-    assert "Exposure:" in output
-    assert "Drawdown:" in output
-    assert not environment_runtime.ledger_path.exists()
-
-
-def test_default_status_is_research_and_wallet_free() -> None:
+def test_public_status_runs_without_wallet_credentials() -> None:
     environment = os.environ.copy()
     environment.pop("PK", None)
     environment.pop("WALLET", None)
@@ -155,33 +99,19 @@ def test_default_status_is_research_and_wallet_free() -> None:
         timeout=30,
     )
     assert completed.returncode == 0, completed.stderr
-    assert "Execution mode: RESEARCH" in completed.stdout
-    assert "Wallet access: disabled" in completed.stdout
+    assert "Hermes public producer" in completed.stdout
+    assert "strategy:" in completed.stdout
+    assert "policy fingerprint:" in completed.stdout
+    assert "signal log:" in completed.stdout
+    assert "Wallet" not in completed.stdout
 
 
-def test_non_live_cancel_is_blocked_before_live_client_access() -> None:
+def test_internal_paper_cli_is_experiment_only_without_wallet_credentials() -> None:
     environment = os.environ.copy()
     environment.pop("PK", None)
     environment.pop("WALLET", None)
     completed = subprocess.run(
-        [sys.executable, "bot_v3.py", "cancel", "--mode", "research"],
-        cwd=Path.cwd(),
-        env=environment,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert completed.returncode == 2
-    assert "order cancellation is blocked in research mode" in completed.stderr
-
-
-def test_paper_reset_requires_explicit_confirmation_before_history_mutation() -> None:
-    environment = os.environ.copy()
-    environment.pop("PK", None)
-    environment.pop("WALLET", None)
-    completed = subprocess.run(
-        [sys.executable, "bot_v3.py", "paper-reset", "--mode", "paper"],
+        [sys.executable, "-m", "weatherbot.paper", "--help"],
         cwd=Path.cwd(),
         env=environment,
         check=False,
@@ -190,38 +120,88 @@ def test_paper_reset_requires_explicit_confirmation_before_history_mutation() ->
         timeout=30,
     )
 
+    assert completed.returncode == 0, completed.stderr
+    assert "deterministic internal PAPER strategy experiments" in completed.stdout
+    assert "evaluate" in completed.stdout
+    for obsolete in ("scan", "run", "status", "resolve", "reset"):
+        assert obsolete not in completed.stdout
+    assert "Wallet" not in completed.stdout
+
+
+@pytest.mark.parametrize("command", ["cancel", "resolve", "paper-reset"])
+def test_public_cli_rejects_execution_and_paper_admin_commands(command: str) -> None:
+    completed = subprocess.run(
+        [sys.executable, "bot_v3.py", command],
+        cwd=Path.cwd(),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
     assert completed.returncode == 2
-    assert "--confirm-paper-reset" in completed.stderr
+    assert "invalid choice" in completed.stderr
 
 
-def test_paper_scanner_bypasses_legacy_kelly_times_max_bet_path() -> None:
+def test_public_cli_has_no_execution_mode_flag() -> None:
+    completed = subprocess.run(
+        [sys.executable, "bot_v3.py", "status", "--mode", "research"],
+        cwd=Path.cwd(),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode == 2
+    assert "unrecognized arguments" in completed.stderr
+
+
+def test_internal_paper_cli_rejects_mutable_runtime_commands() -> None:
+    environment = os.environ.copy()
+    environment.pop("PK", None)
+    environment.pop("WALLET", None)
+
+    for command in ("scan", "run", "status", "resolve", "reset"):
+        completed = subprocess.run(
+            [sys.executable, "-m", "weatherbot.paper", command],
+            cwd=Path.cwd(),
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert completed.returncode == 2
+        assert "invalid choice" in completed.stderr
+
+
+def test_public_entrypoint_is_only_the_signal_producer() -> None:
     source = Path("bot_v3.py").read_text(encoding="utf-8")
-    scanner = source[source.index("def scan_and_trade") :]
-    recovery_call = scanner.index("recover_paper_runtime(runtime=PAPER_RUNTIME)")
-    city_loop = scanner.index("for city_slug, loc in LOCATIONS.items()")
-    paper_branch = scanner.index("if context.mode is ExecutionMode.PAPER:", city_loop)
-    legacy_sizing = scanner.index("preliminary_kelly = get_adjusted_kelly")
-    paper_continue = scanner.index("\n                continue", paper_branch)
-    paper_block = scanner[paper_branch:paper_continue]
 
-    assert recovery_call < city_loop
-    assert paper_branch < legacy_sizing
-    assert "candidate only; simulated fills are implemented in #27" not in scanner
-    assert "submit_scanner_candidate(" in scanner[:legacy_sizing]
-    for live_write_symbol in (
+    assert "from weatherbot.producer.cli import main" in source
+    for forbidden in (
+        "bot_v3_legacy",
+        "ExecutionMode",
+        "PAPER_RUNTIME",
         "place_buy_order",
-        "get_clob_client",
-        "ensure_approvals",
-        "cancel_market_orders",
+        "cancel_all_orders",
         "PK",
         "WALLET",
     ):
-        assert live_write_symbol not in paper_block
+        assert forbidden not in source
 
 
-def test_paper_resolution_and_status_select_dedicated_ledger() -> None:
-    source = Path("bot_v3.py").read_text(encoding="utf-8")
+def test_internal_paper_cli_owns_experiment_path_without_legacy_execution() -> None:
+    public_source = Path("bot_v3.py").read_text(encoding="utf-8")
+    paper_source = Path("weatherbot/paper/cli.py").read_text(encoding="utf-8")
 
-    assert "PAPER_RUNTIME.ledger_path" in source
-    assert "paper_runtime_status(" in source
-    assert 'choices=("scan", "run", "status", "resolve", "cancel", "paper-reset")' in source
+    assert "PAPER_RUNTIME" not in public_source
+    assert '"evaluate"' in paper_source
+    for obsolete in (
+        "_legacy",
+        "bot_v3_legacy",
+        "run_resolution_cycle",
+        "reset_paper_runtime",
+        "submit_scanner_candidate",
+        "paper_runtime_status",
+    ):
+        assert obsolete not in paper_source

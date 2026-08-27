@@ -1,5 +1,22 @@
-"""Forecast and observation provenance for signal generation."""
+"""Forecast, observation, and calibrated probability contracts."""
 
+from weatherbot.forecasting.calibration import (
+    CalibratedTemperatureModel,
+    CalibrationArtifact,
+    CalibrationDiagnostics,
+    CalibrationError,
+    CalibrationGroup,
+    CalibrationGroupKey,
+    CalibrationSample,
+    DistributionKind,
+    EmpiricalResidualDistribution,
+    GroupLevel,
+    NormalResidualDistribution,
+    ProbabilityEstimate,
+    Season,
+    calibration_artifact_from_json,
+    load_calibration_artifact,
+)
 from weatherbot.forecasting.model import (
     DailyHighForecast,
     ForecastSource,
@@ -12,14 +29,45 @@ from weatherbot.forecasting.providers import (
     parse_aviation_weather_metar,
     parse_open_meteo_daily_highs,
 )
+from weatherbot.forecasting.runtime import (
+    CalibratedProbability,
+    CalibratedProbabilityRuntime,
+    CalibrationApprovalError,
+    CalibrationCompatibilityError,
+    CalibrationRuntimeError,
+    CalibrationUnavailable,
+    load_calibrated_probability_runtime,
+)
 
 __all__ = [
+    "CalibratedProbability",
+    "CalibratedProbabilityRuntime",
+    "CalibratedTemperatureModel",
+    "CalibrationApprovalError",
+    "CalibrationArtifact",
+    "CalibrationCompatibilityError",
+    "CalibrationDiagnostics",
+    "CalibrationError",
+    "CalibrationGroup",
+    "CalibrationGroupKey",
+    "CalibrationRuntimeError",
+    "CalibrationSample",
+    "CalibrationUnavailable",
     "DailyHighForecast",
+    "DistributionKind",
+    "EmpiricalResidualDistribution",
     "ForecastSource",
+    "GroupLevel",
+    "NormalResidualDistribution",
     "ObservationSource",
+    "ProbabilityEstimate",
+    "Season",
     "TemperatureObservation",
     "WeatherInputError",
     "WeatherInputSnapshot",
+    "calibration_artifact_from_json",
+    "load_calibrated_probability_runtime",
+    "load_calibration_artifact",
     "parse_aviation_weather_metar",
     "parse_open_meteo_daily_highs",
 ]

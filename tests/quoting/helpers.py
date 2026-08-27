@@ -26,9 +26,14 @@ from weatherbot.quoting import (
 NOW = datetime(2026, 8, 6, 14, 0, tzinfo=UTC)
 CONDITION = ConditionId("0x" + "cd" * 32)
 TOKEN = OutcomeTokenId("12345678901234567890")
+BOOK_HASH = "1" * 64
 
 
-def weather_snapshot(*, issued_at: datetime | None = None) -> WeatherInputSnapshot:
+def weather_snapshot(
+    *,
+    issued_at: datetime | None = None,
+    model_run_initialized_at_utc: datetime | None = None,
+) -> WeatherInputSnapshot:
     market_date = date(2026, 8, 6)
     timezone = ZoneInfo("America/New_York")
     issued = issued_at or NOW - timedelta(hours=1)
@@ -45,6 +50,7 @@ def weather_snapshot(*, issued_at: datetime | None = None) -> WeatherInputSnapsh
             timezone,
         ).astimezone(UTC),
         retrieved_at_utc=issued,
+        model_run_initialized_at_utc=model_run_initialized_at_utc,
     )
     return WeatherInputSnapshot(
         forecast=forecast,
@@ -69,7 +75,7 @@ def order_book_payload(
     second_ask: str = "0.42",
     first_size: str = "3",
     second_size: str = "10",
-    book_hash: str = "book-hash-1",
+    book_hash: str = BOOK_HASH,
 ) -> dict[str, object]:
     observed = observed_at or NOW - timedelta(seconds=5)
     return {
@@ -98,7 +104,7 @@ def order_book(
     second_ask: str = "0.42",
     first_size: str = "3",
     second_size: str = "10",
-    book_hash: str = "book-hash-1",
+    book_hash: str = BOOK_HASH,
 ) -> OrderBookSnapshot:
     return parse_order_book(
         order_book_payload(
